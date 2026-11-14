@@ -943,6 +943,11 @@ export interface SessionSnapshot {
    * sandbox is entirely read-only, or the writable subtree's path ("" = the whole root).
    */
   writableRoot?: string | null;
+  /**
+   * The file browser's root on the server, absolute, with the server's own separators:
+   * what the tree's relative paths are relative to. Absent from a server that predates it.
+   */
+  browserRoot?: string;
   /** Whether the browser root is inside a git work tree (and git is installed). */
   gitAvailable?: boolean;
   /**

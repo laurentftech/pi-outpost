@@ -20,6 +20,7 @@ import { SettingsMenu } from "./SettingsMenu";
 import type { PiPackageEdits } from "./PiPackages";
 import { TreeMenu } from "./TreeMenu";
 import { HEADER_CONTROL } from "./headerControl";
+import { keepInViewport } from "../util/keepInViewport";
 
 interface HeaderProps {
   credentials?: AgentState["credentials"];
@@ -335,7 +336,7 @@ function SessionMenu({
         sessions
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 flex max-h-96 w-96 flex-col rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+        <div ref={keepInViewport} className="absolute right-0 top-full z-20 mt-1 flex max-h-96 w-[min(24rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] flex-col rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
           <div className="border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
             <input
               type="search"
@@ -437,7 +438,8 @@ function ConversationFilterMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-30 mt-1 w-48 rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+          ref={keepInViewport}
+          className="absolute right-0 z-30 mt-1 w-[min(12rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
         >
           {CONVERSATION_FILTER_KINDS.map((kind) => (
             <button
@@ -560,7 +562,8 @@ function ExtensionStatuses({ statuses, bar }: { statuses: Record<string, string>
       {open && (
         <ul
           aria-label="Extension statuses"
-          className="absolute left-0 top-full z-20 mt-1 w-max max-w-[24rem] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+          ref={keepInViewport}
+          className="absolute left-0 top-full z-20 mt-1 w-max max-w-[min(24rem,calc(100vw-1rem))] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
         >
           {entries.map(([key, text]) => (
             <li key={key} className="break-words px-3 py-1.5 text-xs text-zinc-600 dark:text-zinc-300">
@@ -604,7 +607,7 @@ function ThemeToggle({ theme, preference = theme, onToggle, onSetTheme }: { them
     >
       {preference === "system" ? "◐" : theme === "dark" ? "☾" : "☀"}
     </button>
-    {open && <div role="menu" aria-label="Theme" className="absolute right-0 top-full z-40 mt-2 min-w-32 rounded-lg border border-zinc-300 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+    {open && <div role="menu" aria-label="Theme" ref={keepInViewport} className="absolute right-0 top-full z-40 mt-2 min-w-32 max-w-[calc(100vw-1rem)] rounded-lg border border-zinc-300 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
       {(["light", "dark", "system"] as const).map(value => <button key={value} role="menuitemradio" aria-checked={preference === value} type="button" className="block w-full rounded px-3 py-1.5 text-left text-xs text-zinc-700 hover:bg-zinc-100 focus:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800" onClick={() => {
         if (onSetTheme) onSetTheme(value);
         else if (value !== theme) onToggle();
@@ -616,6 +619,10 @@ function ThemeToggle({ theme, preference = theme, onToggle, onSetTheme }: { them
 }
 
 export function Header(props: HeaderProps) {
+  // Below lg the secondary controls wait behind ⋯, so the bar keeps to one row; opened,
+  // they take the rows after it, as themselves — their menus are never clipped.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const tray = moreOpen ? "contents" : "contents max-lg:hidden";
   const { isStreaming, connected } = props;
   // State rather than a ref: the statuses measure the bar from their own layout effect,
   // which runs before a parent's ref is attached — a ref would still be empty then.
@@ -668,6 +675,7 @@ export function Header(props: HeaderProps) {
       >
         {props.sidebarOpen ? "◧" : "◨"} files
       </button>
+      <span className={tray}>
       <button
         type="button"
         onClick={props.onToggleOutcome}
@@ -693,6 +701,7 @@ export function Header(props: HeaderProps) {
           onShowCommit={props.onShowCommit}
         />
       )}
+      </span>
 
       {/* The title gives way first: it names the deployment, which the reader knows,
           while the project and the branch beside it say where the agent works. */}
@@ -706,7 +715,8 @@ export function Header(props: HeaderProps) {
 
       <ExtensionStatuses statuses={props.statuses} bar={bar} />
 
-      <div className="ml-auto flex w-full max-w-full shrink-0 flex-wrap items-center gap-1 sm:w-auto sm:gap-1.5">
+      <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center gap-1 sm:gap-1.5">
+        <span className={tray}>
         <ConversationFilterMenu filters={props.filters} onFilterChange={props.onFilterChange} />
         {props.onExportConversation && (
           <button
@@ -737,6 +747,7 @@ export function Header(props: HeaderProps) {
           </button>
         )}
         {props.showThemeToggle && <ThemeToggle theme={props.theme} preference={props.themePreference} onSetTheme={props.onSetTheme} onToggle={props.onToggleTheme} />}
+        </span>
         <button
           type="button"
           onClick={props.onNewSession}
@@ -745,6 +756,7 @@ export function Header(props: HeaderProps) {
         >
           + new
         </button>
+        <span className={tray}>
         <TreeMenu
           tree={props.tree}
           isStreaming={isStreaming}
@@ -752,6 +764,19 @@ export function Header(props: HeaderProps) {
           onNavigate={props.onNavigateTree}
           onFork={props.onForkSession}
         />
+        </span>
+        <button
+          type="button"
+          onClick={() => setMoreOpen((open) => !open)}
+          aria-expanded={moreOpen}
+          aria-label={moreOpen ? "Fewer controls" : "More controls"}
+          title={moreOpen ? "Fewer controls" : "More controls"}
+          className={`${HEADER_CONTROL} border-zinc-300 text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 lg:hidden dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200 ${moreOpen ? "bg-zinc-100 dark:bg-zinc-800" : ""}`}
+        >
+          ⋯
+        </button>
+        {/* On a phone the session list waits behind ⋯ too: one row has room for no more. */}
+        <span className={moreOpen ? "contents" : "contents max-sm:hidden"}>
         <SessionMenu
           sessions={props.sessions}
           sessionSearch={props.sessionSearch}
@@ -763,6 +788,7 @@ export function Header(props: HeaderProps) {
           onSearchSessions={props.onSearchSessions}
           onClearSessionSearch={props.onClearSessionSearch}
         />
+        </span>
         <SettingsMenu
           credentials={props.credentials}
           login={props.login}

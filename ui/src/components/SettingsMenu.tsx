@@ -14,6 +14,7 @@ import type { CredentialStatus } from "@pi-outpost/shared";
 import { LoginFlow } from "./LoginFlow";
 import type { LoginFlowState } from "../useAgent";
 import { HEADER_CONTROL } from "./headerControl";
+import { keepInViewport } from "../util/keepInViewport";
 
 interface SandboxConfig {
   root: string;
@@ -341,7 +342,7 @@ export function SettingsMenu({
         ⚙
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 flex max-h-[80vh] w-[380px] flex-col rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+        <div ref={keepInViewport} className="absolute right-0 top-full z-20 mt-1 flex max-h-[80vh] w-[380px] max-w-[calc(100vw-1rem)] flex-col rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
           <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
             {creditsOpen && <button type="button" onClick={() => setCreditsOpen(false)} className="mb-2 text-xs text-zinc-600 hover:underline dark:text-zinc-400">← Back to settings</button>}
             <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{creditsOpen ? "Credits" : "Settings"}</h2>

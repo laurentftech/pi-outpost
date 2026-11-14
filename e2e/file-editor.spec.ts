@@ -18,7 +18,7 @@ async function openEditor(page: Page, name: string, content = SOURCE) {
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("editor", { exact: true }).click();
-  await page.getByText(name, { exact: true }).click();
+  await page.getByText(name, { exact: true }).dblclick(); // a file row opens on double-click
   await page.getByRole("button", { name: "✎ edit" }).click();
   const editor = page.getByTestId("file-editor");
   const content_ = editor.locator(".cm-content");
@@ -132,7 +132,7 @@ test("TheSourceIsReadInTheEditor: the source shows as the editor does, and typin
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("editor", { exact: true }).click();
-  await page.getByText("read.ts", { exact: true }).click();
+  await page.getByText("read.ts", { exact: true }).dblclick(); // a file row opens on double-click
   const source = page.getByTestId("file-source");
   await expect(source.locator(".cm-lineNumbers .cm-gutterElement:not([style*='visibility: hidden'])")).toHaveText(["1", "2", "3", "4", "5", "6"]);
   await expect(source.locator(".tok-keyword").first()).toHaveText("const");
@@ -152,7 +152,7 @@ test("SwitchingViewKeepsTheCurrentMatch: every match marked in the source, the r
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("editor", { exact: true }).click();
-  await page.getByText("find.md", { exact: true }).click();
+  await page.getByText("find.md", { exact: true }).dblclick(); // a file row opens on double-click
   await expect(page.getByRole("heading", { name: "Fox" })).toBeVisible();
   await page.keyboard.press("ControlOrMeta+f");
   await page.getByRole("textbox", { name: "Find", exact: true }).fill("fox");
@@ -187,7 +187,7 @@ test("editing from the rendering moves beside it, and done brings the rendering 
   const pressed = (name: RegExp) => page.getByRole("group", { name: "How to show this document" }).getByRole("button", { name });
 
   for (const name of ["rendered.md", "rendered.html", "rendered.json"]) {
-    await page.getByText(name, { exact: true }).click();
+    await page.getByText(name, { exact: true }).dblclick(); // a file row opens on double-click
     await expect(pressed(/rendered/)).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "✎ edit" }).click();
     await expect(pressed(/split/)).toHaveAttribute("aria-pressed", "true");
@@ -198,4 +198,77 @@ test("editing from the rendering moves beside it, and done brings the rendering 
     await expect(pressed(/rendered/)).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("file-editor")).toHaveCount(0);
   }
+});
+
+test("monkey: rapid layout changes, threshold resizing and typing keep the dirty editor live", async ({ page }) => {
+  const { content } = await openEditor(page, "layout-monkey.ts");
+  await content.press("ControlOrMeta+End");
+  await page.keyboard.type("draft");
+  const beside = page.getByRole("button", { name: "◫ beside chat" });
+  await expect(beside).toBeVisible();
+  await beside.click();
+
+  for (let i = 0; i < 3; i++) {
+    await page.getByRole("button", { name: "⊡ over chat" }).click();
+    await page.getByRole("button", { name: "◫ beside chat" }).click();
+  }
+
+  await page.setViewportSize({ width: 620, height: 900 });
+  await expect(page.getByTestId("file-editor")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByRole("button", { name: "⊡ over chat" })).toBeVisible();
+  await expect(page.getByTestId("file-editor").locator(".cm-content")).toContainText("draft");
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => text(page)).toBe(SOURCE);
+  await expect(page.getByTestId("file-editor")).toBeVisible();
+});
+
+test("at 520px the header stays on one row and its sessions menu remains usable", async ({ page }) => {
+  await page.setViewportSize({ width: 520, height: 900 });
+  await page.goto(process.env.PI_E2E_SERVER_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  const header = page.locator("header");
+  const rowTops = await header.locator("button:visible").evaluateAll((buttons) =>
+    [...new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top)))],
+  );
+  expect(rowTops).toHaveLength(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+
+  // Below sm the session list waits behind ⋯ with the other secondary controls
+  await expect(page.getByRole("button", { name: "sessions", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "More controls" }).click();
+  await page.getByRole("button", { name: "sessions", exact: true }).click();
+  const search = page.getByRole("searchbox", { name: "Search sessions" });
+  await expect(search).toBeVisible();
+  await search.click();
+  await search.fill("recent");
+  await expect(search).toHaveValue("recent");
+  const box = await search.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(520);
+});
+
+test("at 390px the Files search control does not cover a row action", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(process.env.PI_E2E_SERVER_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByTitle("Show files").click();
+
+  const search = page.getByRole("button", { name: "Search in files" });
+  const rowAction = page.getByRole("button", { name: "Actions for diagrams" });
+  await expect(search).toBeVisible();
+  await expect(rowAction).toBeAttached();
+  const searchBox = await search.boundingBox();
+  const actionBox = await rowAction.boundingBox();
+  expect(searchBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+  const separated =
+    searchBox!.x + searchBox!.width <= actionBox!.x ||
+    actionBox!.x + actionBox!.width <= searchBox!.x ||
+    searchBox!.y + searchBox!.height <= actionBox!.y ||
+    actionBox!.y + actionBox!.height <= searchBox!.y;
+  expect(separated).toBe(true);
 });

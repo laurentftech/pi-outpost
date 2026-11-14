@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { UpdateNotice } from "./components/UpdateNotice";
 import { ChangesNotice } from "./components/ChangesNotice";
 import { ReplyConformanceContext } from "./components/ReplyStructuredExchange";
@@ -55,6 +55,12 @@ import { WorkPlanPanel } from "./components/WorkPlanPanel";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { OutcomePanel } from "./components/OutcomePanel";
 import { useAgent } from "./useAgent";
+import { EditorView } from "@codemirror/view";
+import { agentStatus } from "./agentStatus";
+import { ViewerTabs } from "./components/ViewerTabs";
+import { keepFocus } from "./components/AgentStatusStrip";
+import { PanelResizeHandle, useResizablePanelWidth } from "./components/PanelResizeHandle";
+import { canShowViewerBeside, CONVERSATION_MIN_WIDTH, readViewerLayout, VIEWER_PANE_WIDTH, writeViewerLayout, type ViewerLayout } from "./util/panelWidth";
 
 export interface AppHandle {
   setTheme(theme: Theme): void;
@@ -95,6 +101,34 @@ const NEAR_BOTTOM_PX = 120;
  * The agent is working. Drawn at the end of the conversation, so it holds for the
  * whole turn rather than only until the first thing the agent produces.
  */
+/**
+ * Focus a CodeMirror editor with its own selection. A plain DOM focus lets it read
+ * the browser's selection instead — still in the composer — and the caret jumps
+ * to the start of the document.
+ */
+function focusEditor(content: HTMLElement) {
+  if (!content.isConnected) return;
+  const view = EditorView.findFromDOM(content);
+  if (view) view.focus();
+  else content.focus();
+}
+
+/**
+ * One tab's viewer. A hidden tab is skipped by renders that change nothing it shows —
+ * otherwise every hidden viewer would re-render, Markdown and all, with each streamed
+ * token of the conversation.
+ */
+const TabPane = memo(
+  function TabPane({ path, active, children }: { path: string; active: boolean; file: unknown; children: ReactNode }) {
+    return (
+      <div data-tab={path} className="absolute inset-0" style={{ display: active ? undefined : "none" }}>
+        {children}
+      </div>
+    );
+  },
+  (previous, next) => !previous.active && !next.active && previous.file === next.file && previous.path === next.path,
+);
+
 function WorkingIndicator({ label }: { label: string }) {
   return (
     <div className="flex justify-end px-4" role="status" aria-live="polite">
@@ -156,7 +190,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     deleteFiles,
     moveFiles,
     restoreDeleted,
-    closeFilePreview,
+    closeTab: closeTabInAgent,
     searchFiles,
     clearFileSearch,
     fetchGitDiff,
@@ -238,7 +272,158 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   // Paths the composer's draft names with `@`: they reference a file as surely as a chip does
   const [draftMentions, setDraftMentions] = useState<string[]>([]);
-  const [viewerDirty, setViewerDirty] = useState(false);
+  // The file viewer sits over the chat or beside the conversation; either way it is one
+  // element in one place of the tree, so changing layout never remounts its editor.
+  const [viewerLayout, setViewerLayoutState] = useState<ViewerLayout>(readViewerLayout);
+  const setViewerLayout = useCallback((layout: ViewerLayout) => {
+    setViewerLayoutState(layout);
+    writeViewerLayout(layout);
+  }, []);
+  const viewerPaneWidth = useResizablePanelWidth(VIEWER_PANE_WIDTH);
+  // State, not a ref: the grid is not in the first render whenever the app returns
+  // early (an embedded widget waiting for its branding, the token gate, onboarding),
+  // and the observer must attach when it does mount.
+  const [workArea, setWorkArea] = useState<HTMLDivElement | null>(null);
+  const [workAreaWidth, setWorkAreaWidth] = useState(0);
+  useEffect(() => {
+    if (!workArea) return;
+    const measure = () => setWorkAreaWidth(workArea.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(workArea);
+    return () => observer.disconnect();
+  }, [workArea]);
+  const viewerCanBeside = canShowViewerBeside(workAreaWidth);
+  // Open files, as tabs. useAgent keeps the list and each tab's last content, and
+  // carries them through moves, deletions and switches; here each tab keeps a mounted
+  // viewer — hidden while inactive — so its draft, undo history, caret and scroll
+  // survive a switch, as they survive a layout change.
+  const tabs = state.openTabs.flatMap((path) => {
+    const file = state.openFile?.path === path && state.openFile.status === "loaded" ? state.openFile : (state.tabFiles[path] ?? (state.openFile?.path === path ? state.openFile : undefined));
+    return file ? [file] : [];
+  });
+  const activeTab = state.openFile?.path ?? null;
+  // The preview revision a hidden tab last saw: bumps for the shown file must not
+  // reload every hidden image, PDF or page.
+  const tabRevisions = useRef<Record<string, number>>({});
+  if (activeTab) tabRevisions.current[activeTab] = state.previewRevision;
+  const [dirtyTabs, setDirtyTabs] = useState<Record<string, boolean>>({});
+  const lastActiveIndex = useRef(0);
+  if (activeTab) lastActiveIndex.current = Math.max(0, state.openTabs.indexOf(activeTab));
+  // The shown file went away while other tabs remain (deleted, moved out of reach):
+  // show the neighbour of where it stood.
+  const openTabsKey = state.openTabs.join("\n");
+  useEffect(() => {
+    if (state.openFile || state.openTabs.length === 0) return;
+    const neighbour = state.openTabs[Math.min(lastActiveIndex.current, state.openTabs.length - 1)];
+    readFile(neighbour);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.openFile === null, openTabsKey]);
+  const setTabDirty = useCallback((path: string, dirty: boolean) => {
+    setDirtyTabs((current) => {
+      if (current[path] === dirty || (!dirty && !(path in current))) return current;
+      return { ...current, [path]: dirty };
+    });
+  }, []);
+  /** Back on a tab being edited, the caret is where it was and keystrokes go there. */
+  const focusTabEditor = (path: string) => {
+    setTimeout(() => {
+      const pane = viewerPaneRef.current;
+      const editor = [...(pane?.querySelectorAll<HTMLElement>("[data-tab]") ?? [])]
+        .find((element) => element.dataset.tab === path)
+        ?.querySelector<HTMLElement>('[data-testid="file-editor"] .cm-content');
+      if (editor) focusEditor(editor);
+    }, 0);
+  };
+  /** A save on its way back must land on the tab it was made from: stay until it does. */
+  const saving = state.openFile?.status === "loaded" && state.openFile.pendingSave !== undefined;
+  const activateTab = (path: string) => {
+    if (path === activeTab || saving) return;
+    readFile(path);
+    focusTabEditor(path);
+  };
+  /** `confirmed`: the viewer already asked about unsaved edits (its ✕ and Escape do). */
+  const closeTab = (path: string, confirmed = false) => {
+    if (path === activeTab && saving) return;
+    if (!confirmed && dirtyTabs[path] && !window.confirm("Discard unsaved changes?")) return;
+    const index = state.openTabs.indexOf(path);
+    if (index < 0) return;
+    setDirtyTabs((current) => {
+      const next = { ...current };
+      delete next[path];
+      return next;
+    });
+    const rest = state.openTabs.filter((tab) => tab !== path);
+    if (path === activeTab && rest.length > 0) focusTabEditor(rest[Math.min(index, rest.length - 1)]);
+    // Closing the shown tab leaves no file shown; the effect above shows its neighbour.
+    closeTabInAgent(path);
+  };
+  const viewerOpen = tabs.length > 0;
+  const viewerBeside = viewerOpen && viewerLayout === "beside" && viewerCanBeside;
+  // While the tab is in the background, its title says when the agent needs the user
+  // or has finished — the one place a user working in another window still sees.
+  const [tabHidden, setTabHidden] = useState(() => typeof document !== "undefined" && document.visibilityState === "hidden");
+  const [repliedWhileAway, setRepliedWhileAway] = useState(false);
+  useEffect(() => {
+    const onVisibility = () => {
+      const hidden = document.visibilityState === "hidden";
+      setTabHidden(hidden);
+      if (!hidden) setRepliedWhileAway(false);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+  const wasStreaming = useRef(state.isStreaming);
+  useEffect(() => {
+    if (wasStreaming.current && !state.isStreaming && tabHidden) setRepliedWhileAway(true);
+    wasStreaming.current = state.isStreaming;
+  }, [state.isStreaming, tabHidden]);
+  const needsUserWhileAway = tabHidden && (state.dialogQueue.length > 0 || (state.sandboxGrants?.pending.length ?? 0) > 0);
+  const titleMark = needsUserWhileAway ? "❗ " : tabHidden && repliedWhileAway ? "✓ " : "";
+  // A look at the conversation from the overlay, without closing the viewer.
+  const [conversationPeek, setConversationPeek] = useState(false);
+  const viewerPaneRef = useRef<HTMLDivElement>(null);
+  // The editor that had focus when the user looked away at the conversation.
+  const editorBeforePeek = useRef<HTMLElement | null>(null);
+  /** The viewer's editor, when it is what has focus. */
+  const focusedViewerEditor = (): HTMLElement | null => {
+    // The root node's, not the document's: inside an embedded widget's shadow root
+    // the document only sees the host.
+    const root = viewerPaneRef.current?.getRootNode() as Document | ShadowRoot | undefined;
+    const active = root?.activeElement;
+    if (!(active instanceof HTMLElement) || !viewerPaneRef.current?.contains(active)) return null;
+    return active.closest<HTMLElement>(".cm-content");
+  };
+  const openFilePath = state.openFile?.path;
+  useEffect(() => setConversationPeek(false), [openFilePath, viewerLayout]);
+  // The editor focus came from when the user went straight from it to the composer.
+  const editorToReturnTo = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!workArea) return;
+    let previous: HTMLElement | null = null;
+    const onFocusIn = (event: FocusEvent) => {
+      // The real target, through any shadow root: an embedded widget's events reach
+      // the document retargeted at its host.
+      const origin = event.composedPath()[0];
+      const target = origin instanceof HTMLElement ? origin : null;
+      // Another widget on the same page is none of this one's business.
+      if (target && !workArea.contains(target)) {
+        editorToReturnTo.current = null;
+        previous = null;
+        return;
+      }
+      if (target?.closest("[data-composer-area]")) {
+        if (previous && viewerPaneRef.current?.contains(previous) && previous.closest(".cm-content")) {
+          editorToReturnTo.current = previous.closest(".cm-content");
+        }
+      } else if (!(target && viewerPaneRef.current?.contains(target))) {
+        editorToReturnTo.current = null;
+      }
+      previous = target;
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, [workArea]);
   /**
    * Unsent composer text, per workspace (`workspaceKey`): a side session keeps its own.
    *
@@ -462,10 +647,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     attachmentsRef.current = attachments;
   }, [attachments]);
 
-  function closePreview() {
-    closeFilePreview();
-  }
-
   const attachedPaths = useMemo(
     () => [
       ...attachments.filter((attachment) => attachment.kind === "path").map((attachment) => attachment.data),
@@ -505,9 +686,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     prompt(text, images);
     setAttachments([]);
     setAttachmentErrors([]);
-    // Sending a message means the user wants the conversation back — close the file
-    // viewer unless it holds unsaved edits (the viewer's activity strip covers that case)
-    if (!viewerDirty) closePreview();
+    // The viewer stays open: the user may be writing while the agent works. Coming
+    // straight from its editor, they get the caret back where they left it —
+    // through CodeMirror, which restores its own selection; a DOM focus would not.
+    const editor = editorToReturnTo.current;
+    // Not while looking at the conversation: the editor is hidden, and the reply was typed here.
+    if (editor && !conversationPeek) setTimeout(() => focusEditor(editor), 0);
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -572,6 +756,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
    * anything that streams in while it runs.
    */
   const returning = useRef<number | null>(null);
+  /** The scroller's geometry when last evaluated: tells the end moving from the reader moving. */
+  const lastGeometry = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
 
   /**
    * Arms the guard for a scroll this app is about to start towards the end.
@@ -594,6 +780,18 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     const main = mainRef.current;
     if (!main) return;
     const near = main.scrollHeight - main.scrollTop - main.clientHeight < NEAR_BOTTOM_PX;
+    const last = lastGeometry.current;
+    lastGeometry.current = { scrollTop: main.scrollTop, scrollHeight: main.scrollHeight };
+    if (!near && stickToBottom.current && last && main.scrollHeight > last.scrollHeight && main.scrollTop >= last.scrollTop) {
+      // The end moved away, the viewport did not move up: content grew under a
+      // reader being followed (a reply's last block landing in one piece, with the
+      // browser reporting a scroll for it). A reader leaving always moves up; a
+      // reader stopping short of the end leaves the height alone.
+      returning.current = null;
+      beginReturn();
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
     const from = returning.current;
     if (from !== null) {
       if (main.scrollTop < from) {
@@ -609,7 +807,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
       }
     }
     setStick(near);
-  }, [setStick]);
+  }, [setStick, beginReturn]);
 
   /** A scroll the reader started: whatever we were animating towards, they own it now. */
   function handleScrollGesture() {
@@ -861,12 +1059,12 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     // workspace, where the title is what it always was.
     if (!embedded) {
       const title = state.extensionTitle ?? state.branding.title ?? "pi";
-      document.title = state.workspace ? `${state.workspace.name} — ${title}` : title;
+      document.title = titleMark + (state.workspace ? `${state.workspace.name} — ${title}` : title);
     }
     if (state.branding.accentColor) {
       accentTarget.style.setProperty("--accent", state.branding.accentColor);
     }
-  }, [state.branding, state.extensionTitle, state.workspace?.name, embedded, accentTarget]);
+  }, [state.branding, state.extensionTitle, state.workspace?.name, embedded, accentTarget, titleMark]);
 
   // The embed has no server-rendered shell to hide its defaults. Leave its
   // shadow root empty until the independent HTTP branding request settles, so
@@ -906,13 +1104,93 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   // Keep the existing question-before-grant ordering, with both beside the timeline.
   const grant = question ? undefined : state.sandboxGrants?.pending[0];
 
+  const viewerAgentStatus = agentStatus(state.items, state.isStreaming, question ? "question" : grant ? "grant" : null);
+  /** Look at the conversation from the overlay: the latest of it, with the file kept as it was. */
+  function revealConversation() {
+    editorBeforePeek.current = focusedViewerEditor();
+    setConversationPeek(true);
+    scrollToLatest();
+    // Looking at the conversation, the next thing typed is a reply: give it somewhere to go.
+    setTimeout(() => {
+      const composer = workArea?.querySelector<HTMLTextAreaElement>("[data-composer-area] textarea");
+      // Not while a question or a grant stands in for it: the app hides it then.
+      if (composer && !composer.closest("[hidden]")) composer.focus();
+    }, 0);
+  }
+
+  /** Back from that look, to the editor the user was writing in when they left. */
+  function backToFile() {
+    setConversationPeek(false);
+    const editor = editorBeforePeek.current;
+    editorBeforePeek.current = null;
+    if (editor) setTimeout(() => focusEditor(editor), 0);
+  }
+
+  /** From that look straight to the file beside the conversation, editor focus included. */
+  function besideFromPeek() {
+    setViewerLayout("beside");
+    backToFile();
+  }
+
+  /** Below md the Files sidebar covers the content: opening something from it closes it. */
+  function closeSidebarIfDrawer() {
+    if (window.matchMedia?.("(max-width: 767px)").matches) setSidebarOpen(false);
+  }
+
+  const fileViewer = viewerOpen ? (
+    <>
+      <ViewerTabs
+        tabs={tabs.map((tab) => ({ path: tab.path, dirty: dirtyTabs[tab.path] ?? false }))}
+        active={activeTab}
+        onActivate={activateTab}
+        onClose={(path) => closeTab(path)}
+      />
+      <div className="relative min-h-0 flex-1">
+        {tabs.map((tab) => (
+          // One viewer per path, never reused for another: a draft can never be saved onto another file.
+          <TabPane key={tab.path} path={tab.path} active={tab.path === activeTab} file={tab}>
+          <FileViewer
+            file={tab}
+            writableRoot={state.writableRoot}
+            docxTemplate={state.docxTemplate}
+            isStreaming={state.isStreaming}
+            agentStatus={viewerAgentStatus}
+            layout={viewerBeside ? "beside" : "overlay"}
+            canBeside={viewerCanBeside}
+            onLayoutChange={setViewerLayout}
+            onRevealConversation={revealConversation}
+            gitState={state.gitStatus?.files[tab.path]}
+            initialShowGitDiff={tab.path === activeTab && diffOnOpen}
+            gitDiff={state.gitDiff}
+            gitBaseline={state.gitBaseline?.path === tab.path ? (state.gitBaseline?.text ?? null) : null}
+            onFetchGitDiff={fetchGitDiff}
+            onClearGitDiff={clearGitDiff}
+            inRepository={repoForPath(state.gitStatus?.repos ?? [], tab.path) !== null}
+            onOpenGitHistory={fetchGitFileHistory}
+            onClose={() => closeTab(tab.path, true)}
+            onDirtyChange={(dirty) => setTabDirty(tab.path, dirty)}
+            onReload={readFile}
+            onSave={writeFile}
+            serverUrl={serverUrl}
+            token={authToken}
+            workspace={rawWorkspace}
+            onOpenNative={openNative}
+            active={tab.path === activeTab}
+            rawRevision={tab.path === activeTab ? state.previewRevision : (tabRevisions.current[tab.path] ?? state.previewRevision)}
+          />
+          </TabPane>
+        ))}
+      </div>
+    </>
+  ) : null;
+
   return (
     <ThemeContext.Provider value={theme}>
     <ReplyConformanceContext.Provider value={state.replyConformance}>
     <StructuredAppearanceContext.Provider value={state.structuredAppearance}>
     <DrawioFilesContext.Provider value={drawioFiles}>
       <div
-        className="relative flex h-full"
+        className="relative flex h-full flex-col"
         onDragEnter={(e) => {
           if (e.dataTransfer.types.includes("Files")) setDragDepth((d) => d + 1);
         }}
@@ -928,6 +1206,171 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             </p>
           </div>
         )}
+        {/* The header spans the window, above the Files sidebar. */}
+        {/* Choosing a project root reuses the picker the sandbox root already
+            uses — the same walk of the server's filesystem, for the same kind of
+            answer. */}
+        {projectPicker && (
+          <ServerPathPicker
+            label="Choose a project directory"
+            browse={state.serverBrowse}
+            onBrowse={browseServerDirectory}
+            onSelect={(root) => {
+              setProjectPicker(false);
+              closeServerBrowser();
+              openProject(root);
+            }}
+            onCancel={() => {
+              setProjectPicker(false);
+              closeServerBrowser();
+            }}
+          />
+        )}
+        {/* The standalone app's reader runs the server; a widget's reader does not. */}
+        {!embedded && state.outpostUpdate && <UpdateNotice notice={state.outpostUpdate} />}
+        {!embedded && state.outpostChanges && <ChangesNotice changes={state.outpostChanges} />}
+        <Header
+          workspace={state.workspace}
+          workspaces={state.workspaces}
+          // The server lock alone. An embed that offers no project affordance
+          // says so through `workspaceControl` below, so the two reasons stay
+          // apart: one is what the server forbids, the other is what this
+          // deployment chose to present.
+          workspaceLocked={state.workspaceLocked}
+          // Standalone is unchanged whatever the policy says: it applies to
+          // mounted widgets only. Inside one, `settings` — the default, and
+          // what every server said before the setting existed — offers nothing.
+          workspaceControl={!embedded ? "projects" : embedControl}
+          rootControl={{
+            sandbox: state.sandbox,
+            browse: state.serverBrowse,
+            applyState: state.settingsApply,
+            blocked: headerPicker !== null && headerPicker !== "root",
+            onBrowse: browseServerDirectory,
+            onCloseBrowser: () => {
+              setHeaderPicker(null);
+              closeServerBrowser();
+            },
+            onOpened: () => setHeaderPicker("root"),
+            // The whole current sandbox with only the root replaced: the other
+            // permissions and the writable root are the user's, not this
+            // control's, and the server refuses the pair rather than quietly
+            // relocating a writable root that would fall outside the new one.
+            onSelect: (root) =>
+              updateConfig({
+                sandbox: {
+                  root,
+                  allowWrite: state.sandbox?.allowWrite ?? false,
+                  allowBash: state.sandbox?.allowBash ?? false,
+                  ...(state.sandbox?.writableRoot ? { writableRoot: state.sandbox.writableRoot } : {}),
+                },
+              }),
+          }}
+          onSwitchWorkspace={switchWorkspace}
+          onOpenProject={() => { setProjectPicker(true); browseServerDirectory(""); }}
+          onCloseProject={closeProject}
+          onOpenSideSession={openSideSession}
+          piPackages={state.piPackages}
+          piPackageUpdate={state.piPackageUpdate}
+          piPackageEdits={{
+            lookup: state.piPackageLookup,
+            change: state.piPackageChange,
+            projectName: state.workspace?.name ?? "this",
+            onLookup: lookupPiPackage,
+            onCloseLookup: closePiPackageLookup,
+            onInstall: installPiPackage,
+            onRemove: removePiPackage,
+            onRestore: restorePiPackage,
+          }}
+          canRestartServer={!embedded}
+          serverRestarting={state.serverRestarting}
+          onCheckPiPackages={checkPiPackages}
+          onUpdatePiPackage={updatePiPackage}
+          onRestartServer={restartServer}
+          restartNeeded={state.restartNeeded}
+          title={state.branding.title}
+          credentials={state.credentials}
+          login={state.login}
+          onStartLogin={startLogin}
+          onAnswerLogin={answerLogin}
+          onCancelLogin={cancelLogin}
+          onDismissLogin={dismissLogin}
+          onLogoutProvider={logoutProvider}
+          gitHostCredential={state.gitHostCredential}
+          onSetGitHostCredential={setGitHostCredential}
+          onRemoveGitHostCredential={removeGitHostCredential}
+          sessions={state.sessions}
+          sessionSearch={state.sessionSearch}
+          sessionId={state.sessionId}
+          tree={state.tree}
+          isStreaming={state.isStreaming}
+          connected={state.connected}
+          theme={theme}
+          showThemeToggle={state.branding.allowThemeToggle !== false}
+          statuses={state.statuses}
+          sidebarOpen={sidebarOpen}
+          outcomeOpen={outcomeOpen}
+          filters={filters}
+          onToggleSidebar={() => {
+            setSidebarMounted(true);
+            setSidebarOpen((open) => !open);
+          }}
+          onToggleOutcome={toggleOutcome}
+          onFilterChange={setFilter}
+          {...(state.items.length > 0 ? { onExportConversation: () => void exportConversationToFile() } : {})}
+          exportProgress={exportProgress}
+          onToggleTheme={toggleTheme}
+          themePreference={themePreference}
+          onSetTheme={setTheme}
+          onNewSession={newSession}
+          onSwitchSession={switchSession}
+          onDeleteSession={deleteSession}
+          onListSessions={listSessions}
+          onRenameSession={renameSession}
+          onSearchSessions={searchSessions}
+          onClearSessionSearch={clearSessionSearch}
+          onListTree={listTree}
+          onNavigateTree={navigateTree}
+          onForkSession={forkSession}
+          gitAvailable={state.gitAvailable}
+          gitStatus={state.gitStatus}
+          gitSelectedPath={treeSelection}
+          gitLog={state.gitLog}
+          extensionPaths={state.extensionPaths}
+          configuredExtensionPaths={state.configuredExtensionPaths}
+          userExtensionPaths={state.userExtensionPaths}
+          extensionLock={state.extensionLock}
+          tools={state.tools}
+          commands={state.commands}
+          sandbox={state.sandbox}
+          gitUnavailable={state.gitUnavailable}
+          userSkillPaths={state.userSkillPaths}
+          serverBrowse={state.serverBrowse}
+          settingsApply={state.settingsApply}
+          agentResources={state.agentResources}
+          agentResourceOperations={state.agentResourceOperations}
+          versions={state.versions}
+          onBrowseServerPath={browseServerDirectory}
+          onCloseServerBrowser={closeServerBrowser}
+          settingsPickerBlocked={headerPicker !== null && headerPicker !== "settings"}
+          onSettingsPickerOpened={() => setHeaderPicker("settings")}
+          onRestartSession={restartSession}
+          onUpdateConfig={updateConfig}
+          onSuggestAgentResourceClonePath={suggestAgentResourceClonePath}
+          onCloneAgentResourceRepository={cloneAgentResourceRepository}
+          onEnrollAgentResourceRepository={enrollAgentResourceRepository}
+          onSetAgentResourceSkills={setAgentResourceSkills}
+          onRemoveAgentResourceRepository={removeAgentResourceRepository}
+          onRefreshAgentResourceRepositories={refreshAgentResourceRepositories}
+          onUpdateAgentResourceRepository={updateAgentResourceRepository}
+          onFetchGitLog={fetchGitLog}
+          onCloseGitLog={closeGitLog}
+          onShowCommit={fetchGitShow}
+          terminalOpen={terminalOpen}
+          onToggleTerminal={terminalEnabled ? () => setTerminalOpen((prev) => !prev) : undefined}
+        />
+        {/* `relative`: below md the Files sidebar is a drawer positioned against this row. */}
+        <div className="relative flex min-h-0 flex-1">
         {(sidebarOpen || sidebarMounted) && (
           <Sidebar
             hidden={!sidebarOpen}
@@ -937,6 +1380,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             tree={state.fileTree}
             openFile={state.openFile}
             writableRoot={state.writableRoot}
+            browserRoot={state.browserRoot}
             gitFiles={state.gitStatus?.files}
             gitAtLeast={state.gitStatus?.atLeast}
             attachedPaths={attachedPaths}
@@ -944,11 +1388,13 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             onSelectDirectory={setTreeSelection}
             onRefresh={refreshFileTree}
             onSelectFile={(path) => {
+              closeSidebarIfDrawer();
               setDiffOnOpen(false);
               setTreeSelection(path);
               readFile(path);
             }}
             onSelectDiff={(path) => {
+              closeSidebarIfDrawer();
               setDiffOnOpen(true);
               setTreeSelection(path);
               readFile(path);
@@ -975,180 +1421,79 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             contentSearch={state.contentSearch}
             onSearchContent={searchContent}
             onOpenSearchHit={(hit, query) => {
+              closeSidebarIfDrawer();
               setDiffOnOpen(false);
               setTreeSelection(hit.path);
               readFile(hit.path, undefined, hit.kind === "line" ? { query, line: hit.line } : { query, page: hit.page });
             }}
           />
         )}
-        <div className="flex h-full min-w-0 flex-1 flex-col">
-          {/* Choosing a project root reuses the picker the sandbox root already
-              uses — the same walk of the server's filesystem, for the same kind of
-              answer. */}
-          {projectPicker && (
-            <ServerPathPicker
-              label="Choose a project directory"
-              browse={state.serverBrowse}
-              onBrowse={browseServerDirectory}
-              onSelect={(root) => {
-                setProjectPicker(false);
-                closeServerBrowser();
-                openProject(root);
+        {/* Below the header: the file viewer and the conversation share one grid. Over
+            the chat, the viewer takes the chat's cell; beside it, the first column. It is
+            the same element in both, so its editor keeps draft, history and caret. */}
+        <div
+          ref={setWorkArea}
+          data-work-area
+          className="relative z-0 grid h-full min-h-0 min-w-0 flex-1"
+          style={{
+            gridTemplateColumns: viewerBeside
+              ? // A width saved on a wider screen must not squeeze the conversation below its minimum.
+                `minmax(${VIEWER_PANE_WIDTH.minWidth}px, min(${viewerPaneWidth.width}px, calc(100% - ${CONVERSATION_MIN_WIDTH}px))) minmax(0, 1fr)`
+              : "minmax(0, 1fr)",
+            gridTemplateRows: "minmax(0, 1fr) auto auto",
+          }}
+        >
+          {viewerOpen && (
+            <div
+              ref={viewerPaneRef}
+              className={viewerBeside ? "relative flex min-h-0 min-w-0 flex-col border-r border-zinc-200 dark:border-zinc-800" : "relative z-20 flex min-h-0 min-w-0 flex-col"}
+              style={{
+                gridColumn: 1,
+                gridRow: viewerBeside ? "1 / -1" : "1",
+                display: conversationPeek && !viewerBeside ? "none" : undefined,
               }}
-              onCancel={() => {
-                setProjectPicker(false);
-                closeServerBrowser();
-              }}
-            />
+            >
+              {fileViewer}
+              {viewerBeside && (
+                <PanelResizeHandle
+                  label="Resize the file beside the conversation"
+                  width={viewerPaneWidth.width}
+                  config={VIEWER_PANE_WIDTH}
+                  separatorProps={viewerPaneWidth.separatorProps}
+                />
+              )}
+            </div>
           )}
-          {/* The standalone app's reader runs the server; a widget's reader does not. */}
-          {!embedded && state.outpostUpdate && <UpdateNotice notice={state.outpostUpdate} />}
-          {!embedded && state.outpostChanges && <ChangesNotice changes={state.outpostChanges} />}
-          <Header
-            workspace={state.workspace}
-            workspaces={state.workspaces}
-            // The server lock alone. An embed that offers no project affordance
-            // says so through `workspaceControl` below, so the two reasons stay
-            // apart: one is what the server forbids, the other is what this
-            // deployment chose to present.
-            workspaceLocked={state.workspaceLocked}
-            // Standalone is unchanged whatever the policy says: it applies to
-            // mounted widgets only. Inside one, `settings` — the default, and
-            // what every server said before the setting existed — offers nothing.
-            workspaceControl={!embedded ? "projects" : embedControl}
-            rootControl={{
-              sandbox: state.sandbox,
-              browse: state.serverBrowse,
-              applyState: state.settingsApply,
-              blocked: headerPicker !== null && headerPicker !== "root",
-              onBrowse: browseServerDirectory,
-              onCloseBrowser: () => {
-                setHeaderPicker(null);
-                closeServerBrowser();
-              },
-              onOpened: () => setHeaderPicker("root"),
-              // The whole current sandbox with only the root replaced: the other
-              // permissions and the writable root are the user's, not this
-              // control's, and the server refuses the pair rather than quietly
-              // relocating a writable root that would fall outside the new one.
-              onSelect: (root) =>
-                updateConfig({
-                  sandbox: {
-                    root,
-                    allowWrite: state.sandbox?.allowWrite ?? false,
-                    allowBash: state.sandbox?.allowBash ?? false,
-                    ...(state.sandbox?.writableRoot ? { writableRoot: state.sandbox.writableRoot } : {}),
-                  },
-                }),
-            }}
-            onSwitchWorkspace={switchWorkspace}
-            onOpenProject={() => { setProjectPicker(true); browseServerDirectory(""); }}
-            onCloseProject={closeProject}
-            onOpenSideSession={openSideSession}
-            piPackages={state.piPackages}
-            piPackageUpdate={state.piPackageUpdate}
-            piPackageEdits={{
-              lookup: state.piPackageLookup,
-              change: state.piPackageChange,
-              projectName: state.workspace?.name ?? "this",
-              onLookup: lookupPiPackage,
-              onCloseLookup: closePiPackageLookup,
-              onInstall: installPiPackage,
-              onRemove: removePiPackage,
-              onRestore: restorePiPackage,
-            }}
-            canRestartServer={!embedded}
-            serverRestarting={state.serverRestarting}
-            onCheckPiPackages={checkPiPackages}
-            onUpdatePiPackage={updatePiPackage}
-            onRestartServer={restartServer}
-            restartNeeded={state.restartNeeded}
-            title={state.branding.title}
-            credentials={state.credentials}
-            login={state.login}
-            onStartLogin={startLogin}
-            onAnswerLogin={answerLogin}
-            onCancelLogin={cancelLogin}
-            onDismissLogin={dismissLogin}
-            onLogoutProvider={logoutProvider}
-            gitHostCredential={state.gitHostCredential}
-            onSetGitHostCredential={setGitHostCredential}
-            onRemoveGitHostCredential={removeGitHostCredential}
-            sessions={state.sessions}
-            sessionSearch={state.sessionSearch}
-            sessionId={state.sessionId}
-            tree={state.tree}
-            isStreaming={state.isStreaming}
-            connected={state.connected}
-            theme={theme}
-            showThemeToggle={state.branding.allowThemeToggle !== false}
-            statuses={state.statuses}
-            sidebarOpen={sidebarOpen}
-            outcomeOpen={outcomeOpen}
-            filters={filters}
-            onToggleSidebar={() => {
-              setSidebarMounted(true);
-              setSidebarOpen((open) => !open);
-            }}
-            onToggleOutcome={toggleOutcome}
-            onFilterChange={setFilter}
-            {...(state.items.length > 0 ? { onExportConversation: () => void exportConversationToFile() } : {})}
-            exportProgress={exportProgress}
-            onToggleTheme={toggleTheme}
-            themePreference={themePreference}
-            onSetTheme={setTheme}
-            onNewSession={newSession}
-            onSwitchSession={switchSession}
-            onDeleteSession={deleteSession}
-            onListSessions={listSessions}
-            onRenameSession={renameSession}
-            onSearchSessions={searchSessions}
-            onClearSessionSearch={clearSessionSearch}
-            onListTree={listTree}
-            onNavigateTree={navigateTree}
-            onForkSession={forkSession}
-            gitAvailable={state.gitAvailable}
-            gitStatus={state.gitStatus}
-            gitSelectedPath={treeSelection}
-            gitLog={state.gitLog}
-            extensionPaths={state.extensionPaths}
-            configuredExtensionPaths={state.configuredExtensionPaths}
-            userExtensionPaths={state.userExtensionPaths}
-            extensionLock={state.extensionLock}
-            tools={state.tools}
-            commands={state.commands}
-            sandbox={state.sandbox}
-            gitUnavailable={state.gitUnavailable}
-            userSkillPaths={state.userSkillPaths}
-            serverBrowse={state.serverBrowse}
-            settingsApply={state.settingsApply}
-            agentResources={state.agentResources}
-            agentResourceOperations={state.agentResourceOperations}
-            versions={state.versions}
-            onBrowseServerPath={browseServerDirectory}
-            onCloseServerBrowser={closeServerBrowser}
-            settingsPickerBlocked={headerPicker !== null && headerPicker !== "settings"}
-            onSettingsPickerOpened={() => setHeaderPicker("settings")}
-            onRestartSession={restartSession}
-            onUpdateConfig={updateConfig}
-            onSuggestAgentResourceClonePath={suggestAgentResourceClonePath}
-            onCloneAgentResourceRepository={cloneAgentResourceRepository}
-            onEnrollAgentResourceRepository={enrollAgentResourceRepository}
-            onSetAgentResourceSkills={setAgentResourceSkills}
-            onRemoveAgentResourceRepository={removeAgentResourceRepository}
-            onRefreshAgentResourceRepositories={refreshAgentResourceRepositories}
-            onUpdateAgentResourceRepository={updateAgentResourceRepository}
-            onFetchGitLog={fetchGitLog}
-            onCloseGitLog={closeGitLog}
-            onShowCommit={fetchGitShow}
-            terminalOpen={terminalOpen}
-            onToggleTerminal={terminalEnabled ? () => setTerminalOpen((prev) => !prev) : undefined}
-          />
 
-          {/* `z-0` makes this a stacking context, so everything inside it (the file
-              viewer, a commit view) stays below the header's menus no matter what
-              z-index it asks for. */}
-          <div className="relative z-0 flex min-h-0 flex-1 flex-col">
+          {/* The conversation's cell. No stacking context of its own: the work area is
+              one, so its panels and commit views layer with the viewer as they always
+              have, and all of it stays below the header's menus. */}
+          <div className="relative flex min-h-0 min-w-0 flex-col" style={{ gridColumn: viewerBeside ? 2 : 1, gridRow: 1 }}>
+          {viewerOpen && activeTab && conversationPeek && !viewerBeside && (
+            // In the flow, above the transcript: a floating pill would cover what the
+            // user came to read.
+            <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+              <button
+                type="button"
+                onMouseDown={keepFocus}
+                onClick={backToFile}
+                className="min-h-6 rounded border border-zinc-300 bg-white px-3 py-1 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                ← back to {activeTab.split(/[\\/]/).pop()}
+              </button>
+              {viewerCanBeside && (
+                <button
+                  type="button"
+                  onMouseDown={keepFocus}
+                  onClick={besideFromPeek}
+                  title="Show the file beside the conversation"
+                  className="min-h-6 rounded border border-zinc-300 bg-white px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  ◫ beside chat
+                </button>
+              )}
+            </div>
+          )}
           {state.workPlan && (
             <WorkPlanPanel
               plan={state.workPlan}
@@ -1181,33 +1526,6 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   readFile(target.path);
                 }
               }}
-            />
-          )}
-          {state.openFile && (
-            <FileViewer
-              // Remount per file: edit drafts must never survive a switch to another path
-              key={state.openFile.path}
-              file={state.openFile}
-              writableRoot={state.writableRoot}
-              docxTemplate={state.docxTemplate}
-              isStreaming={state.isStreaming}
-              onDirtyChange={setViewerDirty}
-              gitState={state.gitStatus?.files[state.openFile.path]}
-              initialShowGitDiff={diffOnOpen}
-              gitDiff={state.gitDiff}
-              gitBaseline={state.gitBaseline?.path === state.openFile.path ? (state.gitBaseline.text ?? null) : null}
-              onFetchGitDiff={fetchGitDiff}
-              onClearGitDiff={clearGitDiff}
-              inRepository={repoForPath(state.gitStatus?.repos ?? [], state.openFile.path) !== null}
-              onOpenGitHistory={fetchGitFileHistory}
-              onClose={closePreview}
-              onReload={readFile}
-              onSave={writeFile}
-              serverUrl={serverUrl}
-              token={authToken}
-              workspace={rawWorkspace}
-              onOpenNative={openNative}
-              rawRevision={state.previewRevision}
             />
           )}
           {state.gitFileHistory && (
@@ -1455,6 +1773,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
           </div>
 
           {terminalEnabled && (
+            <div className="min-w-0" style={{ gridColumn: viewerBeside ? 2 : 1, gridRow: 2 }}>
             <TerminalPanel
               open={terminalOpen}
               onClose={() => setTerminalOpen(false)}
@@ -1493,9 +1812,14 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               closeTerminal={closeTerminal}
               subscribeTerminal={subscribeTerminal}
             />
+            </div>
           )}
 
-          <footer className="shrink-0 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <footer
+            data-composer-area
+            className="min-w-0 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800"
+            style={{ gridColumn: viewerBeside ? 2 : 1, gridRow: 3 }}
+          >
             {(question || grant) && (
               <div className="mx-auto max-w-3xl">
                 {question && <ExtensionDialog key={question.id} request={question} onRespond={respondToDialog} />}
@@ -1549,6 +1873,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               />
             </div>
           </footer>
+        </div>
         </div>
       </div>
 

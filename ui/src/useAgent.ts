@@ -465,10 +465,19 @@ export interface AgentState {
   /** Latest list request per directory; older replies must not restore stale entries. */
   directoryRequests: Record<string, string>;
   openFile: OpenFile | null;
+  /**
+   * Files open as tabs, in tab order. `openFile` is the shown one; the others keep
+   * the content they last had in `tabFiles`. Moves and deletions carry them along like
+   * `openFile`; a switch of project or session closes them.
+   */
+  openTabs: string[];
+  tabFiles: Record<string, OpenFile>;
   /** Cache-buster for raw image/PDF previews whose workspace path did not change. */
   previewRevision: number;
   /** Writable zone in the file browser; see SessionSnapshot.writableRoot. */
   writableRoot?: string | null;
+  /** The file browser's absolute root on the server; see SessionSnapshot.browserRoot. */
+  browserRoot?: string;
   /** The Word template the export can write into; see SessionSnapshot.docxTemplate. */
   docxTemplate?: string;
   /** Which providers can answer; drives the onboarding screen. Never carries a key. */
@@ -610,6 +619,8 @@ const initialState: AgentState = {
   fileTree: {},
   directoryRequests: {},
   openFile: null,
+  openTabs: [],
+  tabFiles: {},
   previewRevision: 0,
   fileSearch: null,
   contentSearch: null,
@@ -667,6 +678,7 @@ type Action =
   | { type: "file_read_started"; path: string; requestId: string; preserveContent?: boolean; reveal?: FileReveal }
   | { type: "file_save_started"; path: string; requestId: string; content: string }
   | { type: "close_file_preview" }
+  | { type: "close_tab"; path: string }
   | { type: "file_create_started" }
   | { type: "file_operation_started"; operation: FileOperation; path: string; requestId: string; paths?: string[] }
   | { type: "file_search_started"; query: string; requestId: string }
@@ -849,6 +861,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     directoryRequests: {},
     fileOperation: null,
     writableRoot: message.writableRoot,
+    browserRoot: message.browserRoot,
     docxTemplate: message.docxTemplate,
     gitAvailable: message.gitAvailable === true,
     gitUnavailable: message.gitUnavailable ?? null,
@@ -902,12 +915,25 @@ function followMoves(state: AgentState, moves: readonly [from: string, to: strin
     if (next === null) openFile = null;
     else if (next !== undefined) openFile = { ...openFile, path: next };
   }
+  const openTabs: string[] = [];
+  const tabFiles: Record<string, OpenFile> = {};
+  for (const path of state.openTabs) {
+    const next = follow(path);
+    if (next === null) continue;
+    const moved = next ?? path;
+    if (openTabs.includes(moved)) continue;
+    openTabs.push(moved);
+    const cached = state.tabFiles[path];
+    if (cached) tabFiles[moved] = { ...cached, path: moved };
+  }
   const fileTree = Object.fromEntries(Object.entries(state.fileTree).filter(([path]) => follow(path) === undefined));
   const directoryRequests = Object.fromEntries(Object.entries(state.directoryRequests).filter(([path]) => follow(path) === undefined));
   const historyTouched = touched(state.gitFileHistory?.path);
   return {
     ...state,
     openFile,
+    openTabs,
+    tabFiles,
     fileTree,
     directoryRequests,
     gitFileHistory: historyTouched ? null : state.gitFileHistory,
@@ -917,7 +943,44 @@ function followMoves(state: AgentState, moves: readonly [from: string, to: strin
   };
 }
 
+/**
+ * The tabs follow the shown file: opening one adds its tab, its loaded content is
+ * kept for when the tab is not shown, and a switch of project or session (the
+ * snapshots that drop `openFile`) closes them all.
+ */
+function reduceWithTabs(state: AgentState, action: Action): AgentState {
+  if (action.type === "close_tab") {
+    if (!state.openTabs.includes(action.path)) return state;
+    const tabFiles = { ...state.tabFiles };
+    delete tabFiles[action.path];
+    return {
+      ...state,
+      openTabs: state.openTabs.filter((path) => path !== action.path),
+      tabFiles,
+      openFile: state.openFile?.path === action.path ? null : state.openFile,
+    };
+  }
+  // Closing the viewer closes every tab it held.
+  if (action.type === "close_file_preview") return { ...state, openFile: null, openTabs: [], tabFiles: {} };
+  const next = reduce(state, action);
+  if (next === state) return state;
+  // The snapshots that drop the shown file (another project or session, a config
+  // change that may have moved the root) drop every tab with it. The same project
+  // finishing its start keeps the shown file, and so its tabs.
+  const snapshot =
+    action.type === "server" &&
+    ["workspace_switched", "hello", "session_replaced", "update_config_ack", "workspace_starting"].includes(action.message.type);
+  if (snapshot && next.openFile === null) return { ...next, openTabs: [], tabFiles: {} };
+  const file = next.openFile;
+  if (!file) return next;
+  const openTabs = next.openTabs.includes(file.path) ? next.openTabs : [...next.openTabs, file.path];
+  const tabFiles = file.status === "loaded" && next.tabFiles[file.path] !== file ? { ...next.tabFiles, [file.path]: file } : next.tabFiles;
+  return openTabs === next.openTabs && tabFiles === next.tabFiles ? next : { ...next, openTabs, tabFiles };
+}
+
 function reduce(state: AgentState, action: Action): AgentState {
+  // Handled by reduceWithTabs, which owns the tab list.
+  if (action.type === "close_tab") return state;
   if (action.type === "connected") return { ...state, connected: true, authRequired: false };
   if (action.type === "workspace_switching") return { ...state, switching: true };
   if (action.type === "pi_package_update_started") {
@@ -2055,7 +2118,7 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
 const REVEAL_REPEAT_MS = 1000;
 
 export function useAgent(serverUrl = "", explicitToken?: string, embedded = false, workspaceRoot?: string) {
-  const [state, dispatch] = useReducer(reduce, initialState);
+  const [state, dispatch] = useReducer(reduceWithTabs, initialState);
   const socketRef = useRef<WebSocket | null>(null);
   // Bumped when the user submits a token on the TokenGate — re-runs the connect effect
   const [authNonce, setAuthNonce] = useState(0);
@@ -2985,6 +3048,8 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
       sendMessage({ type: "read_file", path, requestId, ...(sha256 === undefined ? {} : { sha256 }) });
     },
     closeFilePreview: () => dispatch({ type: "close_file_preview" }),
+    /** Close one tab; the shown file closes with it when it was that tab's. */
+    closeTab: (path: string) => dispatch({ type: "close_tab", path }),
     /** Save the editor buffer back to disk; answered by file_written or a "write:" file_browser_error. */
     writeFile: (path: string, content: string, expectedMtimeMs: number, force = false) => {
       const requestId = `write:${randomId()}`;

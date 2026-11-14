@@ -39,7 +39,7 @@ async function openGraph(page: Page, name: string): Promise<{ file: string; arra
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("arranged", { exact: true }).click();
-  await page.getByText(name, { exact: true }).click();
+  await page.getByText(name, { exact: true }).dblclick(); // a file row opens on double-click
   await expect(page.getByTestId("file-structured-exchange").locator('[data-draggable="node"]')).toHaveCount(4);
   return { file, arrangement: file.replace(/\.json$/, ".arrangement.json") };
 }
@@ -81,7 +81,7 @@ test("AMovedBoxIsKeptInTheArrangement: dragged in the running app, kept beside t
   // The files panel stays open across a reload; the folder does not stay expanded
   if (!(await page.getByText("arranged", { exact: true }).isVisible())) await page.getByTitle("Show files").click();
   await page.getByText("arranged", { exact: true }).click();
-  await page.getByText("car.json", { exact: true }).click();
+  await page.getByText("car.json", { exact: true }).dblclick(); // a file row opens on double-click
   await expect.poll(() => boxAt(page, "ECU")).toEqual(moved);
   expect(errors).toEqual([]);
 });

@@ -25,7 +25,11 @@ vi.mock("./theme/useTheme", () => ({
 }));
 
 function agentState(overrides: Record<string, unknown> = {}) {
+  // useAgent's reducer adds a tab for the shown file; this stand-in does the same.
+  const shown = (overrides.openFile ?? null) as { path: string } | null;
   return {
+    openTabs: shown ? [shown.path] : [],
+    tabFiles: {},
     connected: true,
     workspace: null,
     workspaces: [],
@@ -118,6 +122,7 @@ function agentApi(state: ReturnType<typeof agentState>, overrides: Record<string
     writeFile: vi.fn(),
     uploadFile: vi.fn(),
     closeFilePreview: vi.fn(),
+    closeTab: vi.fn(),
     searchFiles: vi.fn(),
     clearFileSearch: vi.fn(),
     fetchGitDiff: vi.fn(),

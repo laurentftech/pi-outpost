@@ -10,7 +10,7 @@ async function openPage(page: Page) {
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("site", { exact: true }).click();
-  await page.getByText("index.html", { exact: true }).click();
+  await page.getByText("index.html", { exact: true }).dblclick(); // a file row opens on double-click
   await expect(page.getByTestId("html-page")).toBeVisible();
   return page.frameLocator('[data-testid="html-page"]');
 }
@@ -61,7 +61,9 @@ test("ARelativeLinkOpensInTheViewer: a forged message opens nothing, the page's 
   await expect(frame.locator("#title")).toHaveText("HTML report");
   await frame.locator("#relative").click();
   await expect(page.getByRole("heading", { name: "Site notes" })).toBeVisible();
-  await expect(page.getByTestId("html-page")).toHaveCount(0);
+  // The page keeps its own tab, out of sight behind the file it opened
+  await expect(page.getByTestId("html-page")).toBeHidden();
+  await expect(page.getByRole("button", { name: /^Show notes\.md/ })).toHaveAttribute("aria-current", "true");
 });
 
 // openlore: scenario=HtmlIsEditedBesideItsRendering spec=file

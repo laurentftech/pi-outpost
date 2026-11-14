@@ -4,6 +4,7 @@ import { Rail } from "./graph/Rail";
 import { branchColor, ROW_H, type RailRow } from "./graph/lanes";
 import { useClickOutside } from "../util/clickOutside";
 import { HEADER_CONTROL } from "./headerControl";
+import { keepInViewport } from "../util/keepInViewport";
 
 interface TreeMenuProps {
   tree: TreeNode[] | null;
@@ -229,7 +230,7 @@ export function TreeMenu({ tree, isStreaming, onListTree, onNavigate, onFork }: 
         tree
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 flex max-h-[70vh] w-[32rem] max-w-[90vw] flex-col rounded-lg border border-zinc-200 bg-white shadow-xl [--tree-off:#e4e4e7] dark:border-zinc-700 dark:bg-zinc-900 dark:[--tree-off:#3f3f46]">
+        <div ref={keepInViewport} className="absolute right-0 top-full z-20 mt-1 flex max-h-[70vh] w-[32rem] max-w-[calc(100vw-1rem)] flex-col rounded-lg border border-zinc-200 bg-white shadow-xl [--tree-off:#e4e4e7] dark:border-zinc-700 dark:bg-zinc-900 dark:[--tree-off:#3f3f46]">
           {tree === null && <div className="px-3 py-2 text-xs text-zinc-500">loading…</div>}
           {tree?.length === 0 && <div className="px-3 py-2 text-xs text-zinc-500">no messages yet</div>}
           {tree && tree.length > 0 && graph && (
