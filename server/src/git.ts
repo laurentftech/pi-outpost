@@ -567,7 +567,7 @@ export async function gitStatusFor(repo: GitRepo): Promise<GitStatusResult> {
       }
     }
   }
-  const listings = new Array<string[] | Error>(untrackedDirs.length);
+  const listings: (string[] | Error)[] = [];
   let nextDir = 0;
   const lister = async (): Promise<void> => {
     for (let index = nextDir++; index < untrackedDirs.length; index = nextDir++) {
