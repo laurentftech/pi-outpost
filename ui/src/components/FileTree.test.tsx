@@ -191,6 +191,26 @@ describe("FileTree", () => {
       expect(badge).toHaveTextContent("2");
     });
 
+    // openlore: scenario=TheBadgeSaysAtLeast spec=git
+    it("TheBadgeSaysAtLeast: a directory holding at least N untracked files shows N+, open or not, and so do its parents", () => {
+      const toggle = (name: string) => screen.getByRole("button", { name: new RegExp(`^[▸▾]\\s*${name}\\s*[\\d+]*$`) });
+      setup({
+        tree: tree({ "": [dir("src"), dir("vendor"), file("readme.md")], vendor: [file("a.bin"), file("b.bin")] }),
+        gitFiles: { vendor: "untracked", "src/main.ts": "modified", "src/nested": "untracked", "readme.md": "modified" },
+        gitAtLeast: { vendor: 2000, "src/nested": 2000 },
+      });
+      expect(within(toggle("vendor")).getByTitle("At least 2000 changed file(s) inside")).toHaveTextContent("2000+");
+      // A parent adds what it holds besides, and is a lower bound too
+      expect(within(toggle("src")).getByTitle("At least 2001 changed file(s) inside")).toHaveTextContent("2001+");
+      fireEvent.click(toggle("vendor"));
+      expect(within(toggle("vendor")).getByTitle("At least 2000 changed file(s) inside")).toHaveTextContent("2000+");
+      // No row inside carries a badge of its own
+      expect(screen.getByRole("button", { name: /^a\.bin/ })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Show diff of [ab]\.bin$/ })).not.toBeInTheDocument();
+      // ...while a file the status names does carry one, so the absence above means something
+      expect(screen.getByRole("button", { name: "Show diff of readme.md" })).toBeInTheDocument();
+    });
+
     it("drops the count once the directory is open, since the files speak for themselves", () => {
       setup({ gitFiles: { "src/main.ts": "modified" } });
       fireEvent.click(dirToggle("src"));

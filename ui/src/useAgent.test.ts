@@ -1866,6 +1866,105 @@ describe("git messages", () => {
     ]);
   });
 
+  // openlore: scenario=ARefreshSendsOnlyWhatChanged spec=git
+  it("ARefreshSendsOnlyWhatChanged: applies a change answer onto the version held, and names it next time", async () => {
+    const result = await connected([], { gitAvailable: true });
+    await waitFor(() => expect(mockWs!.sent.some((raw) => JSON.parse(raw).type === "git_status")).toBe(true));
+    const first = mockWs!.sent.map((raw) => JSON.parse(raw) as { type: string; requestId: string; base?: number }).find((f) => f.type === "git_status")!;
+    expect(first.base).toBeUndefined();
+    const many = Array.from({ length: 50 }, (_, i) => ({ path: `f${i}.ts`, status: "modified" as const }));
+    act(() =>
+      mockWs!.receive({
+        type: "git_status",
+        requestId: first.requestId,
+        repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }],
+        files: [...many, { path: "vendor", status: "untracked", atLeast: 2000 }],
+        version: 4,
+      }),
+    );
+    // Every connect-time request answered, so the next one goes out at once
+    for (const raw of mockWs!.sent) {
+      const frame = JSON.parse(raw) as { type: string; requestId: string };
+      if (frame.type === "git_status" && frame.requestId !== first.requestId) {
+        act(() => mockWs!.receive({ type: "git_status", requestId: frame.requestId, base: 4, repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }], files: [], removed: [], version: 4 }));
+      }
+    }
+    await waitFor(() => expect(result.current.state.gitStatus?.version).toBe(4));
+    expect(result.current.state.gitStatus?.atLeast).toEqual({ vendor: 2000 });
+
+    const before = mockWs!.sent.length;
+    act(() => mockWs!.receive({ type: "agent_end" } as never));
+    await waitFor(() => expect(mockWs!.sent.slice(before).some((raw) => JSON.parse(raw).type === "git_status")).toBe(true));
+    const again = mockWs!.sent.slice(before).map((raw) => JSON.parse(raw) as { type: string; requestId: string; base?: number }).find((f) => f.type === "git_status")!;
+    expect(again.base).toBe(4);
+    act(() =>
+      mockWs!.receive({
+        type: "git_status",
+        requestId: again.requestId,
+        repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }],
+        files: [{ path: "new.ts", status: "untracked" }],
+        removed: [],
+        base: 4,
+        version: 5,
+      }),
+    );
+    await waitFor(() => expect(result.current.state.gitStatus?.version).toBe(5));
+    expect(Object.keys(result.current.state.gitStatus!.files)).toHaveLength(52);
+    expect(result.current.state.gitStatus?.files["f0.ts"]).toBe("modified");
+    expect(result.current.state.gitStatus?.files["new.ts"]).toBe("untracked");
+    expect(result.current.state.gitStatus?.atLeast).toEqual({ vendor: 2000 });
+  });
+
+  // openlore: scenario=AFileNoLongerChangedLeaves spec=git
+  it("AFileNoLongerChangedLeaves: a removed path loses its badge, and a collapsed directory its count", async () => {
+    const result = await connected();
+    act(() =>
+      mockWs!.receive({
+        type: "git_status",
+        repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }],
+        files: [{ path: "a.ts", status: "modified" }, { path: "b.ts", status: "modified" }, { path: "vendor", status: "untracked", atLeast: 2000 }],
+        version: 1,
+      }),
+    );
+    await waitFor(() => expect(result.current.state.gitStatus?.version).toBe(1));
+    act(() =>
+      mockWs!.receive({
+        type: "git_status",
+        repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }],
+        files: [],
+        removed: ["a.ts", "vendor"],
+        base: 1,
+        version: 2,
+      }),
+    );
+    await waitFor(() => expect(result.current.state.gitStatus?.version).toBe(2));
+    expect(result.current.state.gitStatus?.files).toEqual({ "b.ts": "modified" });
+    expect(result.current.state.gitStatus?.atLeast).toEqual({});
+  });
+
+  // openlore: scenario=ChangesAgainstAnotherVersionAreDropped spec=git
+  it("ChangesAgainstAnotherVersionAreDropped: keeps its state and asks again in full", async () => {
+    const result = await connected([], { gitAvailable: true });
+    await waitFor(() => expect(mockWs!.sent.some((raw) => JSON.parse(raw).type === "git_status")).toBe(true));
+    for (const raw of mockWs!.sent) {
+      const frame = JSON.parse(raw) as { type: string; requestId: string };
+      if (frame.type === "git_status") {
+        act(() => mockWs!.receive({ type: "git_status", requestId: frame.requestId, repos: [], files: [{ path: "a.ts", status: "modified" }], version: 3 }));
+      }
+    }
+    await waitFor(() => expect(result.current.state.gitStatus?.version).toBe(3));
+    const held = result.current.state.gitStatus;
+    const before = mockWs!.sent.length;
+    act(() =>
+      mockWs!.receive({ type: "git_status", requestId: "git:stray", repos: [], files: [{ path: "x.ts", status: "added" }], removed: ["a.ts"], base: 2, version: 9 }),
+    );
+    expect(result.current.state.gitStatus).toBe(held);
+    await waitFor(() => expect(mockWs!.sent.slice(before).some((raw) => JSON.parse(raw).type === "git_status")).toBe(true));
+    const asked = mockWs!.sent.slice(before).map((raw) => JSON.parse(raw) as { type: string; base?: number; repo?: string }).filter((f) => f.type === "git_status");
+    expect(asked).toEqual([expect.not.objectContaining({ base: expect.anything() })]);
+    expect(asked[0]?.repo).toBeUndefined();
+  });
+
   // openlore: scenario=AnOutsideCommitIsAnnounced spec=git
   it("AnOutsideCommitIsAnnounced: re-reads the status of the repository the server says moved", async () => {
     await connected([], { gitAvailable: true });
@@ -2086,6 +2185,40 @@ describe("git messages", () => {
       expect(statuses).toHaveLength(1);
       expect(statuses[0].repo).toBeUndefined();
     });
+  });
+
+  // openlore: scenario=StatusRefresh spec=git
+  it("StatusRefresh: a burst of changes while a status is asked becomes one trailing request, and its answer is shown", async () => {
+    const result = await connected([], { gitAvailable: true });
+    const statusFrames = (from = 0) =>
+      mockWs!.sent.slice(from).map((raw) => JSON.parse(raw) as { type: string; requestId: string; repo?: string }).filter((f) => f.type === "git_status");
+    await waitFor(() => expect(statusFrames().length).toBeGreaterThan(0));
+    for (const frame of statusFrames()) {
+      act(() => mockWs!.receive({ type: "git_status", requestId: frame.requestId, repos: [{ repo: "", branch: "main", ahead: 0, behind: 0 }], files: [], version: 1 }));
+    }
+    await waitFor(() => expect(result.current.state.gitStatus?.version).toBe(1));
+    const before = mockWs!.sent.length;
+    act(() => mockWs!.receive({ type: "agent_end" } as never));
+    act(() => mockWs!.receive({ type: "agent_end" } as never));
+    act(() => mockWs!.receive({ type: "agent_end" } as never));
+    expect(statusFrames(before)).toHaveLength(1);
+    act(() =>
+      mockWs!.receive({
+        type: "git_status",
+        requestId: statusFrames(before)[0]!.requestId,
+        repos: [{ repo: "", branch: "feature", ahead: 2, behind: 0 }],
+        files: [{ path: "a.ts", status: "modified" }],
+        removed: [],
+        base: 1,
+        version: 2,
+      }),
+    );
+    // The burst left one rerun behind, naming the version that has just arrived -
+    // not the one held when the answer was read, which would cost a full sweep
+    await waitFor(() => expect(statusFrames(before)).toHaveLength(2));
+    expect((statusFrames(before)[1] as { base?: number }).base).toBe(2);
+    expect(result.current.state.gitStatus?.files["a.ts"]).toBe("modified");
+    expect(result.current.state.gitStatus?.repos[0]?.branch).toBe("feature");
   });
 
   it("asks only the changed file's repository for a fresh status", async () => {

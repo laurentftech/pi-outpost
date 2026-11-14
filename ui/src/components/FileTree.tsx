@@ -106,6 +106,8 @@ interface TreeProps {
   writableRoot?: string | null;
   /** Git status per browser-root-relative path; badges render from it. */
   gitFiles?: Record<string, GitFileState>;
+  /** Directories reported as holding at least this many untracked files; see GitStatusState.atLeast. */
+  gitAtLeast?: Record<string, number>;
   /** Paths currently attached to the composer as references (from the tree or the open preview). */
   attachedPaths?: string[];
   onExpand: (path: string) => void;
@@ -185,10 +187,54 @@ const GIT_BADGE: Record<GitFileState, { label: string; className: string }> = {
   conflicted: { label: "C", className: "text-purple-600 dark:text-purple-400" },
 };
 
-/** Number of git-changed files under this directory (badge on collapsed directories). */
-function dirChangeCount(dirPath: string, gitFiles: Record<string, GitFileState> | undefined): number {
-  if (!gitFiles) return 0;
-  return Object.keys(gitFiles).filter((p) => p.startsWith(`${dirPath}/`)).length;
+interface ChangeCounts {
+  atLeast: Record<string, number> | undefined;
+  /** Directory → changed files under it. */
+  counts: Map<string, number>;
+  /** Directories whose count includes a directory reported as holding at least so many. */
+  lowerBound: Set<string>;
+}
+
+/**
+ * Changed files per directory, counted once per git status. Asked per directory row,
+ * a scan of every changed path is rows × paths on each render of the tree — seconds
+ * per click once an unignored build directory puts tens of thousands of untracked
+ * files in the status.
+ */
+const changeCountsByStatus = new WeakMap<Record<string, GitFileState>, ChangeCounts>();
+
+/**
+ * Number of git-changed files under this directory (badge on collapsed directories),
+ * and whether it is only a lower bound: a directory the server reported as one entry
+ * holding at least N untracked files counts as N, for itself and its ancestors.
+ */
+function dirChangeCount(
+  dirPath: string,
+  gitFiles: Record<string, GitFileState> | undefined,
+  atLeast: Record<string, number> | undefined,
+): { count: number; lowerBound: boolean } {
+  if (!gitFiles) return { count: 0, lowerBound: false };
+  let cached = changeCountsByStatus.get(gitFiles);
+  if (!cached || cached.atLeast !== atLeast) {
+    const counts = new Map<string, number>();
+    const lowerBound = new Set<string>();
+    for (const path of Object.keys(gitFiles)) {
+      const collapsed = atLeast?.[path];
+      const weight = collapsed ?? 1;
+      if (collapsed !== undefined) {
+        counts.set(path, (counts.get(path) ?? 0) + collapsed);
+        lowerBound.add(path);
+      }
+      for (let slash = path.indexOf("/"); slash >= 0; slash = path.indexOf("/", slash + 1)) {
+        const dir = path.slice(0, slash);
+        counts.set(dir, (counts.get(dir) ?? 0) + weight);
+        if (collapsed !== undefined) lowerBound.add(dir);
+      }
+    }
+    cached = { atLeast, counts, lowerBound };
+    changeCountsByStatus.set(gitFiles, cached);
+  }
+  return { count: cached.counts.get(dirPath) ?? 0, lowerBound: cached.lowerBound.has(dirPath) };
 }
 
 /**
@@ -451,7 +497,9 @@ function TreeNode({
     };
     // The same rule as a drop: not into itself or its own content, not where it already is.
     const pickable = picking !== null && !readOnly && entry.type === "directory" && takes(picking);
-    const changes = dirChangeCount(fullPath, props.gitFiles);
+    const { count: changes, lowerBound } = dirChangeCount(fullPath, props.gitFiles, props.gitAtLeast);
+    // A directory reported as one entry has no badged rows inside: its own count shows even open
+    const collapsedHere = props.gitAtLeast?.[fullPath] !== undefined;
     return (
       <div>
         <div
@@ -527,12 +575,12 @@ function TreeNode({
             >
               {entry.name}
             </span>
-            {!open && changes > 0 && (
+            {(!open || collapsedHere) && changes > 0 && (
               <span
                 className="ml-1 shrink-0 rounded bg-amber-100 px-1 font-mono text-[10px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
-                title={`${changes} changed file(s) inside`}
+                title={lowerBound ? `At least ${changes} changed file(s) inside` : `${changes} changed file(s) inside`}
               >
-                {changes}
+                {lowerBound ? `${changes}+` : changes}
               </span>
             )}
           </button>

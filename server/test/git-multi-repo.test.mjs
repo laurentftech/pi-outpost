@@ -12,6 +12,7 @@ import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { connect, makeWorkspace, startServer } from "./harness.mjs";
+import { secondProject } from "./multiProjectHarness.mjs";
 
 function git(cwd, ...args) {
   execFileSync("git", args, { cwd, stdio: "pipe" });
@@ -140,8 +141,10 @@ describe("a workspace holding a repository per child directory", () => {
   });
 
   test("reads one repository when the client scopes the request", async () => {
-    const status = await ask({ type: "git_status", repo: "projB" });
+    const full = await ask({ type: "git_status" });
+    const status = await ask({ type: "git_status", repo: "projB", base: full.version });
     assert.equal(status.repo, "projB");
+    assert.equal(status.base, full.version);
     assert.deepEqual(
       status.repos.map((repo) => repo.repo),
       ["projB"],
@@ -150,6 +153,137 @@ describe("a workspace holding a repository per child directory", () => {
       status.files.some((file) => file.path.startsWith("projA/")),
       false,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("the status sent as changes", () => {
+  let server;
+  let client;
+  let root;
+  let requestCounter = 0;
+
+  async function ask(message) {
+    const requestId = `delta-${++requestCounter}`;
+    client.send({ ...message, requestId });
+    return client.waitFor((m) => m.requestId === requestId, 20_000);
+  }
+
+  /** What a client holds after applying `answer` to `held`, by the protocol's rules. */
+  function apply(held, answer) {
+    if (answer.base === undefined) return new Map(answer.files.map((file) => [file.path, file]));
+    assert.equal(answer.base, held.version);
+    const next = new Map(held.files);
+    for (const path of answer.removed) next.delete(path);
+    for (const file of answer.files) next.set(file.path, file);
+    return next;
+  }
+
+  before(async () => {
+    root = await makeWorkspace({});
+    await makeRepo(path.join(root, "projA"), "main", "projA initial");
+    await makeRepo(path.join(root, "projB"), "main", "projB initial");
+    for (let i = 0; i < 300; i++) await writeFile(path.join(root, "projA", `new${i}.txt`), "x\n");
+    server = await startServer(root);
+    client = connect(server.wsUrl());
+    await client.waitFor("hello");
+  });
+
+  after(async () => {
+    client?.close();
+    await server?.stop();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  // openlore: scenario=ARefreshSendsOnlyWhatChanged spec=git
+  test("ARefreshSendsOnlyWhatChanged: one more modified file is the whole answer", async () => {
+    const first = await ask({ type: "git_status" });
+    assert.equal(first.base, undefined);
+    assert.equal(first.files.length, 300);
+    await writeFile(path.join(root, "projB", "README.md"), "# changed\n");
+    const second = await ask({ type: "git_status", base: first.version });
+    assert.equal(second.base, first.version);
+    assert.deepEqual(second.files, [{ path: "projB/README.md", status: "modified" }]);
+    assert.deepEqual(second.removed, []);
+    const held = apply({ version: first.version, files: apply(undefined, first) }, second);
+    assert.equal(held.size, 301);
+    assert.equal(held.get("projA/new0.txt")?.status, "untracked");
+
+    // A scoped refresh with nothing new says nothing, and leaves the other repository alone
+    const third = await ask({ type: "git_status", repo: "projA", base: second.version });
+    assert.equal(third.repo, "projA");
+    assert.deepEqual(third.files, []);
+    assert.deepEqual(third.removed, []);
+  });
+
+  // openlore: scenario=AFileNoLongerChangedLeaves spec=git
+  test("AFileNoLongerChangedLeaves: a restored file is named as removed", async () => {
+    const first = await ask({ type: "git_status" });
+    assert.ok(first.files.some((file) => file.path === "projB/README.md"));
+    await writeFile(path.join(root, "projB", "README.md"), "# project\n");
+    const second = await ask({ type: "git_status", repo: "projB", base: first.version });
+    assert.deepEqual(second.removed, ["projB/README.md"]);
+    assert.deepEqual(second.files, []);
+    const held = apply({ version: first.version, files: apply(undefined, first) }, second);
+    assert.equal(held.has("projB/README.md"), false);
+    assert.equal(held.size, 300);
+  });
+
+  // openlore: scenario=AStrangerVersionGetsEverything spec=git
+  test("AStrangerVersionGetsEverything: a version this connection was not last sent gets the full status", async () => {
+    const first = await ask({ type: "git_status" });
+    const stale = await ask({ type: "git_status", repo: "projB", base: first.version - 1 });
+    assert.equal(stale.base, undefined);
+    assert.equal(stale.repo, undefined, "a stranger version gets a full sweep, not a scoped one");
+    assert.equal(stale.files.length, 300);
+    assert.ok(stale.version > first.version);
+
+    // Another connection's version means nothing on this one
+    const other = connect(server.wsUrl());
+    try {
+      await other.waitFor("hello");
+      other.send({ type: "git_status", requestId: "other", base: stale.version });
+      const answer = await other.waitFor((m) => m.requestId === "other", 20_000);
+      assert.equal(answer.base, undefined);
+      assert.equal(answer.files.length, 300);
+    } finally {
+      other.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("a status asked just before the connection moves to another project", () => {
+  test("is answered, and never with the project left behind", async (t) => {
+    const root = await realpath(await makeWorkspace({}));
+    await makeRepo(root, "main", "initial");
+    await writeFile(path.join(root, "README.md"), "# changed\n");
+    for (let i = 0; i < 2500; i++) await writeFile(path.join(root, `n${i}.txt`), "x\n");
+    const beta = await secondProject();
+    const server = await startServer(root, { openProjects: [beta] });
+    const client = connect(server.wsUrl());
+    t.after(async () => {
+      client.close();
+      await server.stop();
+      await rm(root, { recursive: true, force: true });
+      await rm(beta, { recursive: true, force: true });
+    });
+    await client.waitFor("hello");
+    const order = [];
+    const seen = (m) => {
+      if (m.type === "workspace_switched" || m.requestId === "moving") order.push(m);
+      return m.requestId === "moving";
+    };
+    client.send({ type: "git_status", requestId: "moving" });
+    client.send({ type: "switch_workspace", root: beta });
+    const answer = await client.waitFor(seen, 20_000);
+    const switchedFirst = order.findIndex((m) => m.type === "workspace_switched") !== -1;
+    if (switchedFirst) {
+      // Answered for where the connection is now: a project without a repository
+      assert.deepEqual(answer.files, []);
+    } else {
+      assert.ok(answer.files.some((file) => file.path === "README.md"), "an answer sent before the switch is the old project's, in order");
+    }
   });
 });
 

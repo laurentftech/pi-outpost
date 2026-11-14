@@ -129,6 +129,18 @@ export function repositoryContributor(input: RepositoryOutcomeInput): OutcomeCon
       const status = await (input.readStatus ?? gitStatus)(input.repos);
       const entries: OutcomeEntry[] = status.files.map((file) => {
         const repo = repoFor(input.repos, file.path)?.id ?? "";
+        if (file.atLeast !== undefined) {
+          // A directory standing for more untracked files than are listed one by one:
+          // one entry, and no diff to open - a directory has none
+          return {
+            id: `${repo}:${file.path}/:${file.status}`,
+            source: "Git working tree",
+            title: `${file.path}/`,
+            status: file.status,
+            detail: `At least ${file.atLeast.toLocaleString("en-US")} untracked files`,
+            group: repo || ".",
+          };
+        }
         return {
           id: `${repo}:${file.path}:${file.status}`,
           source: "Git working tree",

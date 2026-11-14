@@ -111,6 +111,16 @@ describe("repository Outcome contributor", () => {
     ]);
   });
 
+  // openlore: scenario=TheBadgeSaysAtLeast spec=git
+  test("TheBadgeSaysAtLeast: a collapsed directory is one entry with its count and no diff to open", async () => {
+    const result = await repositoryContributor({ repos, readStatus: status({
+      repos: [], missing: [], failures: [], files: [{ path: "a/vendor", status: "untracked", atLeast: 2000 }],
+    }) }).contribute();
+    assert.deepEqual(result.entries.map((entry) => [entry.title, entry.status, entry.detail, entry.target]), [
+      ["a/vendor/", "untracked", "At least 2,000 untracked files", undefined],
+    ]);
+  });
+
   test("distinguishes clean, no repository, unavailable, and partial", async () => {
     const clean = await repositoryContributor({ repos, readStatus: status({ repos: [], files: [], missing: [], failures: [] }) }).contribute();
     assert.deepEqual([clean.availability, clean.summary], ["empty", "No changed files."]);
