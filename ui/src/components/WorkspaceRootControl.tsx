@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ServerPathPicker } from "./ServerPathPicker";
 import type { ServerBrowseState, SettingsApplyState } from "../useAgent";
 import { HEADER_CONTROL, HEADER_CONTROL_SHRINKS } from "./headerControl";
+import { keepInViewport } from "../util/keepInViewport";
 
 /** Only the parts of the sandbox this control reads: where it is, and whether it may move. */
 export interface WorkspaceRootSandbox {
@@ -118,7 +119,7 @@ export function WorkspaceRootControl(props: WorkspaceRootControlProps) {
           of every control inside them. The effect stays, because the state still
           has to converge; this only stops the overlap being observable. */}
       {picking && !blocked && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-[380px] rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+        <div ref={keepInViewport} className="absolute left-0 top-full z-20 mt-1 w-[380px] max-w-[calc(100vw-1rem)] rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
           {applyState?.status === "error" && (
             <p role="alert" className="mb-2 text-xs text-red-600 dark:text-red-400">
               {applyState.message}

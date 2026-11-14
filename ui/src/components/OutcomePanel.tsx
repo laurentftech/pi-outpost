@@ -48,7 +48,7 @@ export function OutcomePanel({ state, onClose, onRefresh, onTarget }: {
   onRefresh(): void;
   onTarget(target: OutcomeTarget): void;
 }) {
-  return <aside aria-label="Workspace Outcome" className="absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l border-zinc-200 bg-white/95 shadow-lg backdrop-blur md:w-[26rem] dark:border-zinc-800 dark:bg-zinc-950/95">
+  return <aside aria-label="Workspace Outcome" className="absolute inset-y-0 right-0 z-10 flex w-full max-w-full flex-col border-l border-zinc-200 bg-white/95 shadow-lg backdrop-blur md:w-[min(26rem,100%)] dark:border-zinc-800 dark:bg-zinc-950/95">
     <header className="flex items-start justify-between gap-2 border-b border-zinc-200 px-3 py-3 dark:border-zinc-800">
       <div><div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Workspace review</div><h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Outcome</h2></div>
       <div className="flex gap-1">

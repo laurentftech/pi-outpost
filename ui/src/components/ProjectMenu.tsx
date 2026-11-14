@@ -20,6 +20,7 @@ import type { WorkspaceActivity, WorkspaceInfo } from "@pi-outpost/shared";
 import { eventHitsNode } from "../util/clickOutside";
 import { workspaceKey } from "../util/workspaceKey";
 import { HEADER_CONTROL_SHRINKS } from "./headerControl";
+import { keepInViewport } from "../util/keepInViewport";
 
 interface ProjectMenuProps {
   workspace: WorkspaceInfo | null;
@@ -191,7 +192,8 @@ export function ProjectMenu(props: ProjectMenuProps) {
       {open && (
         <div
           role="menu"
-          className="absolute left-0 top-full z-40 mt-1 w-87 rounded-md border border-zinc-300 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+          ref={keepInViewport}
+          className="absolute left-0 top-full z-40 mt-1 w-87 max-w-[calc(100vw-1rem)] rounded-md border border-zinc-300 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
         >
           {ordered(workspaces).map((w) => {
             const key = workspaceKey(w);

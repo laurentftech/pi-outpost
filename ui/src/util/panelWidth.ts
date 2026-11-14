@@ -69,3 +69,40 @@ export function writePanelWidth(width: number, config: PanelWidthConfig, storage
     // Storage can be disabled by an embedding host or browser privacy policy.
   }
 }
+
+/** The file viewer's pane when it sits beside the conversation. */
+export const VIEWER_PANE_WIDTH: PanelWidthConfig = {
+  defaultWidth: 640,
+  minWidth: 360,
+  maxWidth: 1600,
+  keyboardStep: 16,
+  storageKey: "pi-outpost.viewer-pane-width.v1",
+};
+
+/** The conversation keeps at least this much beside the viewer. */
+export const CONVERSATION_MIN_WIDTH = 380;
+
+/** Beside the conversation only when both panes fit at their minimum widths. */
+export function canShowViewerBeside(availableWidth: number): boolean {
+  return availableWidth >= VIEWER_PANE_WIDTH.minWidth + CONVERSATION_MIN_WIDTH;
+}
+
+export type ViewerLayout = "overlay" | "beside";
+
+const VIEWER_LAYOUT_KEY = "pi-outpost.viewer-layout.v1";
+
+export function readViewerLayout(storage?: StorageReader): ViewerLayout {
+  try {
+    return (storage ?? window.localStorage).getItem(VIEWER_LAYOUT_KEY) === "beside" ? "beside" : "overlay";
+  } catch {
+    return "overlay";
+  }
+}
+
+export function writeViewerLayout(layout: ViewerLayout, storage?: StorageWriter): void {
+  try {
+    (storage ?? window.localStorage).setItem(VIEWER_LAYOUT_KEY, layout);
+  } catch {
+    // Storage can be disabled by an embedding host or browser privacy policy.
+  }
+}

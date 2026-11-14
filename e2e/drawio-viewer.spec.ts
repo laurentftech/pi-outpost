@@ -10,7 +10,7 @@ async function openDiagram(page: Page, name: string): Promise<Frame> {
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("diagrams", { exact: true }).click();
-  await page.getByText(name, { exact: true }).click();
+  await page.getByText(name, { exact: true }).dblclick(); // a file row opens on double-click
   await expect(page.getByTestId("drawio-frame")).toBeVisible();
   const frame = await (await page.getByTestId("drawio-frame").elementHandle())!.contentFrame();
   return frame!;

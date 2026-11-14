@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, within, waitFor, act } from "@testing-library/react";
 import type { DirEntry, GitFileState } from "@pi-outpost/shared";
 import { FileTree } from "./FileTree";
@@ -123,6 +123,45 @@ describe("FileTree", () => {
       const { onSelectFile } = setup();
       fireEvent.click(screen.getByText("readme.md"));
       expect(onSelectFile).toHaveBeenCalledWith("readme.md");
+    });
+
+    // A mouse click carries `detail: 1`; jsdom's default `detail: 0` is a keyboard activation.
+    it("AClickSelectsADoubleClickOpens: a mouse click selects, a double-click opens", () => {
+      const { onSelectFile } = setup();
+      const row = screen.getByRole("button", { name: "readme.md" });
+
+      fireEvent.pointerDown(row, { pointerType: "mouse" });
+      fireEvent.click(row, { detail: 1 });
+      expect(onSelectFile).not.toHaveBeenCalled();
+      expect(row.closest("[data-selected]")).toHaveAttribute("data-selected", "true");
+
+      fireEvent.click(row, { detail: 2 });
+      fireEvent.doubleClick(row);
+      expect(onSelectFile).toHaveBeenCalledTimes(1);
+      expect(onSelectFile).toHaveBeenCalledWith("readme.md");
+    });
+
+    it("EnterOpensTheFocusedFile: a keyboard activation opens at once", () => {
+      const { onSelectFile } = setup();
+      // Enter on a focused button is a click with no pointer behind it.
+      fireEvent.click(screen.getByRole("button", { name: "readme.md" }), { detail: 0 });
+      expect(onSelectFile).toHaveBeenCalledWith("readme.md");
+    });
+
+    it("ATapOpens: a touch tap opens without a second tap", () => {
+      const { onSelectFile } = setup();
+      const row = screen.getByRole("button", { name: "readme.md" });
+      fireEvent.pointerDown(row, { pointerType: "touch" });
+      fireEvent.click(row, { detail: 1 });
+      expect(onSelectFile).toHaveBeenCalledWith("readme.md");
+    });
+
+    it("a modified double-click stays a selection gesture", () => {
+      const { onSelectFile } = setup();
+      const row = screen.getByRole("button", { name: "readme.md" });
+      fireEvent.doubleClick(row, { metaKey: true });
+      fireEvent.doubleClick(row, { shiftKey: true });
+      expect(onSelectFile).not.toHaveBeenCalled();
     });
   });
 
@@ -1281,7 +1320,8 @@ describe("acting on a selection", () => {
     const menu = openMenu("d");
     expect(menu).toHaveAccessibleName("Actions for d");
     expect(menuItem("Delete…")).toBeInTheDocument();
-    expect(selectedNames()).toEqual([]);
+    // `d` alone — shown now that a single selected row is highlighted too.
+    expect(selectedNames()).toEqual(["d"]);
   });
 
   it("AMixedSelectionOffersNoMutation: a read-only entry in it takes Delete and Move away", () => {
@@ -1629,5 +1669,65 @@ describe("destination picking", () => {
     expect(screen.queryByRole("button", { name: "Move here: ro" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Move here: w" })).toBeNull();
     expect(screen.getByRole("button", { name: "Move here: inbox" })).toBeInTheDocument();
+  });
+});
+
+describe("FileTree — copying paths", () => {
+  let writeText: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  it("CopyARowsPaths: relative, then absolute, each briefly confirmed", async () => {
+    everything({ tree: { "": [dir("docs")], docs: [file("a.md")] }, browserRoot: "/home/u/proj" });
+    fireEvent.click(dirToggle("docs"));
+
+    choose("a.md", /Copy relative path/);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Path copied"));
+    expect(writeText).toHaveBeenLastCalledWith("docs/a.md");
+
+    choose("a.md", /Copy absolute path/);
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("/home/u/proj/docs/a.md"));
+  });
+
+  it("AnAbsolutePathUsesTheServersSeparator", async () => {
+    everything({ tree: { "": [dir("docs")], docs: [file("a.md")] }, browserRoot: "C:\\Users\\u\\proj" });
+    fireEvent.click(dirToggle("docs"));
+    choose("a.md", /Copy absolute path/);
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("C:\\Users\\u\\proj\\docs\\a.md"));
+  });
+
+  it("CopyASelectionsPaths: one path per line", async () => {
+    everything({ tree: { "": [file("a.md"), dir("docs")], docs: [] } });
+    fireEvent.click(label("a.md"), { detail: 1 });
+    fireEvent.click(screen.getByText("docs").closest("button")!, { ctrlKey: true });
+    choose("a.md", /Copy relative paths/);
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("a.md\ndocs"));
+    expect(screen.getByRole("status")).toHaveTextContent("2 paths copied");
+  });
+
+  it("offers no absolute path when the server did not say where the tree lives", () => {
+    everything({ tree: { "": [file("a.md")] } });
+    openMenu("a.md");
+    expect(menuItem(/Copy relative path/)).toBeInTheDocument();
+    expect(queryMenuItem(/Copy absolute path/)).toBeNull();
+  });
+
+  it("each copy item carries the ⧉ symbol", () => {
+    everything({ tree: { "": [file("a.md")] }, browserRoot: "/p" });
+    openMenu("a.md");
+    expect(menuItem(/Copy relative path/)).toHaveTextContent("⧉");
+    expect(menuItem(/Copy absolute path/)).toHaveTextContent("⧉");
+  });
+
+  it("says so when the clipboard refuses", async () => {
+    writeText.mockRejectedValue(new Error("denied"));
+    everything({ tree: { "": [file("a.md")] } });
+    choose("a.md", /Copy relative path/);
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Could not copy: denied"));
   });
 });

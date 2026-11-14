@@ -246,7 +246,8 @@ export function ModelBar(props: ModelBarProps) {
     props;
 
   return (
-    <div className="mt-2 flex items-center gap-2">
+    // Wraps rather than overflows: beside a file, the conversation column is narrow.
+    <div className="mt-2 flex flex-wrap items-center gap-2">
       <select
         value={model}
         aria-label="Model"
@@ -255,7 +256,7 @@ export function ModelBar(props: ModelBarProps) {
           if (choice) props.onSetModel(choice.provider, choice.id);
         }}
         disabled={isStreaming}
-        className="max-w-64 rounded-md border border-zinc-300 bg-white px-2 py-1 font-mono text-xs text-zinc-700 outline-none hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600"
+        className="min-w-0 max-w-64 rounded-md border border-zinc-300 bg-white px-2 py-1 font-mono text-xs text-zinc-700 outline-none hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600"
       >
         {!models.some((m) => `${m.provider}/${m.id}` === model) && <option value={model}>{model}</option>}
         {models.map((m) => (

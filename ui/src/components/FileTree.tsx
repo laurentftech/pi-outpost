@@ -7,6 +7,7 @@ import {
   isDirectoryEntry,
   isInside,
   isReadOnly,
+  absolutePath,
   joinPath,
   listedPaths,
   mutable,
@@ -104,6 +105,8 @@ interface TreeProps {
   openFilePath?: string;
   /** Writable zone; see SessionSnapshot.writableRoot. Entries outside it render dimmed. */
   writableRoot?: string | null;
+  /** The tree's absolute root on the server, for Copy absolute path; absent, that item is not offered. */
+  browserRoot?: string;
   /** Git status per browser-root-relative path; badges render from it. */
   gitFiles?: Record<string, GitFileState>;
   /** Paths currently attached to the composer as references (from the tree or the open preview). */
@@ -185,10 +188,29 @@ const GIT_BADGE: Record<GitFileState, { label: string; className: string }> = {
   conflicted: { label: "C", className: "text-purple-600 dark:text-purple-400" },
 };
 
+/**
+ * Changed files per directory, counted once per git status. Asked per directory row,
+ * a scan of every changed path is rows × paths on each render of the tree — seconds
+ * per click once an unignored build directory puts tens of thousands of untracked
+ * files in the status.
+ */
+const changeCountsByStatus = new WeakMap<Record<string, GitFileState>, Map<string, number>>();
+
 /** Number of git-changed files under this directory (badge on collapsed directories). */
 function dirChangeCount(dirPath: string, gitFiles: Record<string, GitFileState> | undefined): number {
   if (!gitFiles) return 0;
-  return Object.keys(gitFiles).filter((p) => p.startsWith(`${dirPath}/`)).length;
+  let counts = changeCountsByStatus.get(gitFiles);
+  if (!counts) {
+    counts = new Map();
+    for (const path of Object.keys(gitFiles)) {
+      for (let slash = path.indexOf("/"); slash >= 0; slash = path.indexOf("/", slash + 1)) {
+        const dir = path.slice(0, slash);
+        counts.set(dir, (counts.get(dir) ?? 0) + 1);
+      }
+    }
+    changeCountsByStatus.set(gitFiles, counts);
+  }
+  return counts.get(dirPath) ?? 0;
 }
 
 /**
@@ -403,7 +425,9 @@ function TreeNode({
   const lifecyclePending = props.fileOperation?.status === "pending";
   const ui = props.ui;
   const picking = ui?.picking ?? null;
-  const selected = (ui?.selected.size ?? 0) > 1 && (ui?.selected.has(fullPath) ?? false);
+  // One selected row shows too: a click on a file now selects it without opening it,
+  // and a click that changes nothing visible reads as a click that did nothing.
+  const selected = ui?.selected.has(fullPath) ?? false;
   const { more, onContextMenu } = useRowMenu(props, fullPath);
   const draggable = (ui?.canDrag(fullPath) ?? false) && !lifecyclePending && picking === null;
   const dragHandlers = {
@@ -568,8 +592,19 @@ function TreeNode({
         type="button"
         {...dragHandlers}
         disabled={picking !== null}
+        onPointerDown={(event) => {
+          event.currentTarget.dataset.pointer = event.pointerType;
+        }}
         onClick={(event) => {
           if (ui?.click(fullPath, false, event)) return;
+          // Opening a file can rearrange the whole window, so a mouse click only
+          // selects. Enter (a click with no pointer: detail 0) and a tap open at once —
+          // a touch screen has no double-click to spare, it zooms.
+          const pointer = (event.nativeEvent as PointerEvent).pointerType || event.currentTarget.dataset.pointer;
+          if (event.detail === 0 || pointer === "touch") props.onSelectFile(fullPath);
+        }}
+        onDoubleClick={(event) => {
+          if (event.shiftKey || event.metaKey || event.ctrlKey) return;
           props.onSelectFile(fullPath);
         }}
         onKeyDown={(event) => ui?.rowKeyDown(fullPath, event)}
@@ -885,6 +920,8 @@ export function FileTree(props: TreeProps) {
     createFolder: creation !== undefined && props.onCreateDirectory !== undefined,
     reference: props.onToggleAttachPath !== undefined,
     download: props.onDownload !== undefined,
+    copyPath: typeof navigator !== "undefined" && navigator.clipboard !== undefined,
+    copyAbsolutePath: props.browserRoot !== undefined && typeof navigator !== "undefined" && navigator.clipboard !== undefined,
     rename: rename !== undefined,
     move: props.onMoveFile !== undefined,
     moveMany: props.onMoveFiles !== undefined,
@@ -949,6 +986,21 @@ export function FileTree(props: TreeProps) {
       case "reference":
         for (const path of paths) if (!(props.attachedPaths?.includes(path) ?? false)) props.onToggleAttachPath?.(path);
         break;
+      case "copy-relative-path":
+      case "copy-absolute-path": {
+        const root = props.browserRoot;
+        const lines = id === "copy-absolute-path" && root !== undefined ? paths.map((path) => absolutePath(root, path)) : paths;
+        const text = paths.length === 1 ? "Path copied" : `${paths.length} paths copied`;
+        navigator.clipboard.writeText(lines.join("\n")).then(
+          () => {
+            setNotice({ kind: "info", text });
+            // A confirmation, not a state: it goes once read.
+            setTimeout(() => setNotice((current) => (current?.text === text ? null : current)), 2000);
+          },
+          (error: unknown) => setNotice({ kind: "error", text: `Could not copy: ${error instanceof Error ? error.message : String(error)}` }),
+        );
+        break;
+      }
       case "unreference":
         props.onToggleAttachPath?.(first);
         break;

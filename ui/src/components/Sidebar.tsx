@@ -12,6 +12,8 @@ interface SidebarProps {
   openFile: OpenFile | null;
   /** Writable zone in the tree; see SessionSnapshot.writableRoot. */
   writableRoot?: string | null;
+  /** The tree's absolute root on the server; see SessionSnapshot.browserRoot. */
+  browserRoot?: string;
   /** Git status per path, for tree badges. */
   gitFiles?: Record<string, GitFileState>;
   /** Paths already referenced by the composer, so the tree can show the toggle as active. */
@@ -60,6 +62,7 @@ export function Sidebar({
   tree,
   openFile,
   writableRoot,
+  browserRoot,
   gitFiles,
   attachedPaths,
   onExpand,
@@ -129,8 +132,10 @@ export function Sidebar({
         event.preventDefault();
         event.stopPropagation();
       }}
-      style={{ width: resize.width, display: hidden ? "none" : undefined }}
-      className="relative flex shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-800"
+      style={{ width: resize.width, maxWidth: "85vw", display: hidden ? "none" : undefined }}
+      // Below md a drawer over the content: in the flow it would squeeze the file and
+      // the conversation into the width a phone has left.
+      className="relative flex shrink-0 flex-col border-r border-zinc-200 bg-white max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-30 max-md:shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
     >
       <div className="flex items-center border-b border-zinc-200 px-3 py-2 text-xs font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
         Files
@@ -169,6 +174,7 @@ export function Sidebar({
           tree={tree}
           openFilePath={openFile?.path}
           writableRoot={writableRoot}
+          browserRoot={browserRoot}
           gitFiles={gitFiles}
           attachedPaths={attachedPaths}
           onExpand={onExpand}
