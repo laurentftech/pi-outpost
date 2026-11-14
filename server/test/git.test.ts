@@ -4,7 +4,7 @@ import { mkdtempSync, existsSync, rmSync, writeFileSync, mkdirSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { before, after, describe, test } from "node:test";
-import { probeGit, gitStatus, gitLog, gitShow, gitHeadContent, gitFileLog, gitRevisionContent, unquote, MAX_PATCH_BYTES, type GitRepo } from "../src/git.ts";
+import { probeGit, gitStatus, gitLog, gitShow, gitHeadContent, gitFileLog, gitRevisionContent, unquote, MAX_PATCH_BYTES, UNTRACKED_LISTING_LIMIT, type GitRepo } from "../src/git.ts";
 
 /**
  * The browser root IS the repository - the shape a single-project workspace has,
@@ -133,6 +133,59 @@ describe("git operations", () => {
     }
   });
 
+  test("AHugeUntrackedDirectoryIsOneEntry: a large untracked directory is one entry, a small one is listed", async () => {
+    for (let i = 0; i < UNTRACKED_LISTING_LIMIT + 500; i++) write(path.join("cache", `f${i}.bin`), "x");
+    write(path.join("fresh", "a.txt"), "a");
+    write(path.join("fresh", "deep", "b.txt"), "b");
+    write(path.join("fresh", "deep", "c.txt"), "c");
+    try {
+      const status = await gitStatus([selfRepo(root)]);
+      const cache = status.files.filter((f) => f.path === "cache" || f.path.startsWith("cache/"));
+      assert.deepEqual(cache, [{ path: "cache", status: "untracked", atLeast: UNTRACKED_LISTING_LIMIT }]);
+      const fresh = status.files.filter((f) => f.path.startsWith("fresh")).map((f) => [f.path, f.status, f.atLeast]);
+      assert.deepEqual(fresh.sort(), [
+        ["fresh/a.txt", "untracked", undefined],
+        ["fresh/deep/b.txt", "untracked", undefined],
+        ["fresh/deep/c.txt", "untracked", undefined],
+      ]);
+    } finally {
+      rmSync(path.join(root, "cache"), { recursive: true, force: true });
+      rmSync(path.join(root, "fresh"), { recursive: true, force: true });
+    }
+  });
+
+  test("an untracked directory at exactly the limit is still listed file by file", async () => {
+    // The limit's worth of untracked files, counting the .gitignore itself
+    for (let i = 0; i < UNTRACKED_LISTING_LIMIT - 1; i++) write(path.join("edge", `f${i}.txt`), "x");
+    write(path.join("edge", ".gitignore"), "ignored.txt\n");
+    write(path.join("edge", "ignored.txt"), "x");
+    try {
+      const status = await gitStatus([selfRepo(root)]);
+      const edge = status.files.filter((f) => f.path.startsWith("edge"));
+      // The ignored file is neither listed nor counted
+      assert.equal(edge.length, UNTRACKED_LISTING_LIMIT);
+      assert.ok(edge.every((f) => f.atLeast === undefined && f.status === "untracked"));
+      assert.ok(!edge.some((f) => f.path === "edge/ignored.txt"));
+    } finally {
+      rmSync(path.join(root, "edge"), { recursive: true, force: true });
+    }
+  });
+
+  test("a directory whose name git would read as pathspec magic is listed as itself", async () => {
+    // A colon cannot be in a Windows file name; the bracket glob is the case there
+    const colon = process.platform !== "win32";
+    if (colon) write(path.join(":odd", "a.txt"), "a");
+    write(path.join("[x]", "b.txt"), "b");
+    write(path.join("x", "c.txt"), "c");
+    try {
+      const status = await gitStatus([selfRepo(root)]);
+      const paths = status.files.map((f) => f.path).filter((p) => /^(:odd|\[x\]|x)\//.test(p)).sort();
+      assert.deepEqual(paths, [...(colon ? [":odd/a.txt"] : []), "[x]/b.txt", "x/c.txt"]);
+    } finally {
+      for (const dir of [":odd", "[x]", "x"]) rmSync(path.join(root, dir), { recursive: true, force: true });
+    }
+  });
+
   test("gitStatus detects modified files", async () => {
     write("README.md", "# Modified\n");
     try {
@@ -226,6 +279,44 @@ describe("git operations", () => {
 // a conflict in the file (which `--follow` alone drops), and a subject carrying
 // the record separator the log format uses.
 // ---------------------------------------------------------------------------
+describe("a browser root nobody ever added, inside a larger repository", () => {
+  let top: string;
+  let root: string;
+
+  before(() => {
+    top = mkdtempSync(path.join(tmpdir(), "git-untracked-root-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: top });
+    git("init");
+    git("config", "user.email", "test@test");
+    git("config", "user.name", "Test");
+    git("config", "commit.gpgsign", "false");
+    writeFileSync(path.join(top, "tracked.txt"), "t\n");
+    git("add", "tracked.txt");
+    git("commit", "-m", "initial");
+    root = path.join(top, "loose");
+    mkdirSync(path.join(root, "cache"), { recursive: true });
+    for (let i = 0; i < UNTRACKED_LISTING_LIMIT + 100; i++) writeFileSync(path.join(root, "cache", `f${i}`), "x");
+    mkdirSync(path.join(root, "small"));
+    writeFileSync(path.join(root, "small", "s.txt"), "s");
+    writeFileSync(path.join(root, "note.md"), "n");
+    writeFileSync(path.join(root, "skip.log"), "ignored");
+    writeFileSync(path.join(root, ".gitignore"), "*.log\n");
+  });
+
+  after(() => rmSync(top, { recursive: true, force: true }));
+
+  test("is split into its children, with the large one as one entry", async () => {
+    const status = await gitStatus([ancestorRepo(root, top)]);
+    const files = status.files.map((f) => [f.path, f.status, f.atLeast]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    assert.deepEqual(files, [
+      [".gitignore", "untracked", undefined],
+      ["cache", "untracked", UNTRACKED_LISTING_LIMIT],
+      ["note.md", "untracked", undefined],
+      ["small/s.txt", "untracked", undefined],
+    ]);
+  });
+});
+
 describe("file history", () => {
   let root: string;
   /** Subject → sha, so assertions never depend on generated ids. */

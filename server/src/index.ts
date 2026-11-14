@@ -199,6 +199,7 @@ import {
   useGitExecutable,
   type GitRepo,
 } from "./git.ts";
+import { canAnswerWithChanges, recordChanges, recordFull, type SentStatus } from "./gitStatusDelta.ts";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createXlsxExtractToolDefinition } from "./xlsxTool.ts";
 import { createPptxExtractToolDefinition } from "./pptxTool.ts";
@@ -5866,11 +5867,63 @@ function repoById(workspace: Workspace, id: string): GitRepo {
   return repo;
 }
 
-async function handleGitStatus(workspace: Workspace, socket: WebSocket, scope: string | undefined, requestId: string): Promise<void> {
+/** Per connection, the status it was last sent: released with the socket. */
+const sentGitStatus = new WeakMap<WebSocket, SentStatus>();
+
+async function handleGitStatus(
+  workspace: Workspace,
+  socket: WebSocket,
+  scope: string | undefined,
+  requestId: string,
+  base: number | undefined,
+): Promise<void> {
   if (workspace.repos.length === 0) return send(socket, { type: "git_error", requestId, message: "git is not available" });
   try {
-    const { repos, files, missing } = await gitStatus(workspace.repos, scope === undefined ? undefined : repoById(workspace, scope));
-    send(socket, { type: "git_status", requestId, ...(scope === undefined ? {} : { repo: scope }), repos, files });
+    // Only a client holding what this connection was last sent can be answered with
+    // the difference; anyone else gets a full sweep, whatever scope it asked for, so
+    // a scoped answer never lands on a state the server does not know.
+    const held = sentGitStatus.get(socket);
+    const changes = canAnswerWithChanges(held, workspace, base);
+    const sweepScope = changes ? scope : undefined;
+    const { repos, files, missing } = await gitStatus(workspace.repos, sweepScope === undefined ? undefined : repoById(workspace, sweepScope));
+    // The connection moved to another project while git ran: this answer describes
+    // the one it left, and would badge the new tree with the old one's files. The
+    // request is still owed an answer - the client asks nothing more until it has
+    // one - so it gets the project it is on now, in full.
+    const current = clients.get(socket) ?? workspaces.default;
+    if (current !== undefined && current !== workspace) {
+      if (current.repos.length > 0) return handleGitStatus(current, socket, undefined, requestId, undefined);
+      const { next, answer } = recordFull(sentGitStatus.get(socket), current, [], () => "");
+      sentGitStatus.set(socket, next);
+      return send(socket, { type: "git_status", requestId, repos: [], files: [], version: answer.version });
+    }
+    // Read again: another answer may have reached this connection while git ran. A
+    // client that named a version holds every answer sent since, in order, so the
+    // difference is taken against the latest - still this project's.
+    const now = sentGitStatus.get(socket);
+    const repoOf = (path: string) => repoFor(workspace.repos, path)?.id ?? "";
+    if (changes && now !== undefined && now.owner === workspace) {
+      const { next, answer } = recordChanges(now, files, sweepScope, repoOf);
+      sentGitStatus.set(socket, next);
+      send(socket, {
+        type: "git_status",
+        requestId,
+        ...(sweepScope === undefined ? {} : { repo: sweepScope }),
+        repos,
+        files: answer.files,
+        version: answer.version,
+        base: answer.base,
+        removed: answer.removed,
+      });
+    } else if (sweepScope !== undefined) {
+      // A scoped sweep, but what this connection was last sent is another project's
+      // (it went there and came back): only a full answer is safe now.
+      return handleGitStatus(workspace, socket, scope, requestId, undefined);
+    } else {
+      const { next, answer } = recordFull(now, workspace, files, repoOf);
+      sentGitStatus.set(socket, next);
+      send(socket, { type: "git_status", requestId, repos, files, version: answer.version });
+    }
     // A repository that cannot answer has usually stopped being one, and did so
     // without touching a directory any client had listed - `rm -rf proj/.git` changes
     // `proj`, which nobody expanded, so the watcher heard nothing at all. Look again,
@@ -7235,7 +7288,13 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "git_status":
       if (typeof message.requestId !== "string") return;
       if (message.repo !== undefined && typeof message.repo !== "string") return;
-      handleGitStatus(workspace, socket, message.repo, message.requestId).catch(reportError);
+      handleGitStatus(
+        workspace,
+        socket,
+        message.repo,
+        message.requestId,
+        Number.isSafeInteger(message.base) ? message.base : undefined,
+      ).catch(reportError);
       break;
     case "get_outcome":
       if (typeof message.requestId !== "string") return;

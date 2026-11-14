@@ -585,6 +585,11 @@ export interface GitFileStatus {
   /** Path relative to the browser root (posix separators). */
   path: string;
   status: GitFileState;
+  /**
+   * Present on a directory reported as one entry because it holds more untracked
+   * files than the server lists one by one: it holds at least this many.
+   */
+  atLeast?: number;
 }
 
 /**
@@ -1511,7 +1516,21 @@ export type ServerMessage =
    * branch — unless `repo` echoes a scoped request, in which case both describe that
    * repository alone and replace only its slice of what the client holds.
    */
-  | { type: "git_status"; requestId: string; repo?: string; repos: GitRepoStatus[]; files: GitFileStatus[] }
+  | {
+      type: "git_status";
+      requestId: string;
+      /** Present when the answer speaks for this repository only. */
+      repo?: string;
+      repos: GitRepoStatus[];
+      /** Every entry of a full answer; on a change answer (`base` set), the entries added or changed. */
+      files: GitFileStatus[];
+      /** This answer's version, to name as `base` when asking again. */
+      version?: number;
+      /** Set on a change answer: the version it applies to. Absent on a full answer. */
+      base?: number;
+      /** On a change answer: the paths no longer reported. */
+      removed?: string[];
+    }
   | { type: "git_diff"; requestId: string; path: string; before: string; after: string }
   /** `repo` is echoed: a log rendered under another repository's chip is a lie. */
   | { type: "git_log"; requestId: string; repo: string; entries: GitCommitLogEntry[] }
@@ -1774,7 +1793,13 @@ export type ClientMessage =
   | { type: "edit_prompt"; entryId: string; text: string; images?: WireImage[] }
   | { type: "get_outcome"; requestId: string }
   /** `repo` reads one repository instead of sweeping every one of them. */
-  | { type: "git_status"; repo?: string; requestId: string }
+  | {
+      type: "git_status";
+      repo?: string;
+      requestId: string;
+      /** The version of the status the client holds; the server may then answer with only the changes. */
+      base?: number;
+    }
   /** `repo` names which repository of the workspace to read, as `GitRepoStatus.repo` does. */
   | { type: "git_log"; repo: string; limit?: number; requestId: string }
   | { type: "git_diff"; path: string; requestId: string }

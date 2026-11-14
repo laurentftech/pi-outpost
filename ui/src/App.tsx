@@ -1382,6 +1382,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             writableRoot={state.writableRoot}
             browserRoot={state.browserRoot}
             gitFiles={state.gitStatus?.files}
+            gitAtLeast={state.gitStatus?.atLeast}
             attachedPaths={attachedPaths}
             onExpand={listDirectory}
             onSelectDirectory={setTreeSelection}
