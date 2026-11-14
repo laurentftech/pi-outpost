@@ -2805,6 +2805,7 @@ function projectFields(workspace: Workspace) {
     // Absent means "settings", so a client that predates the setting sees what it saw before.
     ...(config.embed.workspaceControls !== "settings" ? { embedWorkspaceControls: config.embed.workspaceControls } : {}),
     writableRoot: workspace.writableRoot,
+    browserRoot: workspace.browserRoot,
     // Not merely "a repository was found on disk": one git will actually read.
     gitAvailable: workspace.repos.length > 0 && workspace.gitUnavailable === undefined,
     ...(config.docx.template !== undefined ? { docxTemplate: path.basename(config.docx.template) } : {}),

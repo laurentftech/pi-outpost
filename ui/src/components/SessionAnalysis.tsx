@@ -201,7 +201,7 @@ export function SessionAnalysisPanel({ analysis, onJump, onClose }: SessionAnaly
   return (
     <aside
       aria-label="Session analysis"
-      className="absolute inset-y-0 right-0 z-10 w-full overflow-y-auto border-l border-zinc-200 bg-white shadow-xl md:w-[26rem] dark:border-zinc-800 dark:bg-zinc-950"
+      className="absolute inset-y-0 right-0 z-10 w-full max-w-full overflow-y-auto border-l border-zinc-200 bg-white shadow-xl md:w-[min(26rem,100%)] dark:border-zinc-800 dark:bg-zinc-950"
     >
       <header className="sticky top-0 flex items-center gap-2 border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="font-mono text-xs text-zinc-600 dark:text-zinc-300">session analysis</h2>

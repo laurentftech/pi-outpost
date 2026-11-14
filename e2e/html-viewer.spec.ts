@@ -10,7 +10,7 @@ async function openPage(page: Page) {
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("site", { exact: true }).click();
-  await page.getByText("index.html", { exact: true }).click();
+  await page.getByText("index.html", { exact: true }).dblclick(); // a file row opens on double-click
   await expect(page.getByTestId("html-page")).toBeVisible();
   return page.frameLocator('[data-testid="html-page"]');
 }

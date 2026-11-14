@@ -335,7 +335,7 @@ function SessionMenu({
         sessions
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 flex max-h-96 w-96 flex-col rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="absolute right-0 top-full z-20 mt-1 flex max-h-96 w-[min(24rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] flex-col rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
           <div className="border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
             <input
               type="search"
@@ -437,7 +437,7 @@ function ConversationFilterMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-30 mt-1 w-48 rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+          className="absolute right-0 z-30 mt-1 w-[min(12rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
         >
           {CONVERSATION_FILTER_KINDS.map((kind) => (
             <button
@@ -604,7 +604,7 @@ function ThemeToggle({ theme, preference = theme, onToggle, onSetTheme }: { them
     >
       {preference === "system" ? "◐" : theme === "dark" ? "☾" : "☀"}
     </button>
-    {open && <div role="menu" aria-label="Theme" className="absolute right-0 top-full z-40 mt-2 min-w-32 rounded-lg border border-zinc-300 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+    {open && <div role="menu" aria-label="Theme" className="absolute right-0 top-full z-40 mt-2 min-w-32 max-w-[calc(100vw-1rem)] rounded-lg border border-zinc-300 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
       {(["light", "dark", "system"] as const).map(value => <button key={value} role="menuitemradio" aria-checked={preference === value} type="button" className="block w-full rounded px-3 py-1.5 text-left text-xs text-zinc-700 hover:bg-zinc-100 focus:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800" onClick={() => {
         if (onSetTheme) onSetTheme(value);
         else if (value !== theme) onToggle();
@@ -626,7 +626,7 @@ export function Header(props: HeaderProps) {
     // positioned and spill over the content area. Without a stacking context of its
     // own, the header competes there on DOM order alone — and the open FileViewer,
     // declared after it, wins. The menus would open *behind* the file preview.
-    <header ref={setBar} className="relative z-30 flex min-w-0 flex-wrap items-center gap-1.5 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
+    <header ref={setBar} className="relative z-30 flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
       {/* The workspace affordance comes first: it scopes everything else in this
           bar. Which one appears is the deployment's choice; the project selector
           still renders nothing while a single project is open or on a pinned
@@ -706,7 +706,7 @@ export function Header(props: HeaderProps) {
 
       <ExtensionStatuses statuses={props.statuses} bar={bar} />
 
-      <div className="ml-auto flex w-full max-w-full shrink-0 flex-wrap items-center gap-1 sm:w-auto sm:gap-1.5">
+      <div className="ml-auto flex w-auto max-w-none shrink-0 flex-nowrap items-center gap-1 sm:gap-1.5">
         <ConversationFilterMenu filters={props.filters} onFilterChange={props.onFilterChange} />
         {props.onExportConversation && (
           <button

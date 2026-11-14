@@ -73,7 +73,7 @@ export function UserMessage({ item, canEdit, onEdit, queued }: UserMessageProps)
   }
 
   const actionClass =
-    "mt-1.5 shrink-0 rounded px-1 py-0.5 text-xs text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-700 focus-visible:opacity-100 group-hover:opacity-100 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-200";
+    "mt-1.5 inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded px-1 py-0.5 text-xs text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-700 focus-visible:opacity-100 group-hover:opacity-100 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-200";
   return (
     <div className="group ml-auto flex max-w-[85%] items-start gap-1.5" {...(queued ? { "data-queued-prompt": item.entryId } : {})}>
       {editable && !editing && (

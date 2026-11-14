@@ -16,7 +16,7 @@ async function openReadme(page: Page) {
   await page.goto(process.env.PI_E2E_SERVER_URL!);
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
-  await page.getByText("readme.md").click();
+  await page.getByText("readme.md").dblclick(); // a file row opens on double-click
   await expect(page.getByRole("button", { name: /download as a word document/i })).toBeVisible();
 }
 
@@ -145,7 +145,7 @@ test("carries the figures the document references, wherever they sit on disk", a
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("docs", { exact: true }).click();
-  await page.getByText("report.md").click();
+  await page.getByText("report.md").dblclick(); // a file row opens on double-click
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: /download as a word document/i }).click();
@@ -173,7 +173,7 @@ test("falls back to the words when a referenced figure has gone from disk", asyn
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("docs", { exact: true }).click();
-  await page.getByText("report.md").click();
+  await page.getByText("report.md").dblclick(); // a file row opens on double-click
   await expect(page.getByRole("button", { name: /download as a word document/i })).toBeVisible();
 
   const { rename } = await import("node:fs/promises");
@@ -240,7 +240,7 @@ test("a structured-exchange file exports what it draws: a figure as SVG, a table
   await page.getByTitle("Show files").click();
   await page.getByText("exports", { exact: true }).click();
 
-  await page.getByText("figure.json", { exact: true }).click();
+  await page.getByText("figure.json", { exact: true }).dblclick(); // a file row opens on double-click
   await expect(page.getByRole("button", { name: /download as a word document/i })).toHaveCount(0);
   const svgDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download the figure as SVG" }).click();
@@ -248,7 +248,7 @@ test("a structured-exchange file exports what it draws: a figure as SVG, a table
   expect(svg.suggestedFilename()).toMatch(/\.svg$/);
   expect(await readFile(await svg.path(), "utf8")).toMatch(/^<svg[\s>]/);
 
-  await page.getByText("table.json", { exact: true }).click();
+  await page.getByText("table.json", { exact: true }).dblclick(); // a file row opens on double-click
   await expect(page.getByRole("button", { name: "Download the figure as SVG" })).toHaveCount(0);
   const wordDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: /download as a word document/i }).click();

@@ -78,6 +78,8 @@ export type RowActionId =
   | "new-folder"
   | "reference"
   | "unreference"
+  | "copy-relative-path"
+  | "copy-absolute-path"
   | "download"
   | "rename"
   | "move"
@@ -97,6 +99,8 @@ export const ROW_ACTION_SYMBOL: Record<RowActionId, string> = {
   "new-folder": "⊞",
   reference: "@",
   unreference: "@",
+  "copy-relative-path": "⧉",
+  "copy-absolute-path": "⧉",
   download: "⤓",
   rename: "✎",
   move: "→",
@@ -135,6 +139,10 @@ export interface ActionHandlers {
   createFolder: boolean;
   reference: boolean;
   download: boolean;
+  /** The clipboard is there to write paths into. */
+  copyPath: boolean;
+  /** …and the tree knows its absolute root on the server. */
+  copyAbsolutePath: boolean;
   rename: boolean;
   move: boolean;
   moveMany: boolean;
@@ -182,6 +190,8 @@ export function rowActions(entries: readonly ActionEntry[], handlers: ActionHand
       share.push({ id: "reference", label: `Reference ${count(entries.length)} in prompt` });
     }
   }
+  if (handlers.copyPath) share.push({ id: "copy-relative-path", label: single ? "Copy relative path" : "Copy relative paths" });
+  if (handlers.copyAbsolutePath) share.push({ id: "copy-absolute-path", label: single ? "Copy absolute path" : "Copy absolute paths" });
   if (handlers.download) {
     const label = single ? (single.kind === "directory" ? "Download as .zip" : "Download") : `Download ${count(entries.length)} as .zip`;
     share.push({ id: "download", label });
@@ -212,4 +222,19 @@ export function deleteConfirmation(entries: readonly Pick<ActionEntry, "path" | 
   }
   const folders = entries.filter((entry) => entry.kind === "directory").length;
   return `Delete ${count(entries.length)}?${folders > 0 ? ` ${folders === 1 ? "The folder is" : "Folders are"} deleted with everything in ${folders === 1 ? "it" : "them"}.` : ""}`;
+}
+
+/**
+ * `relative` (posix, from the tree) under the server's absolute `root`, written with
+ * the root's own separator: a Windows root gets backslashes throughout.
+ */
+export function absolutePath(root: string, relative: string): string {
+  const separator = root.includes("\\") && !root.includes("/") ? "\\" : "/";
+  const base = root.length > 1 ? root.replace(/[\\/]+$/, "") : root;
+  if (relative === "") {
+    // `C:` is drive-relative on Windows; keep the separator on the drive root.
+    return /^[A-Za-z]:[\\/]+$/.test(root) ? `${root.slice(0, 2)}${root.at(-1)}` : base;
+  }
+  const joined = relative.split("/").join(separator);
+  return base.endsWith(separator) ? `${base}${joined}` : `${base}${separator}${joined}`;
 }

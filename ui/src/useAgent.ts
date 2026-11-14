@@ -461,6 +461,8 @@ export interface AgentState {
   previewRevision: number;
   /** Writable zone in the file browser; see SessionSnapshot.writableRoot. */
   writableRoot?: string | null;
+  /** The file browser's absolute root on the server; see SessionSnapshot.browserRoot. */
+  browserRoot?: string;
   /** The Word template the export can write into; see SessionSnapshot.docxTemplate. */
   docxTemplate?: string;
   /** Which providers can answer; drives the onboarding screen. Never carries a key. */
@@ -835,6 +837,7 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     directoryRequests: {},
     fileOperation: null,
     writableRoot: message.writableRoot,
+    browserRoot: message.browserRoot,
     docxTemplate: message.docxTemplate,
     gitAvailable: message.gitAvailable === true,
     gitUnavailable: message.gitUnavailable ?? null,

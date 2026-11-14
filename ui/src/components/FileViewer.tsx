@@ -29,6 +29,9 @@ import type { DocumentExport } from "../presentations/documentExport";
 import { FindBar } from "./FindBar";
 import { findMatchesInText, highlightMatches, type DomMatch } from "../util/findInPage";
 import type { PdfFindState, PdfViewerHandle } from "./PdfViewer";
+import type { AgentStatus } from "../agentStatus";
+import type { ViewerLayout } from "../util/panelWidth";
+import { AgentStatusStrip, keepFocus } from "./AgentStatusStrip";
 
 // pdf.js is over a megabyte: a session that never opens a PDF must not load it.
 const PdfViewer = lazy(() => import("./PdfViewer"));
@@ -39,10 +42,19 @@ interface FileViewerProps {
   writableRoot?: string | null;
   /** The Word template the export can also write into; absent when none is configured. */
   docxTemplate?: string;
-  /** The viewer covers the chat: surface agent activity so a running reply isn't invisible. */
+  /** Whether the agent is streaming; stands in for `agentStatus` when that is not given. */
   isStreaming: boolean;
-  /** Reports whether the editor holds unsaved changes (App auto-closes the viewer on prompt send only when it doesn't). */
-  onDirtyChange: (dirty: boolean) => void;
+  /** What the agent is doing, for the status strip shown while the viewer covers the chat. */
+  agentStatus?: AgentStatus;
+  /** Over the chat (default), or beside the conversation. */
+  layout?: ViewerLayout;
+  /** Whether there is room to put the viewer beside the conversation. */
+  canBeside?: boolean;
+  onLayoutChange?: (layout: ViewerLayout) => void;
+  /** Show the conversation without closing the viewer; absent, the strip offers no such action. */
+  onRevealConversation?: () => void;
+  /** Reports whether the editor holds unsaved changes. */
+  onDirtyChange?: (dirty: boolean) => void;
   /** Git status of this file, when it has uncommitted changes (enables the diff toggle). */
   gitState?: GitFileState;
   /** Open straight onto the uncommitted diff (tree badge click). */
@@ -182,6 +194,11 @@ export function FileViewer({
   file,
   writableRoot,
   isStreaming,
+  agentStatus: givenStatus,
+  layout = "overlay",
+  canBeside = false,
+  onLayoutChange,
+  onRevealConversation,
   onDirtyChange,
   gitState,
   initialShowGitDiff = false,
@@ -222,7 +239,6 @@ export function FileViewer({
       : null,
   );
   // "done" = a reply finished while this viewer was covering the chat
-  const [agentActivity, setAgentActivity] = useState<"idle" | "streaming" | "done">("idle");
   const editorRef = useRef<CodeEditorHandle>(null);
   /**
    * Counts editors that have come up. The editor is fetched lazily, so the first file
@@ -864,8 +880,22 @@ export function FileViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded?.mtimeMs]);
 
+  const rootRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      // Only keys meant for the viewer. With the conversation beside it or looked at,
+      // an Escape that dismisses the composer's suggestions or an agent's question —
+      // or a Cmd+F in the transcript — is not one.
+      const root = rootRef.current;
+      if (!root || root.closest('[style*="display: none"]')) return;
+      const origin = event.composedPath()[0];
+      const inside = origin instanceof Node && root.contains(origin);
+      if (!inside && origin instanceof Element) {
+        // Typing or reading something else: the composer, an agent's question or a
+        // dialog, any other field, the transcript beside the viewer.
+        if (origin.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [data-composer-area], main')) return;
+      }
       if (event.key === "Escape") {
         // The find bar closes first — it, not the viewer, is what an open
         // find bar's Escape means. A second, separate Escape (find bar
@@ -896,13 +926,8 @@ export function FileViewer({
   }, [splitting, writable, loaded?.mtimeMs]);
 
   useEffect(() => {
-    if (isStreaming) setAgentActivity("streaming");
-    else setAgentActivity((current) => (current === "streaming" ? "done" : current));
-  }, [isStreaming]);
-
-  useEffect(() => {
-    onDirtyChange(unsaved);
-    return () => onDirtyChange(false);
+    onDirtyChange?.(unsaved);
+    return () => onDirtyChange?.(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unsaved]);
 
@@ -915,8 +940,9 @@ export function FileViewer({
   }, []);
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col bg-white dark:bg-zinc-950">
-      <div className="flex items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+    <div ref={rootRef} className="absolute inset-0 z-20 flex flex-col bg-white dark:bg-zinc-950">
+      {/* Wraps rather than overflows: on a phone the actions would push the page sideways. */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
         {/* Three modes rather than two, and only for a document with a rendering to
             sit beside: revising a model by hand means reading the picture and
             changing the text in one motion, which a toggle makes a round trip. */}
@@ -1038,6 +1064,7 @@ export function FileViewer({
           <>
             <button
               type="button"
+              onMouseDown={keepFocus}
               onClick={() => save()}
               disabled={!dirty || saving || conflict}
               className="shrink-0 rounded border border-emerald-300 px-2 py-0.5 text-xs text-emerald-700 hover:border-emerald-500 disabled:opacity-50 dark:border-emerald-900 dark:text-emerald-400 dark:hover:border-emerald-600"
@@ -1283,26 +1310,26 @@ export function FileViewer({
         {showingSource && sourceView(true)}
       </div>
 
-      {agentActivity !== "idle" && (
-        <button
-          type="button"
-          onClick={requestClose}
-          aria-live="polite"
-          className="flex items-center gap-2 border-t border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-        >
-          {agentActivity === "streaming" ? (
-            <>
-              <span aria-hidden className="h-2 w-2 animate-pulse motion-reduce:animate-none rounded-full bg-amber-500" />
-              <span className="text-amber-700 dark:text-amber-400">π is replying…</span>
-            </>
-          ) : (
-            <>
-              <span aria-hidden className="h-2 w-2 rounded-full bg-emerald-500" />
-              <span className="text-emerald-700 dark:text-emerald-400">π replied</span>
-            </>
-          )}
-          <span className="ml-auto text-xs text-zinc-400 dark:text-zinc-500">show conversation →</span>
-        </button>
+      {layout === "beside" ? (
+        onLayoutChange && (
+          <div className="flex items-center justify-end border-t border-zinc-200 px-3 py-1.5 dark:border-zinc-800">
+            <button
+              type="button"
+              onMouseDown={keepFocus}
+              onClick={() => onLayoutChange("overlay")}
+              title="Let the file cover the conversation again"
+              className="min-h-6 rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              ⊡ over chat
+            </button>
+          </div>
+        )
+      ) : (
+        <AgentStatusStrip
+          status={givenStatus ?? (isStreaming ? { kind: "replying", lastLine: "" } : { kind: "idle" })}
+          onRevealConversation={onRevealConversation}
+          onBesideChat={canBeside && onLayoutChange ? () => onLayoutChange("beside") : undefined}
+        />
       )}
     </div>
   );

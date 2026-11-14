@@ -16,7 +16,7 @@ async function openReport(page: Page) {
   await expect(page.getByTitle("connected")).toBeVisible();
   await page.getByTitle("Show files").click();
   await page.getByText("diagrams", { exact: true }).click();
-  await page.getByText("report.md", { exact: true }).click();
+  await page.getByText("report.md", { exact: true }).dblclick(); // a file row opens on double-click
   await expect(page.getByRole("heading", { name: "Structure" })).toBeVisible();
   return page.locator(".prose-chat").filter({ has: page.getByRole("heading", { name: "Structure" }) });
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DirEntry } from "@pi-outpost/shared";
 import {
+  absolutePath,
   deleteConfirmation,
   outermost,
   rowActions,
@@ -21,6 +22,8 @@ const all: ActionHandlers = {
   createFolder: true,
   reference: true,
   download: true,
+  copyPath: true,
+  copyAbsolutePath: true,
   rename: true,
   move: true,
   moveMany: true,
@@ -76,7 +79,7 @@ describe("rowActions", () => {
   it("AFileRowsMenuInItsOrder: open/show · reference/download · rename/move · delete", () => {
     expect(labels(rowActions([entry({ gitState: "modified" })], all))).toEqual([
       ["Open", "Show diff", "Open with associated app", "Show in file manager"],
-      ["Reference in prompt", "Download"],
+      ["Reference in prompt", "Copy relative path", "Copy absolute path", "Download"],
       ["Rename…", "Move to…"],
       ["Delete…"],
     ]);
@@ -85,7 +88,7 @@ describe("rowActions", () => {
   it("AFolderRowsMenu: the same groups, at parity with a file", () => {
     expect(labels(rowActions([entry({ path: "src", kind: "directory" })], all))).toEqual([
       ["New file…", "New folder…", "Show in file manager"],
-      ["Reference in prompt", "Download as .zip"],
+      ["Reference in prompt", "Copy relative path", "Copy absolute path", "Download as .zip"],
       ["Rename…", "Move to…"],
       ["Delete…"],
     ]);
@@ -94,11 +97,11 @@ describe("rowActions", () => {
   it("AReadOnlyFileOffersOnlyWhatItCanTake: no change, no creation, but download and reference", () => {
     expect(labels(rowActions([entry({ readOnly: true })], all))).toEqual([
       ["Open", "Open with associated app", "Show in file manager"],
-      ["Reference in prompt", "Download"],
+      ["Reference in prompt", "Copy relative path", "Copy absolute path", "Download"],
     ]);
     expect(labels(rowActions([entry({ path: "ref", kind: "directory", readOnly: true })], all))).toEqual([
       ["Show in file manager"],
-      ["Reference in prompt", "Download as .zip"],
+      ["Reference in prompt", "Copy relative path", "Copy absolute path", "Download as .zip"],
     ]);
   });
 
@@ -112,18 +115,18 @@ describe("rowActions", () => {
   });
 
   it("an action no callback answers is absent, not disabled", () => {
-    const groups = rowActions([entry()], { ...all, openNative: false, download: false, delete: false });
+    const groups = rowActions([entry()], { ...all, openNative: false, download: false, delete: false, copyPath: false, copyAbsolutePath: false });
     expect(labels(groups).flat()).toEqual(["Open", "Show in file manager", "Reference in prompt", "Rename…", "Move to…"]);
   });
 
   it("a referenced entry offers to drop the reference", () => {
-    expect(labels(rowActions([entry({ attached: true })], all))[1]).toEqual(["Remove from prompt", "Download"]);
+    expect(labels(rowActions([entry({ attached: true })], all))[1]).toEqual(["Remove from prompt", "Copy relative path", "Copy absolute path", "Download"]);
   });
 
   it("a selection counts its items and drops what only one entry can take", () => {
     const selection = [entry({ path: "a.txt" }), entry({ path: "docs", kind: "directory" }), entry({ path: "b.txt", attached: true })];
     expect(labels(rowActions(selection, all))).toEqual([
-      ["Reference 3 items in prompt", "Download 3 items as .zip"],
+      ["Reference 3 items in prompt", "Copy relative paths", "Copy absolute paths", "Download 3 items as .zip"],
       ["Move 3 items to…"],
       ["Delete 3 items…"],
     ]);
@@ -131,12 +134,33 @@ describe("rowActions", () => {
 
   it("AMixedSelectionOffersNoMutation: one read-only entry takes Delete and Move away", () => {
     const groups = labels(rowActions([entry({ path: "a.txt" }), entry({ path: "ro.txt", readOnly: true })], all));
-    expect(groups).toEqual([["Reference 2 items in prompt", "Download 2 items as .zip"]]);
+    expect(groups).toEqual([["Reference 2 items in prompt", "Copy relative paths", "Copy absolute paths", "Download 2 items as .zip"]]);
   });
 
   it("a selection already all referenced offers no reference", () => {
     const groups = labels(rowActions([entry({ path: "a", attached: true }), entry({ path: "b", attached: true })], all));
-    expect(groups[0]).toEqual(["Download 2 items as .zip"]);
+    expect(groups[0]).toEqual(["Copy relative paths", "Copy absolute paths", "Download 2 items as .zip"]);
+  });
+});
+
+describe("copying paths", () => {
+  it("offers no absolute path without the server's root", () => {
+    const groups = labels(rowActions([entry()], { ...all, copyAbsolutePath: false })).flat();
+    expect(groups).toContain("Copy relative path");
+    expect(groups).not.toContain("Copy absolute path");
+  });
+
+  it("CopyARowsPaths: joins a posix root with slashes", () => {
+    expect(absolutePath("/home/u/proj", "docs/a.md")).toBe("/home/u/proj/docs/a.md");
+    expect(absolutePath("/home/u/proj/", "docs/a.md")).toBe("/home/u/proj/docs/a.md");
+    expect(absolutePath("/", "docs/a.md")).toBe("/docs/a.md");
+    expect(absolutePath("/home/u/proj", "")).toBe("/home/u/proj");
+    expect(absolutePath("C:\\", "")).toBe("C:\\");
+  });
+
+  it("AnAbsolutePathUsesTheServersSeparator: a Windows root gets backslashes throughout", () => {
+    expect(absolutePath("C:\\Users\\u\\proj", "docs/a.md")).toBe("C:\\Users\\u\\proj\\docs\\a.md");
+    expect(absolutePath("C:\\", "docs/a.md")).toBe("C:\\docs\\a.md");
   });
 });
 

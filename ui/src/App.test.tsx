@@ -3,7 +3,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import type { ChatItem, TurnUsage } from "@pi-outpost/shared";
 import App from "./App";
 import { UploadError } from "./uploads";
-import { typeInEditor } from "./components/codeEditorTesting";
+import { editorElement, editorSelection, editorText, editorView, typeInEditor } from "./components/codeEditorTesting";
+import { CONVERSATION_MIN_WIDTH, VIEWER_PANE_WIDTH } from "./util/panelWidth";
 
 // Mock useAgent to return a controlled state without WebSocket dependency
 const mockUseAgent = vi.fn();
@@ -804,27 +805,15 @@ describe("App — attachments", () => {
     expect(screen.queryByRole("button", { name: "Remove readme.md from the prompt" })).not.toBeInTheDocument();
   });
 
-  it("closes the viewer on send, since the user wants the conversation back", () => {
+  it("PromptWhileReadingAFile: sending keeps the viewer open", () => {
     const { api } = mount({ openFile: { status: "loaded", path: "src/main.ts", content: "x", size: 1, mtimeMs: 1 } });
     // The composer: the viewer's read-only source is a (read-only) textbox too.
     const box = screen.getAllByRole("textbox").at(-1)!;
     fireEvent.change(box, { target: { value: "carry on" } });
     fireEvent.keyDown(box, { key: "Enter" });
-    expect(api.closeFilePreview).toHaveBeenCalled();
-  });
-
-  it("keeps the viewer open on send when it holds unsaved edits", () => {
-    const { api } = mount({
-      openFile: { status: "loaded", path: "src/main.ts", content: "x", size: 1, mtimeMs: 1 },
-      sandbox: { root: "/w", allowWrite: true, allowBash: false },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
-    typeInEditor("edited");
-
-    const composer = screen.getAllByRole("textbox").at(-1)!;
-    fireEvent.change(composer, { target: { value: "carry on" } });
-    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(api.prompt).toHaveBeenCalledWith("carry on", undefined);
     expect(api.closeFilePreview).not.toHaveBeenCalled();
+    expect(screen.getByText("main.ts", { exact: false })).toBeInTheDocument();
   });
 });
 
@@ -1684,6 +1673,31 @@ describe("ReturnToLatest", () => {
     expect(control()).toBeInTheDocument();
   });
 
+  it("keeps following when the end moves away under a reader who never scrolled up", () => {
+    // Seen in the browser beside a file being edited: a reply's last block lands
+    // in one piece, the transcript grows by hundreds of pixels, and the browser
+    // reports a scroll (anchoring, or the end of our own animation) while the
+    // viewport has not moved up at all. Read as the reader leaving, it stopped
+    // the conversation following mid-reply. A reader leaving always moves up.
+    mount();
+    const main = scroller();
+    scrollDown(main);
+    expect(control()).toBeNull();
+    scrolledInto = [];
+
+    // As recorded in the browser: a lone `scrollend` as the transcript grows by 600 px.
+    layout(main, { scrollHeight: 4600, clientHeight: 600, scrollTop: 3400 });
+    fireEvent(main, new Event("scrollend"));
+
+    expect(control()).toBeNull();
+    expect(scrolledInto).toContain(bottomAnchor());
+
+    // The jump lands at the new end; following carries on.
+    layout(main, { scrollHeight: 4600, clientHeight: 600, scrollTop: 4000 });
+    fireEvent.scroll(main);
+    expect(control()).toBeNull();
+  });
+
   describe("the end moving without a scroll", () => {
     /** A ResizeObserver whose notifications this test fires by hand. */
     function stubResizeObserver() {
@@ -2171,5 +2185,489 @@ describe("APromptWaitsForTheExtensions", () => {
 
     expect(screen.queryByTestId("prompt-waiting-for-extensions")).toBeNull();
     expect(screen.getByText("sending…")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The file viewer over the chat or beside the conversation (split-viewer-conversation).
+// jsdom lays nothing out: the work area's width and its resize notifications are stubbed.
+// ---------------------------------------------------------------------------
+describe("App — file viewer beside the conversation", () => {
+  let workAreaWidth = 1200;
+  const resizeCallbacks: ResizeObserverCallback[] = [];
+  const realResizeObserver = globalThis.ResizeObserver;
+  const clientWidth = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth")!;
+  const realScrollIntoView = Element.prototype.scrollIntoView;
+
+  beforeEach(() => {
+    workAreaWidth = 1200;
+    resizeCallbacks.length = 0;
+    localStorage.clear();
+    globalThis.ResizeObserver = class {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    Object.defineProperty(Element.prototype, "clientWidth", {
+      configurable: true,
+      get(this: Element) {
+        return this.hasAttribute("data-work-area") ? workAreaWidth : clientWidth.get!.call(this);
+      },
+    });
+  });
+
+  afterEach(() => {
+    globalThis.ResizeObserver = realResizeObserver;
+    Element.prototype.scrollIntoView = realScrollIntoView;
+    Object.defineProperty(Element.prototype, "clientWidth", clientWidth);
+    localStorage.clear();
+  });
+
+  function resizeWorkArea(width: number) {
+    workAreaWidth = width;
+    act(() => resizeCallbacks.forEach((callback) => callback([], {} as ResizeObserver)));
+  }
+
+  const file = { status: "loaded", path: "notes/draft.md", content: "first line\nsecond line\n", size: 23, mtimeMs: 1 };
+
+  function mount(overrides: Record<string, unknown> = {}) {
+    const state = agentState({ openFile: file, sandbox: { root: "/w", allowWrite: true, allowBash: false }, ...overrides });
+    const api = agentApi(state);
+    mockUseAgent.mockReturnValue(api);
+    const view = render(<App />);
+    const rerenderWith = (more: Record<string, unknown>) => {
+      const next = agentApi(agentState({ openFile: file, sandbox: { root: "/w", allowWrite: true, allowBash: false }, ...overrides, ...more }));
+      mockUseAgent.mockReturnValue(next);
+      view.rerender(<App />);
+      return next;
+    };
+    return { api, rerenderWith, ...view };
+  }
+
+  /** Open the editor and leave an unsaved edit with the caret inside the second line. */
+  function editWithCaret() {
+    fireEvent.click(screen.getByRole("button", { name: "✎ edit" }));
+    typeInEditor("first line\nsecond line edited\n");
+    const view = editorView();
+    act(() => view.dispatch({ selection: { anchor: 14 } }));
+    return view;
+  }
+
+  const composer = () => screen.getAllByRole("textbox").at(-1)!;
+  const besideChat = () => screen.queryByRole("button", { name: "◫ beside chat" });
+  const overChat = () => screen.queryByRole("button", { name: "⊡ over chat" });
+
+  it("SwitchBothWaysKeepsTheDraft: the same editor survives both switches, with its undo history", () => {
+    mount();
+    const view = editWithCaret();
+    const editor = editorElement();
+
+    fireEvent.click(besideChat()!);
+    expect(overChat()).toBeInTheDocument();
+    expect(editorElement()).toBe(editor);
+    expect(editorText()).toBe("first line\nsecond line edited\n");
+
+    fireEvent.click(overChat()!);
+    expect(besideChat()).toBeInTheDocument();
+    expect(editorElement()).toBe(editor);
+    expect(editorSelection().from).toBe(14);
+    act(() => {
+      expect(view.state.doc.toString()).toBe("first line\nsecond line edited\n");
+    });
+  });
+
+  it("TheToggleIsWhereTheEyeIs and NoBesideChatWhenNarrow", () => {
+    workAreaWidth = 700;
+    mount();
+    expect(screen.getByRole("status")).toHaveTextContent("π is idle");
+    expect(besideChat()).not.toBeInTheDocument();
+
+    resizeWorkArea(1200);
+    expect(besideChat()).toBeInTheDocument();
+  });
+
+  it("ShrinkingTheWindowKeepsTheDraft: beside collapses to the overlay below the threshold, same editor", () => {
+    mount();
+    editWithCaret();
+    const editor = editorElement();
+    fireEvent.click(besideChat()!);
+
+    resizeWorkArea(600);
+    expect(overChat()).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(editorElement()).toBe(editor);
+    expect(editorText()).toBe("first line\nsecond line edited\n");
+    expect(editorSelection().from).toBe(14);
+  });
+
+  it("LayoutChoiceIsRemembered: the next file opens beside the conversation", () => {
+    const { unmount } = mount();
+    fireEvent.click(besideChat()!);
+    unmount();
+
+    mount({ openFile: { ...file, path: "notes/other.md" } });
+    expect(overChat()).toBeInTheDocument();
+  });
+
+  it("TheFilesSidebarIsLeftAlone: opening the file beside the chat does not fold the sidebar", () => {
+    mount({ fileTree: { "": [{ name: "notes", type: "directory" }] } });
+    fireEvent.click(sidebarToggle());
+    expect(screen.getByText("notes")).toBeVisible();
+
+    fireEvent.click(besideChat()!);
+    expect(screen.getByText("notes")).toBeVisible();
+  });
+
+  it("Work Plan, Analysis and Outcome open and close inside the conversation pane", () => {
+    mount({
+      workPlan: {
+        version: 1,
+        id: "plan",
+        title: "Plan",
+        updatedAt: "2026-11-14T00:00:00Z",
+        tasks: [{ id: "task", title: "Task", status: "in_progress", dependsOn: [], resources: [], evidence: [] }],
+      },
+      items: [
+        { kind: "user", text: "go" },
+        { kind: "assistant", blocks: [{ type: "text", text: "working" }], usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 } },
+      ],
+    });
+    fireEvent.click(besideChat()!);
+    const conversation = document.querySelector("main")!.parentElement!;
+
+    const workPlan = screen.getByRole("complementary", { name: "Work Plan" });
+    expect(workPlan.parentElement).toBe(conversation);
+    fireEvent.click(screen.getByRole("button", { name: "Close Work Plan" }));
+    expect(screen.queryByRole("complementary", { name: "Work Plan" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open Work Plan" }));
+    expect(screen.getByRole("complementary", { name: "Work Plan" }).parentElement).toBe(conversation);
+
+    fireEvent.click(screen.getByTitle(/turns? ·/));
+    const analysis = screen.getByRole("complementary", { name: "Session analysis" });
+    expect(analysis.parentElement).toBe(conversation);
+    fireEvent.click(screen.getByLabelText("Close session analysis"));
+    expect(screen.queryByRole("complementary", { name: "Session analysis" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Outcome" }));
+    const outcome = screen.getByRole("complementary", { name: "Workspace Outcome" });
+    expect(outcome.parentElement).toBe(conversation);
+    fireEvent.click(screen.getByLabelText("Close Outcome"));
+    expect(screen.queryByRole("complementary", { name: "Workspace Outcome" })).toBeNull();
+    expect(overChat()).toBeInTheDocument();
+  });
+
+  it("FollowTheAgentWhileWriting and TypingIsNotInterruptedByStreaming", () => {
+    const { rerenderWith } = mount();
+    editWithCaret();
+    fireEvent.click(besideChat()!);
+    act(() => editorView().focus());
+
+    rerenderWith({
+      isStreaming: true,
+      items: [
+        { kind: "user", text: "tidy the tests" },
+        { kind: "assistant", blocks: [{ type: "text", text: "Looking at the suite now" }], streaming: true },
+      ],
+    });
+
+    expect(screen.getByText("Looking at the suite now")).toBeInTheDocument();
+    expect(editorElement()!.contains(document.activeElement)).toBe(true);
+    expect(editorSelection().from).toBe(14);
+    expect(editorText()).toBe("first line\nsecond line edited\n");
+  });
+
+  it("PromptWithoutLeavingTheFile: sending from the composer gives the caret back to the editor", async () => {
+    mount();
+    editWithCaret();
+    act(() => editorView().focus());
+
+    const box = composer();
+    act(() => box.focus());
+    fireEvent.change(box, { target: { value: "check the build" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await waitFor(() => expect(editorElement()!.contains(document.activeElement)).toBe(true));
+    expect(editorSelection().from).toBe(14);
+    act(() => {
+      const view = editorView();
+      view.dispatch(view.state.replaceSelection("Z"));
+    });
+    expect(editorText()).toBe("first line\nsecZond line edited\n");
+  });
+
+  it("FocusFromElsewhereIsNotRedirected: a prompt sent without coming from the editor leaves focus alone", async () => {
+    mount();
+    editWithCaret();
+    act(() => editorView().focus());
+    // Somewhere else first — the header's Files toggle — then the composer.
+    act(() => sidebarToggle().focus());
+
+    const box = composer();
+    act(() => box.focus());
+    fireEvent.change(box, { target: { value: "status?" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(editorElement()!.contains(document.activeElement)).toBe(false);
+  });
+
+  it("QuestionArrivesWhileWritingInOverlay: the strip says so without taking focus, and shows the question", () => {
+    const { rerenderWith } = mount();
+    editWithCaret();
+    act(() => editorView().focus());
+
+    rerenderWith({ dialogQueue: [{ type: "extension_ui_request", id: "d1", method: "confirm", title: "Proceed?", message: "Really?" }] });
+
+    expect(screen.getByRole("status")).toHaveTextContent("π needs you — a question is waiting");
+    expect(editorElement()!.contains(document.activeElement)).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+    expect(screen.getByText("Proceed?")).toBeVisible();
+  });
+
+  it("PeekingKeepsTheDraft: a look at the latest of the conversation and back to the same editor, focus included", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    mount();
+    editWithCaret();
+    act(() => editorView().focus());
+    const editor = editorElement();
+
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+    expect(editor).not.toBeVisible();
+    expect(scrolled).toHaveBeenCalled();
+    // A browser drops focus from an element it stops displaying; jsdom does not.
+    act(() => (document.activeElement as HTMLElement).blur());
+
+    fireEvent.click(screen.getByRole("button", { name: "← back to draft.md" }));
+
+    expect(editorElement()).toBe(editor);
+    expect(editor).toBeVisible();
+    await waitFor(() => expect(editor!.contains(document.activeElement)).toBe(true));
+    expect(editorText()).toBe("first line\nsecond line edited\n");
+    expect(editorSelection().from).toBe(14);
+  });
+
+  it("a look at the conversation puts the next keystrokes in the composer", async () => {
+    mount();
+    editWithCaret();
+    act(() => editorView().focus());
+
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+
+    await waitFor(() => expect(document.activeElement).toBe(composer()));
+  });
+
+  it("goes from a look at the conversation straight to the file beside it, back in the editor", async () => {
+    mount();
+    editWithCaret();
+    act(() => editorView().focus());
+    const editor = editorElement();
+
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+    act(() => (document.activeElement as HTMLElement).blur());
+    fireEvent.click(screen.getByRole("button", { name: "◫ beside chat" }));
+
+    expect(overChat()).toBeInTheDocument();
+    expect(editorElement()).toBe(editor);
+    await waitFor(() => expect(editor!.contains(document.activeElement)).toBe(true));
+    expect(editorSelection().from).toBe(14);
+  });
+
+  it("the look's bar leaves focus where it is when pressed", () => {
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+    expect(fireEvent.mouseDown(screen.getByRole("button", { name: "← back to draft.md" }))).toBe(false);
+    expect(fireEvent.mouseDown(besideChat()!)).toBe(false);
+  });
+
+  it("measures the work area once it mounts after an early return (token gate)", () => {
+    const { rerenderWith } = mount({ authRequired: true });
+    expect(document.querySelector("[data-work-area]")).toBeNull();
+
+    rerenderWith({ authRequired: false });
+
+    expect(besideChat()).toBeInTheDocument();
+  });
+
+  it("never lets a saved pane width squeeze the conversation below its minimum", () => {
+    localStorage.setItem(VIEWER_PANE_WIDTH.storageKey, "1500");
+    mount();
+    fireEvent.click(besideChat()!);
+    const columns = (document.querySelector("[data-work-area]") as HTMLElement).style.gridTemplateColumns;
+    expect(columns).toContain(`calc(100% - ${CONVERSATION_MIN_WIDTH}px)`);
+  });
+
+  it("an Escape meant for the conversation does not close the viewer", () => {
+    const { api } = mount();
+    fireEvent.keyDown(composer(), { key: "Escape" });
+    expect(api.closeFilePreview).not.toHaveBeenCalled();
+
+    fireEvent.click(besideChat()!);
+    fireEvent.keyDown(composer(), { key: "Escape" });
+    fireEvent.keyDown(document.querySelector("main")!, { key: "Escape" });
+    expect(api.closeFilePreview).not.toHaveBeenCalled();
+  });
+
+  it("Cmd/Ctrl+F from the Files tree still finds in the file on screen", () => {
+    mount({ fileTree: { "": [{ name: "notes", type: "directory" }] } });
+    fireEvent.click(sidebarToggle());
+    const row = screen.getByText("notes").closest("button")!;
+    fireEvent.keyDown(row, { key: "f", ctrlKey: true });
+    expect(screen.getByRole("textbox", { name: "Find" })).toBeInTheDocument();
+  });
+
+  it("an Escape with nothing focused still closes the viewer over the chat", () => {
+    const { api } = mount();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(api.closeFilePreview).toHaveBeenCalled();
+  });
+
+  it("a reply sent while looking at the conversation keeps focus in the composer", async () => {
+    mount();
+    editWithCaret();
+    act(() => editorView().focus());
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+    await waitFor(() => expect(document.activeElement).toBe(composer()));
+
+    fireEvent.change(composer(), { target: { value: "thanks" } });
+    fireEvent.keyDown(composer(), { key: "Enter" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(document.activeElement).toBe(composer());
+  });
+
+  it("offers no way beside the chat from a look at the conversation when there is no room", () => {
+    workAreaWidth = 600;
+    mount();
+    editWithCaret();
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+    expect(screen.getByRole("button", { name: "← back to draft.md" })).toBeInTheDocument();
+    expect(besideChat()).not.toBeInTheDocument();
+  });
+
+  it("save leaves focus in the editor when pressed", () => {
+    mount();
+    editWithCaret();
+    expect(fireEvent.mouseDown(screen.getByRole("button", { name: "save" }))).toBe(false);
+  });
+
+  it("below md, opening a file from the Files drawer closes the drawer", () => {
+    const realMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ matches: query.includes("max-width: 767px"), media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+    try {
+      mount({ openFile: null, fileTree: { "": [{ name: "readme.md", type: "file" }] } });
+      fireEvent.click(sidebarToggle());
+      expect(screen.getByRole("button", { name: "readme.md" })).toBeVisible();
+
+      fireEvent.click(screen.getByRole("button", { name: "readme.md" }));
+
+      expect(screen.queryByRole("button", { name: "readme.md" })).toBeNull();
+    } finally {
+      window.matchMedia = realMatchMedia;
+    }
+  });
+
+  it("layout and peek controls leave focus in the editor when pressed", () => {
+    mount();
+    editWithCaret();
+    // fireEvent returns false when the handler prevented the default: the press moves no focus.
+    expect(fireEvent.mouseDown(screen.getByRole("button", { name: "conversation ↗" }))).toBe(false);
+    expect(fireEvent.mouseDown(besideChat()!)).toBe(false);
+    fireEvent.click(besideChat()!);
+    expect(fireEvent.mouseDown(overChat()!)).toBe(false);
+  });
+
+  it("reports a failed turn on the strip instead of a silent empty reply", () => {
+    mount({ items: [{ kind: "user", text: "go" }, { kind: "assistant", blocks: [], errorMessage: "429 Rate limit exceeded" }] });
+    expect(screen.getByRole("status")).toHaveTextContent("π hit an error");
+    // The detail is shown beside the live region, not announced token by token.
+    const strip = screen.getByRole("status").parentElement!;
+    expect(within(strip).getByText("429 Rate limit exceeded")).toBeVisible();
+    expect(screen.getByRole("status")).not.toHaveTextContent("429");
+  });
+
+  it("HeaderAboveTheFilesSidebar: the header is above the row holding the sidebar, not beside it", () => {
+    mount({ fileTree: { "": [] } });
+    fireEvent.click(sidebarToggle());
+    const header = document.querySelector("header")!;
+    const workArea = document.querySelector("[data-work-area]")!;
+    const row = workArea.parentElement!;
+    expect(row.contains(header)).toBe(false);
+    expect(header.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row.querySelector('[aria-label="Resize Files sidebar"], aside, nav') ?? row.firstElementChild).not.toBeNull();
+  });
+});
+
+describe("App — attention outside the window", () => {
+  let visibility: DocumentVisibilityState = "visible";
+  const realVisibility = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState");
+
+  beforeEach(() => {
+    visibility = "visible";
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(document, "visibilityState");
+    if (realVisibility) Object.defineProperty(Document.prototype, "visibilityState", realVisibility);
+  });
+
+  function setVisibility(next: DocumentVisibilityState) {
+    visibility = next;
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+  }
+
+  function mount(overrides: Record<string, unknown> = {}) {
+    mockUseAgent.mockReturnValue(agentApi(agentState(overrides)));
+    const view = render(<App />);
+    const rerenderWith = (more: Record<string, unknown>) => {
+      mockUseAgent.mockReturnValue(agentApi(agentState({ ...overrides, ...more })));
+      view.rerender(<App />);
+    };
+    return { rerenderWith };
+  }
+
+  const question = [{ type: "extension_ui_request", id: "d1", method: "confirm", title: "Proceed?", message: "Really?" }];
+
+  it("AQuestionWhileAway and TheMarkGoesWhenTheUserIsBack", () => {
+    const { rerenderWith } = mount();
+    const plain = document.title;
+    setVisibility("hidden");
+    rerenderWith({ dialogQueue: question });
+    expect(document.title).toBe(`❗ ${plain}`);
+
+    setVisibility("visible");
+    expect(document.title).toBe(plain);
+  });
+
+  it("AReplyFinishedWhileAway", () => {
+    const { rerenderWith } = mount({ isStreaming: true });
+    const plain = document.title;
+    setVisibility("hidden");
+    rerenderWith({ isStreaming: false });
+    expect(document.title).toBe(`✓ ${plain}`);
+
+    setVisibility("visible");
+    expect(document.title).toBe(plain);
+  });
+
+  it("an embedded widget never touches the host page's title", () => {
+    document.title = "Host page";
+    mockUseAgent.mockReturnValue(agentApi(agentState({ dialogQueue: question, brandingReady: true })));
+    setVisibility("hidden");
+    render(<App rootElement={document.createElement("div")} />);
+    expect(document.title).toBe("Host page");
+  });
+
+  it("leaves the title alone while the user is looking", () => {
+    const { rerenderWith } = mount({ isStreaming: true });
+    const plain = document.title;
+    rerenderWith({ isStreaming: false, dialogQueue: question });
+    expect(document.title).toBe(plain);
   });
 });
