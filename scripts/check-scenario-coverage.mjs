@@ -182,9 +182,11 @@ function fileExists(cited) {
   const candidates = [cited];
   // Spec citations are routinely written relative to the openspec root.
   if (cited.startsWith("specs/") || cited.startsWith("changes/")) candidates.push(path.join("openspec", cited));
+  // Git's list when there is one: it is exact about case. The disk is not on macOS or
+  // Windows, where `readme.md` finds `README.md` and passes a citation Linux CI refuses.
+  const known = tracked.paths.size > 0 ? (candidate) => tracked.paths.has(candidate) : (candidate) => fs.existsSync(path.join(ROOT, candidate));
   for (const candidate of candidates) {
-    if (fs.existsSync(path.join(ROOT, candidate))) return true;
-    if (tracked.paths.has(candidate)) return true;
+    if (known(candidate)) return true;
   }
   if (!cited.includes("/")) return tracked.basenames.has(cited);
   return false;

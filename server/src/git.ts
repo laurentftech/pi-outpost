@@ -16,7 +16,7 @@
  * dash as an option or a revision. Only rev-parse/status/log/show are used —
  * nothing here can mutate the repository.
  */
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -432,19 +432,94 @@ export interface GitStatusResult {
  * Also the unit of a scoped refresh: a file change names a path, and only the
  * repository owning it has anything new to say.
  */
+/**
+ * How many untracked files of one directory are listed one by one. A directory
+ * holding more is reported as one entry: nobody reads twenty thousand badges, and
+ * walking, sending and holding them on every refresh is what made a workspace with
+ * a stray build output or package cache slow.
+ */
+export const UNTRACKED_LISTING_LIMIT = 2000;
+
+/**
+ * Untracked paths under `pathspecs`, stopping after `limit + 1`: enough to know
+ * whether there are more than `limit`. Git still walks the directory before it
+ * prints (a fifth of a second for 30,000 files); what stopping saves is reading,
+ * holding and sending the rest. Paths are relative to `cwd`, as `git status`
+ * reports them; pathspecs are literal, so a directory named `:x` or `[a]` is
+ * itself and nothing else.
+ */
+export function listUntrackedBounded(cwd: string, pathspecs: string[], limit: number, extra: string[] = []): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const args = ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", ...extra, "-z", "--", ...pathspecs];
+    const child = spawn(gitBinary, args, {
+      cwd,
+      env: gitEnv(),
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const paths: string[] = [];
+    let pending = "";
+    let stderr = "";
+    let done = false;
+    const finish = (error?: Error) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(paths);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(new GitError(`git ls-files timed out after ${GIT_TIMEOUT_MS / 1000}s`));
+    }, GIT_TIMEOUT_MS);
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      if (done) return;
+      const parts = (pending + chunk).split("\0");
+      pending = parts.pop() ?? "";
+      for (const part of parts) {
+        if (part === "") continue;
+        paths.push(part);
+        if (paths.length > limit) {
+          // Enough to know: stop reading what git has left to print.
+          child.kill();
+          finish();
+          return;
+        }
+      }
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      if (stderr.length < 4096) stderr += chunk;
+    });
+    child.on("error", (error) => finish(new GitError(gitFailureMessage("ls-files", error, GIT_TIMEOUT_MS, GIT_MAX_BUFFER))));
+    child.on("close", (code) => {
+      if (done) return;
+      if (pending !== "") paths.push(pending);
+      if (code === 0) finish();
+      else finish(new GitError(gitReasonLine(stderr) ?? `git ls-files failed (exit ${code})`));
+    });
+  });
+}
+
 export async function gitStatusFor(repo: GitRepo): Promise<GitStatusResult> {
-  // -uall lists untracked files individually (default -unormal collapses a brand-new
-  // directory to one "dir/" entry, leaving the files inside without badges)
-  const out = await runGit(repo.cwd, ["status", "--porcelain=v2", "--branch", "--untracked-files=all", "--", "."]);
+  // -unormal collapses a directory holding only untracked files into one "dir/"
+  // entry; each is then listed below up to a bound, so the files of a new directory
+  // keep their own badges while a stray cache of 20,000 files stays one entry.
+  const out = await runGit(repo.cwd, ["status", "--porcelain=v2", "--branch", "--untracked-files=normal", "--", "."]);
   const repoStatus: GitRepoStatus = { repo: repo.id, branch: "", ahead: 0, behind: 0 };
   const result: GitStatusResult = { repos: [repoStatus], files: [], missing: [], failures: [] };
 
   // status paths are relative to the directory git ran in; the `-- .` pathspec already
   // confines entries, the "../" guard is defense in depth
-  const push = (gitPath: string, status: GitFileState) => {
-    const rel = unquote(gitPath);
-    if (rel !== "" && !rel.startsWith("../")) result.files.push({ path: toBrowserRelative(repo, rel), status });
+  // `rel` is already unquoted: -z output, or a status path through unquote()
+  const pushRel = (rel: string, status: GitFileState, atLeast?: number) => {
+    if (rel === "" || rel.startsWith("../")) return;
+    const browserPath = toBrowserRelative(repo, rel);
+    result.files.push(atLeast === undefined ? { path: browserPath, status } : { path: browserPath, status, atLeast });
   };
+  const push = (gitPath: string, status: GitFileState) => pushRel(unquote(gitPath), status);
+  const untrackedDirs: string[] = [];
 
   for (const line of out.split("\n")) {
     if (line.startsWith("# branch.head ")) {
@@ -471,9 +546,55 @@ export async function gitStatusFor(repo: GitRepo): Promise<GitStatusResult> {
       const fields = line.split(" ");
       push(fields.slice(10).join(" "), "conflicted");
     } else if (line.startsWith("? ")) {
-      push(line.slice(2), "untracked");
+      const entry = unquote(line.slice(2));
+      if (entry.endsWith("/")) untrackedDirs.push(entry);
+      else pushRel(entry, "untracked");
     }
   }
+  // A browser root that is itself wholly untracked - a folder inside a larger
+  // repository that was never added - comes back as one "./" entry, which no tree
+  // row stands for. Ask about its children instead, the way git would have
+  // reported them one level down.
+  const rootIndex = untrackedDirs.indexOf("./");
+  if (rootIndex !== -1) {
+    untrackedDirs.splice(rootIndex, 1);
+    const names = (await fs.readdir(repo.cwd)).filter((name) => name !== ".git");
+    for (let start = 0; start < names.length; start += 200) {
+      const children = await listUntrackedBounded(repo.cwd, names.slice(start, start + 200), Number.MAX_SAFE_INTEGER, ["--directory", "--no-empty-directory"]);
+      for (const child of children) {
+        if (child.endsWith("/")) untrackedDirs.push(child);
+        else pushRel(child, "untracked");
+      }
+    }
+  }
+  const listings: (string[] | Error)[] = [];
+  let nextDir = 0;
+  const lister = async (): Promise<void> => {
+    for (let index = nextDir++; index < untrackedDirs.length; index = nextDir++) {
+      try {
+        listings[index] = await listUntrackedBounded(repo.cwd, [untrackedDirs[index]], UNTRACKED_LISTING_LIMIT);
+      } catch (error) {
+        listings[index] = error as Error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(STATUS_CONCURRENCY, untrackedDirs.length) }, lister));
+  untrackedDirs.forEach((dir, index) => {
+    const inside = listings[index];
+    if (inside instanceof Error) {
+      // Git already said the directory is untracked; failing to count its files is
+      // no reason to lose the whole repository's status. Say what is known.
+      pushRel(dir.slice(0, -1), "untracked", 1);
+    } else if (inside.length > UNTRACKED_LISTING_LIMIT) {
+      pushRel(dir.slice(0, -1), "untracked", UNTRACKED_LISTING_LIMIT);
+    } else if (inside.length === 0) {
+      // A nested repository, or a directory git could not look into: what -uall
+      // reported for it too
+      pushRel(dir, "untracked");
+    } else {
+      for (const file of inside) pushRel(file, "untracked");
+    }
+  });
   return result;
 }
 

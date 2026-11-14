@@ -16,6 +16,8 @@ interface SidebarProps {
   browserRoot?: string;
   /** Git status per path, for tree badges. */
   gitFiles?: Record<string, GitFileState>;
+  /** Directories reported as holding at least this many untracked files. */
+  gitAtLeast?: Record<string, number>;
   /** Paths already referenced by the composer, so the tree can show the toggle as active. */
   attachedPaths?: string[];
   onExpand: (path: string) => void;
@@ -64,6 +66,7 @@ export function Sidebar({
   writableRoot,
   browserRoot,
   gitFiles,
+  gitAtLeast,
   attachedPaths,
   onExpand,
   onSelectDirectory,
@@ -176,6 +179,7 @@ export function Sidebar({
           writableRoot={writableRoot}
           browserRoot={browserRoot}
           gitFiles={gitFiles}
+          gitAtLeast={gitAtLeast}
           attachedPaths={attachedPaths}
           onExpand={onExpand}
           onSelectDirectory={onSelectDirectory}
