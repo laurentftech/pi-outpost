@@ -188,10 +188,29 @@ const GIT_BADGE: Record<GitFileState, { label: string; className: string }> = {
   conflicted: { label: "C", className: "text-purple-600 dark:text-purple-400" },
 };
 
+/**
+ * Changed files per directory, counted once per git status. Asked per directory row,
+ * a scan of every changed path is rows × paths on each render of the tree — seconds
+ * per click once an unignored build directory puts tens of thousands of untracked
+ * files in the status.
+ */
+const changeCountsByStatus = new WeakMap<Record<string, GitFileState>, Map<string, number>>();
+
 /** Number of git-changed files under this directory (badge on collapsed directories). */
 function dirChangeCount(dirPath: string, gitFiles: Record<string, GitFileState> | undefined): number {
   if (!gitFiles) return 0;
-  return Object.keys(gitFiles).filter((p) => p.startsWith(`${dirPath}/`)).length;
+  let counts = changeCountsByStatus.get(gitFiles);
+  if (!counts) {
+    counts = new Map();
+    for (const path of Object.keys(gitFiles)) {
+      for (let slash = path.indexOf("/"); slash >= 0; slash = path.indexOf("/", slash + 1)) {
+        const dir = path.slice(0, slash);
+        counts.set(dir, (counts.get(dir) ?? 0) + 1);
+      }
+    }
+    changeCountsByStatus.set(gitFiles, counts);
+  }
+  return counts.get(dirPath) ?? 0;
 }
 
 /**
