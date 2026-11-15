@@ -295,6 +295,14 @@ run unconfined. On Apple silicon either runner works; MXC's is maintained by Mic
    for `wxc-exec.exe` beside itself, where `pi-outpost build-exe` puts it.
 3. **Run the server in your interactive session**, not as a service nor over SSH.
 
+**Diagnostic data.** From `@microsoft/mxc-sdk` 1.1.0, on Windows builds routed for Microsoft telemetry,
+MXC sends Microsoft four Required events per confined command (execution start and end, a categorized
+error, a process exit), with random identifiers to correlate them. No setting of pi-outpost or MXC, consent
+choice or administrative policy turns them off; a machine with no route to Microsoft sends nothing. MXC
+collects nothing on Linux and macOS. See MXC's
+[diagnostic data](https://github.com/microsoft/mxc/blob/main/docs/telemetry.md) and the
+[Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement).
+
 Nothing else is installed: Windows PowerShell 5.1 comes with Windows. `pwsh.exe` (PowerShell 7) works
 too — a bare name is looked up on `PATH` when the configuration loads, and one not found stops the
 server, saying so. With a PowerShell `bashShell` the agent is given pi's `powershell` tool instead of `bash`, so the
@@ -397,7 +405,7 @@ curl: (56) CONNECT tunnel failed, response 403
 With `sandbox.bashImage`, each command of the agent's `bash` runs in a Linux container of that image,
 through MXC's WSLC backend (WSL containers): a real bash with the image's tools — git, curl and ssh in
 `buildpack-deps:bookworm-scm`. The agent keeps its `bash` tool. It needs WSL with container support
-(`wsl --version` 3.0 or later). The image is downloaded on the first command (about 20 s), then each
+(`wsl --version` 3.0.5 or later; `wsl --update` brings it). The image is downloaded on the first command (about 20 s), then each
 command takes about 4 s. `bashShell` must be absent, and `bashRunner` must be MXC.
 
 WSLC is WSL's own: neither Docker nor a WSL distribution (Ubuntu or any other) is needed, nor used
