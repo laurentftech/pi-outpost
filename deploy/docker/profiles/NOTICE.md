@@ -9,3 +9,6 @@ Changes for landstrip 0.20.20 (unchanged for 0.20.26, checked by deploy/docker/t
 - Seccomp keeps the upstream default-deny policy. It adds the exact clone flags used for user/PID/mount namespaces, two mount flag combinations (private propagation and nosuid/nodev/noexec procfs), and pidfd_getfd with flags 0 for the native socket broker. Kernel ptrace checks still apply; CAP_SYS_PTRACE is not granted.
 - AppArmor keeps the upstream protected proc/sys paths and peer signal/ptrace rules, uses ABI 4.0 with explicit Unix networking, and permits user namespaces and these two mounts instead of denying all mounts.
 - Compose separately unmasks system paths so a user namespace can mount its private procfs. No Linux capability is added. These are explicit Docker policy exceptions; this recipe does not use Docker's unchanged default profile.
+
+Changes for MXC's Linux executor (`seccomp-mxc.json`, checked by scripts/mxc-linux/test.sh with @microsoft/mxc-sdk 1.0.1 and 1.1.0):
+- The same upstream default-deny baseline, without landstrip's exceptions. It allows `clone`, `unshare`, `setns`, `mount`, `umount2` and `pivot_root` with any arguments: Bubblewrap's user, PID, mount and network namespaces and the mounts made inside them. Removing any one of the six stops MXC from confining. No Linux capability is added; the test runs with all of them dropped.
