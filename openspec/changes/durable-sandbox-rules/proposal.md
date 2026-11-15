@@ -4,7 +4,7 @@
 
 A grant lasts one command or one session. A user who allows the same directory or the same host every morning is asked every morning, and there is no way to say "never" either: a refused host is asked about again on the next command. And under MXC the agent is told nothing about what the sandbox refused — it sees the program's own "Operation not permitted" and has to guess which path to ask for.
 
-`@microsoft/mxc-sdk` 1.1.0 (#500) can report what a confined command was refused (`captureDenials`), on Windows with the request contract pi-outpost already sends, and on macOS with a development contract. landstrip already reports its refusals, and the egress proxy knows the hosts it refused. Background and sources: #502.
+`@microsoft/mxc-sdk` 1.1.0 (#500) can report what a confined command was refused (`captureDenials`), on Windows with the request contract pi-outpost already sends, and on macOS with a development contract. landstrip already reports its refusals, and the egress proxy knows the hosts it refused. Background and sources: `research.md`.
 
 ## What Changes
 
