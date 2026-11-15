@@ -11,6 +11,7 @@
  * turn to have. What is under test is the wiring, which is what breaks silently.
  */
 import { expect, test } from "@playwright/test";
+import { attachScrollDiagnostics, noteScroll, readScrollDiagnostics, recordScrollDiagnostics } from "./fixtures/scroll-diagnostics";
 
 test.beforeEach(async ({ page }) => {
   await page.goto(process.env.PI_E2E_SERVER_URL!);
@@ -78,15 +79,21 @@ test.describe("the return-to-latest control", () => {
   const CONTROL = "Scroll to the latest message";
 
   test.beforeEach(async ({ page }) => {
+    // A failure here is a question of order between scrolls, resizes and jumps; the
+    // timeline of them is attached to it. See fixtures/scroll-diagnostics.ts.
+    await recordScrollDiagnostics(page, { watch: `button[aria-label="${CONTROL}"]` });
     await page.goto(process.env.PI_E2E_DIAGRAMS_URL!);
     await expect(page.getByTitle("connected")).toBeVisible();
     // The seeded transcript arrives over the socket; wait for it before scrolling.
     await expect(page.locator("[data-item-index]").first()).toBeVisible();
   });
 
+  test.afterEach(({ page }, testInfo) => attachScrollDiagnostics(page, testInfo));
+
   const scroller = (page: import("@playwright/test").Page) => page.locator("main");
 
   async function scrollTo(page: import("@playwright/test").Page, top: number) {
+    await noteScroll(page, `sets scrollTop=${top}`);
     await scroller(page).evaluate((main, value) => {
       main.scrollTop = value;
     }, top);
@@ -186,5 +193,29 @@ test.describe("the return-to-latest control", () => {
     await expect(box).toHaveValue("typed past the control");
     // Clicking into the composer is not a scroll: the control is still there.
     await expect(page.getByRole("button", { name: CONTROL })).toBeVisible();
+  });
+
+  test("the scroll diagnostics record what moved the transcript, in order", async ({ page }) => {
+    // The recorder is only worth having if a failure's log really holds the events:
+    // the test's own step and the scrolls after it, the watched control appearing,
+    // and the app's jump back when the control is used, with the frames that made it.
+    // No exact position is asserted: the step can land while the app's own opening
+    // animation is still running, which is precisely the kind of order this logs.
+    await scrollTo(page, 0);
+    await expect(page.getByRole("button", { name: CONTROL })).toBeVisible();
+    await noteScroll(page, "clicks the control");
+    await page.getByRole("button", { name: CONTROL }).click();
+    await expect(page.getByRole("button", { name: CONTROL })).toHaveCount(0);
+    const log = await readScrollDiagnostics(page);
+    const dump = log.join("\n");
+    const after = (from: number, pattern: RegExp) => log.findIndex((line, i) => i > from && pattern.test(line));
+    const step = after(-1, /TEST sets scrollTop=0/);
+    expect(step, dump).toBeGreaterThanOrEqual(0);
+    expect(after(step, /^\d+ms scroll \|/), dump).toBeGreaterThan(step);
+    expect(after(-1, /watched appears/), dump).toBeGreaterThanOrEqual(0);
+    const click = after(step, /TEST clicks the control/);
+    const returned = after(click, /scrollIntoView\(\{"behavior":"smooth"\}\) on DIV from .+/);
+    expect(returned, dump).toBeGreaterThan(click);
+    expect(after(returned, /watched disappears/), dump).toBeGreaterThan(returned);
   });
 });

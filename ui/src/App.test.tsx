@@ -1639,6 +1639,27 @@ describe("ReturnToLatest", () => {
     expect(control()).toBeInTheDocument();
   });
 
+  it("hands control back to a reader who stops the return as the transcript grows", () => {
+    // Logged in CI: the wheel lands mid-return, further down than the last position
+    // read, in the instant a diagram finishes rendering. Height up, viewport not
+    // moved up: the signature of content growing under a followed reader, and the
+    // app jumped to the end over the reader's gesture.
+    mount();
+    scrollUp();
+    fireEvent.click(screen.getByRole("button", { name: CONTROL }));
+    const main = scroller();
+    layout(main, { scrollHeight: 4000, clientHeight: 600, scrollTop: 800 });
+    fireEvent.scroll(main);
+    const jumps = vi.mocked(Element.prototype.scrollIntoView).mock.calls.length;
+
+    fireEvent.wheel(main);
+    layout(main, { scrollHeight: 4600, clientHeight: 600, scrollTop: 1400 });
+    fireEvent.scroll(main);
+
+    expect(control()).toBeInTheDocument();
+    expect(vi.mocked(Element.prototype.scrollIntoView).mock.calls.length).toBe(jumps);
+  });
+
   it("hands control back to a drag that emits no gesture of its own", () => {
     // A scrollbar drag fires scroll events and nothing else. The only thing that
     // separates it from the animation is the direction: nothing this app starts
