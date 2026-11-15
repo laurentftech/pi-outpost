@@ -46,11 +46,11 @@ describe("platformRunner", () => {
     assert.deepEqual(platformRunner({ platform: "darwin", arch: "x64" }), { runner: "/usr/bin/sandbox-exec", label: "Seatbelt" });
   });
 
-  test("Windows and Linux take MXC, run in process, or say why it cannot run", () => {
+  test("Windows and Linux take MXC — in process on Windows, its executor on Linux — or say why it cannot run", () => {
     assert.deepEqual(platformRunner({ platform: "win32", mxcExecutor: () => "mxc" }), { runner: "mxc", label: "MXC" });
     const missing = platformRunner({ platform: "linux", arch: "x64", execPath: "/opt/pi-outpost", mxcExecutor: () => undefined });
     assert.ok("reason" in missing);
-    assert.match(missing.reason, /MXC's SDK is not installed for x64/);
+    assert.match(missing.reason, /MXC's executor is not installed for x64.*lxc-exec/);
   });
 
   test("a platform no runner confines on has a reason", () => {

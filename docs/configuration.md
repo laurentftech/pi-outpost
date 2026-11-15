@@ -335,10 +335,12 @@ means that an install which fails for that package does not fail pi-outpost's in
 
 `"mxc"` runs MXC **in process**, through the SDK's API, as Microsoft recommends: its native library
 (`mxc_ffi`) for this machine's architecture (`x64` or `arm64`), loaded through `koffi`. No executor of
-MXC's is started for the agent's shell, its self-check or its diagnosis. One exception: the confined
+MXC's is started for the agent's shell, its self-check or its diagnosis. Two exceptions. The confined
 **terminal on Windows** runs under MXC's executor, `wxc-exec.exe` (signed by Microsoft, in the same
 package), because the SDK's Windows pseudo-terminal takes its request on the command line, which a
-terminal's request outgrows. A configuration written before that names one of MXC's executors
+terminal's request outgrows. And on **Linux** everything runs through MXC's executor, `lxc-exec`, started
+with the command's own environment: in process, Bubblewrap would hold the server's where a command can
+read it. A configuration written before that names one of MXC's executors
 (`wxc-exec.exe`, `lxc-exec`, `mxc-exec-mac`) still works: the path is read as `"mxc"`, and the
 startup line says so. If the SDK is not there, the server refuses to start and says so; reinstall
 without `--omit=optional`:

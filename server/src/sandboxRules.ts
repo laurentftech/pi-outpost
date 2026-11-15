@@ -210,9 +210,11 @@ export function hostDecision(rules: readonly SandboxRule[], host: string): RuleD
 }
 
 function within(child: string, parent: string, platform: NodeJS.Platform): boolean {
+  // The platform's own paths, whatever host this runs on: a Windows rule read on Linux is still one.
+  const paths = platform === "win32" ? path.win32 : path.posix;
   const norm = (p: string) => (platform === "win32" ? p.toLowerCase() : p);
-  const relative = path.relative(norm(parent), norm(child));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  const relative = paths.relative(norm(parent), norm(child));
+  return relative === "" || (!relative.startsWith("..") && !paths.isAbsolute(relative));
 }
 
 /**

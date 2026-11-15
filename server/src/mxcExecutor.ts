@@ -137,3 +137,34 @@ export function mxcSdkMissingReason(platform: NodeJS.Platform, arch: string, exe
   }
   return `MXC's SDK is not installed for ${arch}: reinstall pi-outpost with its optional dependencies, or rebuild the executable beside ${execPath} where it is installed`;
 }
+
+/**
+ * Whether MXC runs in process here, through its SDK. Everywhere but Linux.
+ *
+ * On Linux the SDK's native library forks `bwrap` from the server's own process, which hands it
+ * the server's whole environment, keys included. That process is visible inside the sandbox, and
+ * a command reads them from `/proc/<pid>/environ`. The SDK has no option for the environment
+ * `bwrap` itself starts with (microsoft/mxc#1783). So Linux keeps MXC's executor (`lxc-exec`), started with the
+ * command's own minimal environment: `bwrap` inherits that, and holds nothing to read.
+ */
+export function mxcRunsInProcess(platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== "linux";
+}
+
+/** Whether MXC can run here: its SDK where it runs in process, its executor on Linux. */
+export function mxcInstalled(lookup: MxcExecutorLookup = {}): boolean {
+  return mxcRunsInProcess(lookup.platform ?? process.platform) ? mxcSdkInstalled(lookup) : bundledMxcExecutor(lookup) !== undefined;
+}
+
+/** Why MXC cannot run here, in words a user can act on. */
+export function mxcNotInstalledReason(platform: NodeJS.Platform, arch: string, execPath: string): string {
+  return mxcRunsInProcess(platform) ? mxcSdkMissingReason(platform, arch, execPath) : mxcMissingReason(platform, arch, execPath);
+}
+
+/**
+ * The executor a runner value names on Linux: the one pi-outpost ships for `"mxc"`, or the
+ * `lxc-exec` a path names. Undefined when `"mxc"` finds none.
+ */
+export function linuxMxcExecutor(runner: string, lookup: MxcExecutorLookup = {}): string | undefined {
+  return runner === BUNDLED_MXC ? bundledMxcExecutor({ ...lookup, platform: "linux" }) : runner;
+}

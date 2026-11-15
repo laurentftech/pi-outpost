@@ -15,6 +15,7 @@ import {
   isMacMxc,
   mxcErrorMessage,
   mxcLinuxConfig,
+  mxcMacCaptureRequest,
   mxcMacConfig,
   mxcPosixConfig,
   sbplString,
@@ -313,27 +314,37 @@ describe("checkRunner with MXC on macOS", () => {
   });
 });
 describe("checkRunner with MXC on Linux", () => {
-  test("the check runs one confined /bin/true in Bubblewrap, network open, through the SDK, and passes when it does", async () => {
-    const mxc = fakeMxc();
-    assert.deepEqual(await checkRunner("mxc", noExec, "linux", mxc.load), { ok: true });
-    const [request] = mxc.spawned;
-    assert.equal((request.containment as { type: string }).type, "bubblewrap");
-    assert.equal(request.command, "/bin/true");
-    assert.deepEqual(request.network, { egress: { default: "allow" } }, "the most demanding shape: a host that runs it runs the proxy too");
+  const executor = "/opt/mxc/bin/x64/lxc-exec";
+  const neverLoaded = async () => assert.fail("Linux runs MXC's executor: its SDK is not loaded") as never;
+
+  test("the check runs one confined /bin/true in Bubblewrap, network open, through MXC's executor and not its SDK, and passes when it does", async () => {
+    let request: Record<string, unknown> | undefined;
+    let started: string | undefined;
+    const ok = await checkRunner(
+      executor,
+      async (file, args) => {
+        started = file;
+        assert.equal(args.length, 1, "the request file alone");
+        request = JSON.parse(await readFile(args[0], "utf8"));
+        return { stdout: "", stderr: "" };
+      },
+      "linux",
+      neverLoaded,
+    );
+    assert.deepEqual(ok, { ok: true });
+    assert.equal(started, executor);
+    assert.equal(request?.containment, "bubblewrap");
+    assert.equal((request?.process as { commandLine: string }).commandLine, "/bin/true");
+    assert.deepEqual(request?.network, { egress: { default: "allow" } }, "the most demanding shape: a host that runs it runs the proxy too");
   });
 
   // openlore: scenario=AContainerWithoutNamespacesRefusesWithTheReason spec=sandbox-runner-bash
-  test("AContainerWithoutNamespacesRefusesWithTheReason: MXC's own message is the reason; its old Linux executor elsewhere than Linux, refused", async () => {
+  test("AContainerWithoutNamespacesRefusesWithTheReason: MXC's own message is the reason; its Linux executor elsewhere than Linux, refused", async () => {
     const said = "Bubblewrap: network.egress requires unprivileged user and network namespaces, which this host refused (unshare --user --net exited with exit status: 1).";
-    const refused = await checkRunner("mxc", noExec, "linux", fakeMxc({ refuse: said }).load);
-    assert.ok(!refused.ok && refused.reason === `MXC cannot confine commands on this host: ${said}`, !refused.ok ? refused.reason : "");
+    const refused = await checkRunner(executor, async () => Promise.reject(Object.assign(new Error("Command failed"), { stdout: "", stderr: `${JSON.stringify({ error: { message: said } })}\n` })), "linux", neverLoaded);
+    assert.ok(!refused.ok && refused.reason.startsWith("MXC cannot confine commands on this host: ") && refused.reason.includes("unshare --user --net"), !refused.ok ? refused.reason : "");
     const windowsHost = await checkRunner("/opt/mxc/lxc-exec", noExec, "win32", fakeMxc().load);
     assert.ok(!windowsHost.ok && /Linux only/.test(windowsHost.reason));
-  });
-
-  test("an SDK that cannot load is the reason, and nothing is run", async () => {
-    const result = await checkRunner("mxc", noExec, "linux", async () => ({ reason: "MXC's SDK cannot load here: no libmxc_ffi.so" }));
-    assert.deepEqual(result, { ok: false, reason: "MXC's SDK cannot load here: no libmxc_ffi.so" });
   });
 });
 describe("mxcLinuxConfig", () => {
@@ -388,6 +399,33 @@ describe("mxcLinuxConfig", () => {
     assert.equal(quotePosixArgument("/bin/bash"), "/bin/bash");
     assert.equal(quotePosixArgument("it's here"), `'it'\\''s here'`);
     assert.equal(mxcLinuxConfig({ ...base, shellArgs: ["-c", "echo $HOME; ls"] }).process.commandLine, `/bin/bash -c 'echo $HOME; ls'`);
+  });
+});
+
+describe("mxcMacCaptureRequest", () => {
+  test("the same request on the development contract, with Seatbelt's report asked for in block mode: nothing else changes", () => {
+    const config = mxcMacConfig({
+      root: "/Users/me/app",
+      allowWrite: true,
+      tmp: "/private/var/folders/xy/T/pi-outpost-bash-1",
+      shell: "/bin/bash",
+      shellArgs: ["/private/var/folders/xy/T/pi-outpost-bash-1/command.sh"],
+      cwd: "/Users/me/app",
+      env: { PATH: "/usr/bin:/bin" },
+      searchPath: "/usr/bin:/bin",
+      agentDir: "/Users/me/.pi/agent",
+      networkProxy: "http://127.0.0.1:4000",
+      developerDir: null,
+      exists: () => true,
+      realPath: (file: string) => file,
+    });
+    const asked = mxcMacCaptureRequest(config, "/private/var/folders/xy/T/pi-outpost-refused-1/report.json");
+    assert.equal(asked.version, "1.1.0-alpha");
+    assert.deepEqual(asked.seatbelt, { ...config.seatbelt, captureDenials: { mode: "block", outputPath: "/private/var/folders/xy/T/pi-outpost-refused-1/report.json" } });
+    const { version: _v, seatbelt: _s, ...rest } = asked;
+    const { version: _cv, seatbelt: _cs, ...before } = config;
+    assert.deepEqual(rest, before, "what the command may touch is the request's own");
+    assert.equal(config.version, "1.0.0", "the request it was made from is left as it was");
   });
 });
 

@@ -272,7 +272,7 @@ describe("MXC's executor beside a Windows executable", () => {
     });
   });
 
-  test("an executor already there is kept unless --force, and nothing is placed off Windows", () => {
+  test("an executor already there is kept unless --force; Linux gets lxc-exec, and macOS nothing", () => {
     withDirs(({ source, out, lines }) => {
       const beside = path.join(out, "wxc-exec.exe");
       writeFileSync(beside, "older");
@@ -284,8 +284,12 @@ describe("MXC's executor beside a Windows executable", () => {
       assert.equal(readFileSync(beside, "utf8"), "the executor");
 
       rmSync(beside);
-      assert.equal(placeMxcExecutor(path.join(out, "pi-outpost"), { platform: "linux", executor: source, log }), undefined);
+      // Linux runs MXC's executor for everything: lxc-exec, executable, beside it.
+      assert.equal(placeMxcExecutor(path.join(out, "pi-outpost"), { platform: "linux", executor: source, log }), path.join(out, "lxc-exec"));
+      assert.equal(readFileSync(path.join(out, "lxc-exec"), "utf8"), "the executor");
+      assert.equal(placeMxcExecutor(path.join(out, "pi-outpost"), { platform: "darwin", executor: source, log }), undefined);
       assert.equal(existsSync(beside), false);
+      assert.deepEqual(placeMxcNative(path.join(out, "pi-outpost"), { platform: "linux", arch: "x64", sources: { ffi: source, koffi: out, koffiNative: out }, log }), [], "no native part: the SDK is not loaded on Linux");
     });
   });
 

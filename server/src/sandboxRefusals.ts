@@ -7,6 +7,7 @@
  * an IP address). A file is recorded against its directory, since that is what a grant and a rule
  * widen.
  */
+import { statSync } from "node:fs";
 import path from "node:path";
 import type { GrantAccess } from "./sandboxGrants.ts";
 import { forbiddenHost } from "./sandboxGrants.ts";
@@ -117,9 +118,41 @@ export function mxcReportRefusals(report: unknown, context: MxcReportContext): R
   return refusals;
 }
 
+/**
+ * MXC's denial report on macOS (`seatbelt.captureDenials`) as refusals: each file Seatbelt
+ * refused, as the directory a rule would widen. Measured on an Apple M1 (see `research.md`): a
+ * file is named by its own resolved path, with `read` or `write`; a directory refused a listing
+ * is named the same way, so `isDirectory` tells them apart. Everything else in the report — Mach
+ * services, shared memory, `sysctl`, the resolver's socket, the pasteboard — is not a `file`, is
+ * refused every command whatever it does, and is left out: no rule names it.
+ */
+export function seatbeltReportRefusals(report: unknown, command: string, isDirectory: (file: string) => boolean = isDirectoryOnDisk): Refusal[] {
+  const denials = (report as { denials?: unknown } | null)?.denials;
+  if (!Array.isArray(denials)) return [];
+  const text = commandText(command);
+  const refusals: Refusal[] = [];
+  for (const denial of denials as Array<{ resource?: unknown; resourceType?: unknown; accessType?: unknown }>) {
+    if (denial.resourceType !== "file" || typeof denial.resource !== "string" || !path.posix.isAbsolute(denial.resource)) continue;
+    const access: GrantAccess | undefined = denial.accessType === "write" ? "write" : denial.accessType === "read" || denial.accessType === "execute" ? "read" : undefined;
+    if (access === undefined) continue;
+    const resource = path.posix.normalize(denial.resource);
+    refusals.push({ kind: "directory", target: isDirectory(resource) ? resource : path.posix.dirname(resource), access, command: text });
+  }
+  return refusals;
+}
+
+function isDirectoryOnDisk(file: string): boolean {
+  try {
+    return statSync(file).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** The report MXC wrote for `reportPath`: it adds `.<pid>_<hash>` before `.json`. Undefined when none. */
 export function mxcReportFile(names: readonly string[], reportPath: string): string | undefined {
-  const stem = path.basename(reportPath, ".json").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // win32's reads both separators: the path is Windows' or macOS', on whatever host.
+  const stem = path.win32.basename(reportPath, ".json").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`^${stem}(\\.\\d+_[0-9a-f]+)?\\.json$`, "i");
   return names.find((name) => pattern.test(name));
 }

@@ -26,9 +26,14 @@ What the sandbox refuses a command of the agent's confined shell SHALL be record
 - **WHEN** the user opens the recorded refusals
 - **THEN** the interface says filesystem refusals are recorded only when the agent asks for a diagnosis
 
+#### Scenario: OnMacOsMxcReportsWhatSeatbeltRefused
+- **GIVEN** a confined shell under MXC on macOS, a file beside the root and the agent directory
+- **WHEN** a command reads both and writes beside the root, each refused
+- **THEN** the command ran once, the record holds a refusal for each directory with its access — the one refused by default and the one refused by name — and nothing that is not a file, and no report file remains
+
 ### Requirement: TheAgentIsToldWhatWasRefused
 
-On a runner that reports refusals as they happen, a confined command's output SHALL end with a note naming what the sandbox refused it, so the agent can ask for exactly that. On a runner that reports them only on demand (MXC on Windows), a failed command's output SHALL end with a note saying so and naming the shell tool's `diagnose` option. That option SHALL NOT be used by pi-outpost on its own.
+On a runner that reports refusals as they happen (landstrip outside Windows, MXC on macOS), a confined command's output SHALL end with a note naming what the sandbox refused it, so the agent can ask for exactly that. On a runner that reports them only on demand (MXC on Windows), a failed command's output SHALL end with a note saying so and naming the shell tool's `diagnose` option. That option SHALL NOT be used by pi-outpost on its own.
 
 #### Scenario: TheOutputNamesTheRefusedDirectory
 - **GIVEN** a confined shell on a runner that reports refusals as they happen

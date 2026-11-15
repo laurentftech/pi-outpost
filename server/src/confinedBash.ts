@@ -13,21 +13,23 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
 import type { SandboxGrantOutcome } from "@pi-outpost/shared";
 import { startEgressProxy, type EgressProxy, type EgressProxyOptions } from "./egressProxy.ts";
 import { EMPTY_GRANT, forbiddenHost, isApproved, isEmptyGrant, mergeGrants, type Grant } from "./sandboxGrants.ts";
-import { mxcSdk, runThroughSdk, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
-import { hostRefusal, landstripRefusal, mxcReportFile, mxcReportRefusals, refusalCollector, refusalKey, type Refusal } from "./sandboxRefusals.ts";
+import { linuxMxcExecutor, mxcMissingReason, mxcRunsInProcess } from "./mxcExecutor.ts";
+import { mxcSdk, runThroughSdk, SdkDocumentRefused, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
+import { hostRefusal, landstripRefusal, mxcReportFile, mxcReportRefusals, refusalCollector, refusalKey, seatbeltReportRefusals, type Refusal } from "./sandboxRefusals.ts";
 import {
   checkRunner,
   confinedEnvironment,
   gitReadOnlyFiles,
   isPosixMxc,
   mxcDiagnosticConfig,
+  mxcMacCaptureRequest,
   mxcPosixConfig,
   proxyEnvironment,
   seatbeltPolicy,
@@ -35,7 +37,7 @@ import {
   runnerKind,
   siblingsToDeny,
   terminalPolicy,
-  type MxcTerminalConfig,
+  type MxcMacConfig,
   type RunnerCheck,
 } from "./terminalSandbox.ts";
 
@@ -352,6 +354,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
   // MXC on Windows reports what it refused only when asked, at a cost of a second per command:
   // a diagnosis, on the agent's request, after a failure (`mxcDiagnosticConfig`).
   const diagnosable = kind === "mxc" && windows && !wslc && !isPosixMxc(options.runner);
+  // macOS: whether MXC's SDK refused the document that asks for Seatbelt's report (`mxcMacCaptureRequest`).
+  let captureRefused = false;
   /**
    * One command. With `diagnosis`, run as a diagnosis (`mxcDiagnosticConfig`): none of its output is
    * shown, and what MXC's report names — filtered, undefined when MXC wrote none — goes there.
@@ -410,8 +414,10 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     // Where MXC writes a diagnosis' report: a directory of the server's, given to no sandbox. Never
     // the path announced on stderr — the command writes there too, and could name any file.
     let reportDir: string | undefined;
-    // MXC's request, run in process through its SDK (`mxcSdk.ts`): no executor runs.
+    // MXC's request, run in process through its SDK (`mxcSdk.ts`): no executor runs, but on Linux.
     let mxcWire: MxcWireRequest | undefined;
+    // The same, as a document sent as written: macOS, with Seatbelt's report asked for.
+    let mxcJson: string | undefined;
     let sdkReportPath: string | undefined;
     let exitCode: number | null | undefined;
     try {
@@ -424,6 +430,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
       const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
       const policyFile = path.join(tmp, "policy.json");
       let args: string[];
+      // What is started, when it is not `options.runner` itself: MXC's executor on Linux.
+      let executor: string | undefined;
       // sandbox-exec hands the command its own environment: the one its policy says.
       let runnerEnv = env;
       if (kind === "seatbelt") {
@@ -476,8 +484,24 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           readOnlyFiles,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
         });
-        mxcWire = request as MxcWireRequest;
-        args = [];
+        if (mxcRunsInProcess(platform)) {
+          // macOS: the same request on MXC's development contract, which reports what Seatbelt
+          // refused — in a directory of the server's, given to no sandbox, as a diagnosis' is.
+          mxcWire = request as MxcWireRequest;
+          if (!captureRefused) {
+            reportDir = await realpath(await mkdtemp(path.join(tmpdir(), "pi-outpost-refused-")));
+            mxcJson = JSON.stringify(mxcMacCaptureRequest(request as MxcMacConfig, path.join(reportDir, "report.json")));
+          }
+          args = [];
+        } else {
+          // Linux: MXC's executor, started with the command's environment and nothing of the
+          // server's — `bwrap` inherits what its parent holds (`mxcRunsInProcess`).
+          const found = linuxMxcExecutor(options.runner);
+          if (found === undefined) throw new Error(`bash is confined by MXC, which cannot run it: ${mxcMissingReason(platform, process.arch, process.execPath)}`);
+          executor = found;
+          await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
+          args = [policyFile];
+        }
       } else if (kind === "mxc") {
         const request = mxcTerminalConfig({
           root: options.root,
@@ -530,11 +554,22 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
       if (loadedSdk !== undefined && "reason" in loadedSdk) throw new Error(`bash is confined by MXC, which cannot run it: ${loadedSdk.reason}`);
       const launch = async (): Promise<{ exitCode: number | null }> => {
         if (loadedSdk !== undefined && mxcWire !== undefined) {
-          const result = await runThroughSdk(loadedSdk.sdk, sdkRequest(mxcWire), { onData, signal, timeoutMs, timeout });
+          const stable = () => runThroughSdk(loadedSdk.sdk, sdkRequest(mxcWire!), { onData, signal, timeoutMs, timeout });
+          // The development contract can change under pi-outpost: an SDK that no longer takes the
+          // document started nothing, so the command runs on the stable one, confined the same,
+          // and this shell stops asking — it then reports nothing of files.
+          const result =
+            mxcJson === undefined
+              ? await stable()
+              : await runThroughSdk(loadedSdk.sdk, { json: mxcJson }, { onData, signal, timeoutMs, timeout }).catch((error) => {
+                  if (!(error instanceof SdkDocumentRefused)) throw error;
+                  captureRefused = true;
+                  return stable();
+                });
           sdkReportPath = result.metadata?.captureDenials?.outputPath;
           return { exitCode: result.exitCode };
         }
-        return run(options.runner, args, { cwd: startIn, env: runnerEnv, onData, ...(stderr ? { stderr } : {}), signal, timeoutMs, timeout, windows });
+        return run(executor ?? options.runner, args, { cwd: startIn, env: runnerEnv, onData, ...(stderr ? { stderr } : {}), signal, timeoutMs, timeout, windows });
       };
       // curl, git and PowerShell print only "403" for a refused tunnel: the model is told which
       // host, and why. Commands of the agent's shell run one at a time, so these are this one's.
@@ -547,6 +582,17 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
       try {
         const result = await (wslc ? oneWslcAtATime(launch) : launch());
         exitCode = result.exitCode;
+        if (mxcJson !== undefined && reportDir !== undefined) {
+          // Only a file inside the directory MXC was told to use, and one it named by its rule.
+          const named = sdkReportPath !== undefined && path.dirname(path.resolve(sdkReportPath)) === reportDir ? path.basename(sdkReportPath) : undefined;
+          if (named !== undefined && mxcReportFile([named], path.join(reportDir, "report.json")) !== undefined) {
+            try {
+              for (const refusal of seatbeltReportRefusals(JSON.parse(await readFile(path.join(reportDir, named), "utf8")), command)) refusals.add(refusal);
+            } catch {
+              // No report to read: the command's own error is all there is.
+            }
+          }
+        }
         if (diagnosis !== undefined) {
           let report: unknown;
           const reportPath = path.join(reportDir!, "report.json");

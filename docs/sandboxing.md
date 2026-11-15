@@ -177,8 +177,11 @@ questions. On Windows, landstrip refuses the key: use MXC.
 }
 ```
 
-On Linux, `"mxc"` runs MXC's Bubblewrap backend in process, through the SDK installed with pi-outpost;
-a path ending in `lxc-exec`, MXC's former executor, is read as `"mxc"`. It runs each command, and
+On Linux, `"mxc"` runs MXC's Bubblewrap backend through `lxc-exec`, the executor in the SDK's package
+installed with pi-outpost; a path ending in `lxc-exec` is read as `"mxc"`. Unlike Windows and macOS, MXC
+does not run in process here: Bubblewrap's own process is visible to the command and keeps the
+environment it was started with, which in process would be the server's, keys included. `lxc-exec` is
+started with the command's minimal environment instead. It runs each command, and
 each terminal, in namespaces holding only the system trees, the root and the command's temporary
 folder — no home, no other project, no agent directory. What it adds over landstrip:
 
@@ -249,6 +252,12 @@ clients can validate certificate chains. This does not enable access to the user
 `/usr/bin/git` is Apple's `xcrun` shim, which cannot find its cache folders in the sandbox and warns
 on every call: the confined search path puts the developer tools' own `git` first (Xcode's or the
 Command Line Tools', whichever `xcode-select -p` names).
+
+**What was refused is told.** Every command of the agent's shell asks MXC for Seatbelt's report of what it
+refused — a file beside the root, or one denied by name — and its output ends naming each directory, which
+is also recorded for the project's [rules](#rules-always-allow-always-refuse). Enforcement is unchanged. This
+uses a request contract MXC calls development (`1.1.0-alpha`); if a later SDK refuses it, commands run on
+the stable contract, confined the same, and nothing is reported of files.
 
 MXC's native library exists for Apple silicon only: on an Intel Mac `"mxc"` is refused at start, saying so —
 [Seatbelt](#macos-every-mac-seatbelt) is the runner there.

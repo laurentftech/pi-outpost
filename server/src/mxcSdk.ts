@@ -83,6 +83,12 @@ export interface MxcSdk {
   spawn(request: SdkRequest, options: typeof NO_TELEMETRY): Promise<SdkProcess>;
   spawnWithPty(request: SdkRequest, options: typeof NO_TELEMETRY & { size?: { rows: number; columns: number } }): Promise<SdkPtyProcess>;
   probe(): Promise<unknown> | unknown;
+  /**
+   * A request document sent as written (`@microsoft/mxc-sdk/v1/dev`): the only way to MXC's
+   * development contract, which alone carries Seatbelt's report of what it refused
+   * (`mxcMacCaptureRequest`). `experimental` is the authorisation that contract asks for.
+   */
+  spawnJson(json: string, options: { experimental: boolean }): Promise<SdkProcess>;
 }
 
 /**
@@ -95,7 +101,8 @@ export async function loadMxcSdk(): Promise<{ sdk: MxcSdk } | { reason: string }
   try {
     // A literal, so the standalone executable's bundle carries the SDK's JavaScript; the npm
     // package keeps it external (cli/scripts/build.mjs), beside its native library.
-    return { sdk: (await import("@microsoft/mxc-sdk/v1")) as unknown as MxcSdk };
+    const [stable, dev] = await Promise.all([import("@microsoft/mxc-sdk/v1"), import("@microsoft/mxc-sdk/v1/dev")]);
+    return { sdk: { ...(stable as unknown as Omit<MxcSdk, "spawnJson">), spawnJson: (dev as unknown as Pick<MxcSdk, "spawnJson">).spawnJson } };
   } catch (error) {
     return { reason: `MXC's SDK cannot load here: ${(error as Error).message.split("\n")[0]}` };
   }
@@ -152,18 +159,27 @@ export function sdkRequest(wire: MxcWireRequest, timeoutMs?: number): SdkRequest
   };
 }
 
+/** The SDK did not start a request document sent as written: nothing ran, so the caller may send another. */
+export class SdkDocumentRefused extends Error {}
+
 /**
- * Runs one request through the SDK as the executor ran it (`confinedBash.ts`'s `run`): stdout and
+ * Runs one request through the SDK as the executor ran it (`confinedBash.ts`'s `run`) — in the
+ * SDK's model, or a request document sent as written (`json`, the development contract): stdout and
  * stderr as they come, ended by the signal or the timeout — which then throw `aborted` or
  * `timeout:<seconds>`, as pi's shell expects — and the result's metadata (a diagnosis' report).
  */
 export async function runThroughSdk(
   sdk: MxcSdk,
-  request: SdkRequest,
+  request: SdkRequest | { json: string },
   options: { onData: (data: Buffer) => void; stderr?: (data: Buffer) => void; signal?: AbortSignal; timeoutMs?: number; timeout?: number },
 ): Promise<{ exitCode: number | null; metadata: SdkMetadata | undefined }> {
   if (options.signal?.aborted) throw new Error("aborted");
-  const proc = await sdk.spawn(request, NO_TELEMETRY);
+  const proc =
+    "json" in request
+      ? await sdk.spawnJson(request.json, { experimental: true }).catch((error: Error) => {
+          throw new SdkDocumentRefused(error.message);
+        })
+      : await sdk.spawn(request, NO_TELEMETRY);
   let timedOut = false;
   const end = () => proc.kill();
   const timer = options.timeoutMs === undefined ? undefined : setTimeout(() => {
@@ -216,6 +232,9 @@ export async function mxcPty(sdk: MxcSdk, request: SdkRequest, cols: number, row
   const proc = await sdk.spawnWithPty(request, { ...NO_TELEMETRY, size: { rows, columns: cols } });
   const dataListeners = new Set<(data: string) => void>();
   const exitListeners = new Set<(event: { exitCode: number }) => void>();
+  // Taken before `wait()`: the SDK ends an input nobody took when its wait begins, and the shell
+  // reads that as the end of its input — it exits at once, a `^D` in its output.
+  const input = proc.input;
   proc.output.setEncoding("utf8");
   proc.output.on("data", (data: string) => {
     for (const listener of dataListeners) listener(data);
@@ -244,7 +263,7 @@ export async function mxcPty(sdk: MxcSdk, request: SdkRequest, cols: number, row
       return { dispose: () => exitListeners.delete(listener) };
     },
     write(data) {
-      if (!exited) proc.input.write(data);
+      if (!exited) input.write(data);
     },
     resize(columns, rowCount) {
       if (!exited) proc.resize({ rows: rowCount, columns });

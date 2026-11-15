@@ -13,7 +13,8 @@ A grant lasts one command or one session. A user who allows the same directory o
 - From a recorded refusal, or from a question as it is asked, the user can make a rule: always allow, always refuse, or ask. Rules last across sessions and restarts, per project.
 - Rules are listed and revoked in the interface.
 - Recording never relaxes confinement: MXC's capture runs in its `block` mode only.
-- MXC runs in process through its SDK, as Microsoft recommends, for the agent's shell, the terminal and the self-check, on Windows, Linux and macOS: no executor (`wxc-exec.exe`, `lxc-exec`, `mxc-exec-mac`) runs any more. The standalone executable carries the SDK's native parts beside it. pi-outpost needs Node.js 24.21 or 26.8, the SDK's floor for native stdio on Windows.
+- MXC runs in process through its SDK, as Microsoft recommends, for the agent's shell, the terminal and the self-check, on Windows and macOS: no executor (`wxc-exec.exe`, `mxc-exec-mac`) runs any more, but for Windows' confined terminal. Linux keeps `lxc-exec`: in process, Bubblewrap would hold the server's environment where a command reads it.
+- On macOS under MXC, what Seatbelt refused a command is reported with every command, on MXC's development contract. The standalone executable carries the SDK's native parts beside it. pi-outpost needs Node.js 24.21 or 26.8, the SDK's floor for native stdio on Windows.
 
 ## Capabilities
 

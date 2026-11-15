@@ -10,20 +10,12 @@
 
 - [x] 2.1 One record type; translate landstrip's lines and the proxy's refused hosts into it.
 - [x] 2.2 Windows: the `diagnose` option, its narrower rerun (no drive, no named denies, no network), the report read from its announced path, filtered, deleted, the announcement stripped.
-- [ ] 2.3 The same on macOS, behind the development contract. Deferred: needs an Apple silicon Mac (a probe first, as for Windows: does Seatbelt report explicit denies?).
+- [x] 2.3 macOS, as they happen. Probed on an Apple M1 (`scripts/probes/mxc-capture-denials-mac.mjs`; `research.md`, "Measured on macOS"): Seatbelt's report holds explicit denies too, each file by its path, for about 50 ms, and no `file` entry is noise — so every command of the agent's shell under MXC on macOS asks for it on the development contract (`mxcMacCaptureRequest`, `seatbeltReportRefusals`; `design.md`, "On macOS, refusals are reported as they happen"), and falls back to the stable contract, reporting nothing of files, if the SDK refuses the document.
 
-  **What CI showed on PR #504 (first run, read before anything else):**
-  - **Linux, a confinement regression — do not merge as is.** Through the SDK, MXC's native library forks `bwrap` from the server's own process, which hands it the server's whole environment, keys included; that process is visible inside the sandbox and a command reads them from `/proc/<pid>/environ` (`confinedBashMxcLinux.test.ts`, `key-visible=1`). The executor was spawned with a minimal environment and leaked nothing. Options weighed: Linux back to `lxc-exec` with the minimal environment (recommended), a scrubbed-environment helper process around the SDK, or an SDK option upstream for the child's environment. Not decided.
-  - **The terminal through the SDK's PTY fails on Linux and macOS**: the shell exits at once (code 1, a `^D` in its output), as if its input ended at start. `mxcPty` in `mxcSdk.ts` or the SDK's POSIX PTY; reproduce on the Mac.
-  - **macOS, the agent's shell through the SDK passes** (`OnMacOsACommandCannotReachOutsideTheRoot`), as do Seatbelt's tests.
-  - `check` failed on a type error in `server/src/pdf.ts` (`pdfjs-dist`), a file this change does not touch: compare with `main`.
-
-  Handover, written from Windows (nothing below has run on a Mac):
-  1. **Run what exists first**: `bash scripts/mxc-macos/test.sh` (Node.js ≥ 24.21 or ≥ 26.8, `npm ci` done). The suites hand `MXC_MAC_EXEC`'s path as the runner; it is now read as `"mxc"`, so they exercise MXC through the SDK (`server/src/mxcSdk.ts`) for the first time on macOS — shell (`confinedBashMxcMac`), terminal through `spawnWithPty` (`terminalSandboxMxcMac`), canary, grants. A failure here is task 5.7, before 2.3.
-  2. **Probe the capture**, as `scripts/probes/mxc-capture-denials.mjs` did on Windows (see `research.md`, "Measured on Windows 11"): the request is the development contract `1.1.0-alpha` (`dist/generated/v1_1_0_alpha/wire.d.ts`, `seatbelt.captureDenials`: `mode: "block"`, `outputPath`, `retainEtl`), sent through `@microsoft/mxc-sdk/v1/dev`'s `spawnJson(json, { experimental: true })` — the stable `v1` API `sdkRequest` targets does not carry it. Answer: the report's shape and where it lands; whether a path the profile denies by name is reported (on Windows it is not — the whole reason for `diagnose`); its cost per command (it reads `log stream`); what it needs (permissions for the unified log?); the noise beside a real refusal.
-  3. **Then decide with the probe in hand**: reported as they happen (`fileReporting` → `"reported"`, end-of-output note as landstrip) or on demand (`diagnose`, as Windows: `confinedBash.ts` `diagnosable`, `mxcDiagnosticConfig`'s macOS equivalent, strictly narrower). Write it in `design.md` (the macOS row of the sources table is still the documentation's word) and the spec delta, as 1.3 did.
-  4. **Translate**: `mxcReportRefusals` (`sandboxRefusals.ts`) is Windows' (`path.win32`, `SystemRoot`, `WindowsApps` noise); add the POSIX one beside it, filtered of what the probe shows as noise. Mach-service refusals are `info` (no rule names them).
-  5. **Coverage**: `scenario-coverage.md` has six macOS/Linux rows `partial`; the macOS ones become `covered` once step 1 passes on a Mac or in CI's `mxc-macos` job.
+  **Found by PR #504's first CI run, and since fixed** (`research.md`, "Found on the way"):
+  - **Linux, a confinement regression.** In process, `bwrap` held the server's environment where a command read it. Linux is back on `lxc-exec` with the command's environment (`mxcRunsInProcess`; `design.md`, "MXC runs through its SDK, but on Linux"). Asked upstream: an environment for the sandbox's launcher (microsoft/mxc#1783).
+  - **The terminal through the SDK's PTY exited at once**: `mxcPty` took the SDK's `input` after `wait()`, which ends an input nobody took.
+  - `check`: `e2e/sandbox-rules.spec.ts` reaches `server/src/pdf.ts`; `e2e/tsconfig.json` now includes the worker's declaration. Three tests written on Windows failed on POSIX and are fixed (`within` and `mxcReportFile` took the host's path rules; the missing-runner test named an executor now read as `"mxc"`).
 - [x] 2.4 End a confined command's output with what the sandbox refused it.
 
 ## 3. Rules
@@ -41,10 +33,10 @@
 - [x] 5.4 `"mxc"` resolved to the SDK, an executor's path read as `"mxc"`; the self-check through `probe`.
 - [x] 5.5 The terminal through `spawnWithPty` on Linux and macOS; on Windows MXC's executor with a policy file (the SDK 1.1.0 PTY puts the request on the command line, which a terminal's request outgrows).
 - [x] 5.6 The standalone executable: `build-exe` places koffi, its platform package and `mxc_ffi`; the bundle loads them from beside it.
-- [ ] 5.7 The real suites keyed on the SDK, not `MXC_EXEC`; CI's MXC jobs on Linux and macOS.
+- [ ] 5.7 The real suites keyed on the SDK, not `MXC_EXEC`; CI's MXC jobs on Linux and macOS. The suites pass on an Apple M1 (59 of 59) and in Docker (30 of 30); they are still switched on by `MXC_MAC_EXEC` and `MXC_LXC_EXEC` — on Linux that path is the executor really started — and CI has not run since.
 
 ## 4. Verify
 
-- [ ] 4.1 Each runner in its own job or machine: landstrip, MXC Linux, MXC macOS, Seatbelt, MXC Windows.
+- [ ] 4.1 Each runner in its own job or machine: landstrip, MXC Linux, MXC macOS, Seatbelt, MXC Windows. Done by hand: MXC macOS and Seatbelt (Apple M1), MXC Linux (Docker). Left: landstrip, MXC Windows after these changes, and CI.
 - [x] 4.2 The running app, with a break-it pass: a rule revoked mid-command, a rule on a directory deleted since, two clients answering at once.
 - [ ] 4.3 `scenario-coverage.md`, `npm run check:scenarios`, `openspec validate durable-sandbox-rules --strict`, docs.

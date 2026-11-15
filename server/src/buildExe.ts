@@ -16,7 +16,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { bundledMxcExecutor, MXC_EXECUTOR_NAME, MXC_FFI_NAMES } from "./mxcExecutor.ts";
+import { bundledMxcExecutor, MXC_FFI_NAMES, mxcExecutorName, mxcRunsInProcess } from "./mxcExecutor.ts";
 
 /** What `node --build-sea` needs, and the reason each field is here. */
 export interface SeaConfig {
@@ -210,7 +210,7 @@ export interface BuildResult {
 }
 
 /**
- * Put MXC's executor beside a Windows executable, where `"mxc"` looks for it.
+ * Put MXC's executor beside a Windows or Linux executable, where `"mxc"` looks for it.
  *
  * A standalone executable has no `node_modules`, so the executor the package ships would
  * stay behind on the build machine. Copied, not embedded: it is Microsoft's signed file,
@@ -222,9 +222,11 @@ export function placeMxcExecutor(
   target: string,
   options: { platform: NodeJS.Platform; force?: boolean; log: (line: string) => void; executor?: string | undefined },
 ): string | undefined {
-  if (options.platform !== "win32") return undefined;
-  const source = "executor" in options ? options.executor : bundledMxcExecutor({ platform: "win32" });
-  const destination = path.join(path.dirname(target), MXC_EXECUTOR_NAME);
+  // Windows' confined terminal, and everything MXC does on Linux (`mxcRunsInProcess`).
+  const name = options.platform === "win32" || options.platform === "linux" ? mxcExecutorName(options.platform) : undefined;
+  if (name === undefined) return undefined;
+  const source = "executor" in options ? options.executor : bundledMxcExecutor({ platform: options.platform });
+  const destination = path.join(path.dirname(target), name);
   if (source === undefined) {
     if (fs.existsSync(destination)) return destination;
     options.log(`[build-exe] MXC's executor is not installed: "mxc" will not resolve beside ${target}`);
@@ -232,10 +234,11 @@ export function placeMxcExecutor(
   }
   if (path.resolve(source).toLowerCase() === path.resolve(destination).toLowerCase()) return destination;
   if (fs.existsSync(destination) && options.force !== true) {
-    options.log(`[build-exe] kept the ${MXC_EXECUTOR_NAME} already beside it — pass --force to replace it`);
+    options.log(`[build-exe] kept the ${name} already beside it — pass --force to replace it`);
     return destination;
   }
   fs.copyFileSync(source, destination);
+  if (options.platform !== "win32") fs.chmodSync(destination, 0o755);
   options.log(`[build-exe] placed MXC's executor beside it: ${destination}`);
   return destination;
 }
@@ -293,6 +296,8 @@ export function placeMxcNative(
   target: string,
   options: { platform: NodeJS.Platform; arch: string; force?: boolean; log: (line: string) => void; sources?: { ffi?: string; koffi?: string; koffiNative?: string } },
 ): string[] {
+  // Linux runs MXC's executor, not its SDK: nothing native to carry.
+  if (!mxcRunsInProcess(options.platform)) return [];
   const sources = options.sources ?? installedMxcNative(options.platform, options.arch);
   const beside = path.dirname(target);
   const ffiName = MXC_FFI_NAMES[options.platform];

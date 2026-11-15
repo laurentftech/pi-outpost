@@ -12,7 +12,7 @@ import type { SandboxConfig } from "./config.ts";
 import { checkGrantRequest, type GrantContext } from "./sandboxGrants.ts";
 import { forbiddenHost } from "./sandboxGrants.ts";
 import type { RecordedRefusal, SandboxRule, SandboxRulesStore } from "./sandboxRules.ts";
-import { isPosixMxc, runnerKind } from "./terminalSandbox.ts";
+import { isMacMxc, isPosixMxc, runnerKind } from "./terminalSandbox.ts";
 
 /** Whether rules are made and applied: a confined shell, and grants not switched off. */
 export function rulesEnabled(sandbox: SandboxConfig | undefined): boolean {
@@ -24,7 +24,9 @@ export function fileReporting(runner: string | undefined, platform: NodeJS.Platf
   if (!runner) return "not-reported";
   const kind = runnerKind(runner);
   if (kind === "landstrip") return platform === "win32" ? "not-reported" : "reported";
-  if (kind === "mxc" && platform === "win32" && !isPosixMxc(runner)) return "on-demand";
+  if (kind === "mxc" && platform === "win32" && !isPosixMxc(runner, platform)) return "on-demand";
+  // Seatbelt's refusals, asked of MXC with every command (`mxcMacCaptureRequest`).
+  if (kind === "mxc" && isMacMxc(runner, platform)) return "reported";
   return "not-reported";
 }
 

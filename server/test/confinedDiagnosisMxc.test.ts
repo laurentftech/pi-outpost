@@ -131,7 +131,7 @@ describe("a diagnosis under MXC, run in process through its SDK", { skip }, () =
     const { output } = await run("exec", command);
     assert.match(output, /read-refused/);
     assert.match(output, /write-refused/);
-    assert.doesNotMatch(output, /rule\.example\.com/);
+    assert.ok(!output.includes("rule.example.com"), "the rules file is not read");
     await run("diagnose", command);
     assert.equal(await readFile(store.file, "utf8"), before, "unchanged");
   });

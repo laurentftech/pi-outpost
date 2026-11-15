@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import type * as pty from "node-pty";
 import { mxcPty, mxcSdk, sdkRequest, type MxcWireRequest, type PtyLike } from "./mxcSdk.ts";
-import { bundledMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
+import { bundledMxcExecutor, linuxMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
 import type { WebSocket } from "ws";
 
 import { installedTerminalShells } from "./terminalShells.ts";
@@ -434,7 +434,7 @@ export class TerminalManager {
       }
 
       let ptyProcess: pty.IPty | PtyLike;
-      if (mxcRequest !== undefined && process.platform !== "win32") {
+      if (mxcRequest !== undefined && process.platform === "darwin") {
         // MXC in process: its own pseudo-terminal, no executor and no node-pty.
         const loaded = await mxcSdk();
         if ("reason" in loaded) {
@@ -625,7 +625,7 @@ export class TerminalManager {
 export interface ConfinedLaunch {
   file: string;
   args: string[];
-  /** MXC's request, run in process through its SDK's PTY (`mxcSdk.ts`), outside Windows: `file` and `args` are then unused. */
+  /** MXC's request, where MXC runs in process: through its SDK's PTY on macOS (`file` and `args` are then unused), and for the canary on Windows. Absent on Linux, which starts the executor. */
   mxc?: MxcWireRequest;
   env: Record<string, string>;
   cwd: string;
@@ -654,10 +654,21 @@ export async function confinedLaunch(confine: TerminalConfinement, shell: string
         ? ["-f", files.policyFile, shell, ...shellArgs]
         : ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
   // sandbox-exec passes its environment on: the policy's (the developer tools' git first).
-  // MXC: its SDK's pseudo-terminal on Linux and macOS. On Windows, MXC's own executor with the
+  // MXC: its SDK's pseudo-terminal on macOS. On Linux, MXC's own executor with the policy as a
+  // file, in node-pty: started with the shell's environment and nothing of the server's, which
+  // `bwrap` would otherwise hold where a command can read it (`mxcRunsInProcess`). The canary
+  // runs that same launch. On Windows, MXC's own executor with the
   // policy as a file: the SDK's ProcessContainer PTY (1.1.0) starts that same executor with the
   // whole request on its command line, and a terminal's request — every folder beside the path to
   // the root, denied by name — is far past Windows' 32,767 characters (measured: 193 KB).
+  if (confine.kind === "mxc" && process.platform === "linux") {
+    const executor = linuxMxcExecutor(confine.runner);
+    if (executor === undefined) {
+      await files.dispose().catch(() => {});
+      throw new Error(`a terminal confined by MXC on Linux needs MXC's executor: ${mxcMissingReason(process.platform, process.arch, process.execPath)}`);
+    }
+    return { file: executor, args, env: files.env ?? shellEnv, cwd: startIn, files };
+  }
   if (confine.kind === "mxc" && process.platform === "win32") {
     const executor = bundledMxcExecutor();
     if (executor === undefined) {

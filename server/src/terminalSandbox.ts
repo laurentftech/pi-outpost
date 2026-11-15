@@ -27,6 +27,7 @@ import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, 
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
+import { linuxMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
 import { mxcSdk, runThroughSdk, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
 
 /** Whether terminals can be confined, and if not, the reason a user is shown. */
@@ -168,9 +169,15 @@ async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: (
   if (runner !== MXC && file === "lxc-exec" && platform !== "linux") return { ok: false, reason: `MXC's Bubblewrap backend confines commands on Linux only: ${runner}` };
   if (runner !== MXC && file === "mxc-exec-mac" && platform !== "darwin") return { ok: false, reason: `MXC's Seatbelt backend confines commands on macOS only: ${runner}` };
   if (!linux && !mac && platform !== "win32") return { ok: false, reason: `MXC confines commands on Windows, Linux and macOS only, not ${platform}` };
+  // Linux runs MXC's executor, not its SDK (`mxcRunsInProcess`): the check runs what a command will.
+  if (linux) {
+    const executor = linuxMxcExecutor(runner);
+    if (executor === undefined) return { ok: false, reason: mxcMissingReason(platform, process.arch, process.execPath) };
+    return checkPosixMxcRunner({ executor, exec }, "bubblewrap");
+  }
   const loaded = await load();
   if ("reason" in loaded) return { ok: false, reason: loaded.reason };
-  if (linux || mac) return checkPosixMxcRunner(loaded.sdk, mac ? "seatbelt" : "bubblewrap");
+  if (mac) return checkPosixMxcRunner({ sdk: loaded.sdk }, "seatbelt");
   let probe: { tier?: unknown; probes?: { baseContainerSupportsDenyPaths?: unknown }; error?: unknown };
   try {
     probe = (await loaded.sdk.probe()) as typeof probe;
@@ -192,8 +199,8 @@ async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: (
   return { ok: true };
 }
 
-/** MXC's Linux and macOS self-check: one confined `true`, network open, through the SDK. */
-async function checkPosixMxcRunner(sdk: MxcSdk, containment: "bubblewrap" | "seatbelt"): Promise<RunnerCheck> {
+/** MXC's Linux and macOS self-check: one confined `true`, network open — through the SDK on macOS, the executor on Linux. */
+async function checkPosixMxcRunner(through: { sdk: MxcSdk } | { executor: string; exec: Exec }, containment: "bubblewrap" | "seatbelt"): Promise<RunnerCheck> {
   const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-mxc-check-"));
   try {
     const mac = containment === "seatbelt";
@@ -205,9 +212,20 @@ async function checkPosixMxcRunner(sdk: MxcSdk, containment: "bubblewrap" | "sea
       network: { egress: { default: "allow" } },
       ...(mac ? { seatbelt: { extraMachLookups: [] } } : {}),
     };
+    if ("executor" in through) {
+      const file = path.join(tmp, "check.json");
+      await writeFile(file, JSON.stringify(request), { mode: 0o600 });
+      try {
+        await through.exec(through.executor, [file], { timeout: RUNNER_CHECK_TIMEOUT_MS });
+        return { ok: true };
+      } catch (error) {
+        const detail = error as { stderr?: string; stdout?: string; message?: string };
+        return { ok: false, reason: `MXC cannot confine commands on this host: ${mxcErrorMessage(`${detail.stdout ?? ""}${detail.stderr ?? ""}`) || detail.message || "it failed"}` };
+      }
+    }
     let said = "";
     try {
-      const { exitCode } = await runThroughSdk(sdk, sdkRequest(request), {
+      const { exitCode } = await runThroughSdk(through.sdk, sdkRequest(request), {
         onData: (data) => (said += data.toString()),
         timeoutMs: RUNNER_CHECK_TIMEOUT_MS,
         timeout: RUNNER_CHECK_TIMEOUT_MS / 1000,
@@ -783,6 +801,23 @@ export function mxcMacConfig(input: MxcMacInput): MxcMacConfig {
       ? { network: { egress: { default: "allow" } } }
       : { network: { egress: { default: "deny" }, ingress: { default: "deny" } }, runtimeConfig: { networkProxy: input.networkProxy } }),
   };
+}
+
+/**
+ * A macOS request that also asks MXC what Seatbelt refused (`durable-sandbox-rules`): the same
+ * limits, enforced the same (`block`), and a report of each refusal written where `reportPath`
+ * says — MXC adds `.<pid>_<hash>` before `.json`, and a `.verbose.json` beside it.
+ *
+ * Only MXC's development contract carries `seatbelt.captureDenials`, so the document changes
+ * version and nothing else. Measured on an Apple M1 (`research.md`, "Measured on macOS"): what
+ * Seatbelt refuses by default and what `deniedPaths` names are both reported, each file by its
+ * own path, for about 50 ms a command — so every command asks, as landstrip reports on Linux.
+ */
+export function mxcMacCaptureRequest(config: MxcMacConfig, reportPath: string): Omit<MxcMacConfig, "version" | "seatbelt"> & {
+  version: "1.1.0-alpha";
+  seatbelt: MxcMacConfig["seatbelt"] & { captureDenials: { mode: "block"; outputPath: string } };
+} {
+  return { ...config, version: "1.1.0-alpha", seatbelt: { ...config.seatbelt, captureDenials: { mode: "block", outputPath: reportPath } } };
 }
 
 /** What `sandbox-exec` is given: the profile it applies, and the environment the command starts with. */

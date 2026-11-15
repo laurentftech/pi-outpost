@@ -7,7 +7,8 @@
 A standalone executable built where MXC's SDK is installed SHALL carry MXC's native parts beside it —
 `koffi`, its platform package, and MXC's native library — and SHALL run MXC in process from them, as an
 installed pi-outpost does. Built where the SDK is not installed, it SHALL say so, and `"mxc"` SHALL be
-refused by it with the reason.
+refused by it with the reason. On Linux, where MXC runs through its executor, the executable SHALL carry
+`lxc-exec` beside it instead.
 
 #### Scenario: AnExecutableConfinesThroughTheSdk
 - **GIVEN** a standalone executable built on Windows 11 with MXC's SDK installed, and the files `build-exe` placed beside it
