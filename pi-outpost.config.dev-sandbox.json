@@ -1,0 +1,17 @@
+{
+  "cwd": ".",
+  "server": {
+    "port": 3142,
+    "host": "127.0.0.1"
+  },
+  "branding": {
+    "title": "π dev (sandbox)"
+  },
+  "sandbox": {
+    "allowWrite": true,
+    "allowBash": true,
+    "bashRunner": "mxc",
+    "bashShell": "powershell.exe",
+    "allowedHosts": []
+  }
+}
