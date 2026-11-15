@@ -115,8 +115,11 @@ describe("seatbeltReportRefusals", () => {
   });
 
   test("the file system tells a directory from a file when nobody says", () => {
-    const [refusal] = seatbeltReportRefusals({ denials: [{ resource: process.cwd(), resourceType: "file", accessType: "read" }] }, "ls");
-    assert.equal(refusal?.target, process.cwd().split("\\").join("/"));
+    // A report names POSIX paths, as macOS does. On Windows, the directory without its drive:
+    // still absolute for the report, and still found on the disk, on the current drive.
+    const here = process.cwd().replace(/^[A-Za-z]:/, "").split("\\").join("/");
+    const [refusal] = seatbeltReportRefusals({ denials: [{ resource: here, resourceType: "file", accessType: "read" }] }, "ls");
+    assert.equal(refusal?.target, here);
   });
 });
 
