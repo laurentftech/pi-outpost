@@ -82,3 +82,26 @@ describe("the grant dialog", () => {
     expect(onRespond.mock.calls).toEqual([["g1", "once"], ["g2", "refuse"]]);
   });
 });
+
+describe("the grant dialog's rules", () => {
+  it("offers always allow and always refuse only where the project keeps rules", () => {
+    const { rerender } = render(<SandboxGrantDialog request={request()} onRespond={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Always allow" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Always refuse" })).toBeNull();
+    rerender(<SandboxGrantDialog request={request({ id: "g2", offersRules: true })} onRespond={() => {}} />);
+    expect(screen.getByRole("button", { name: "Always allow" }).getAttribute("title")).toMatch(/across sessions and restarts/);
+    expect(screen.getByRole("button", { name: "Always refuse" })).toBeTruthy();
+  });
+
+  it.each([
+    ["Always allow", "always-allow"],
+    ["Always refuse", "always-refuse"],
+  ] as const)("%s answers %s, once, and disables every other answer", (label, decision) => {
+    const onRespond = vi.fn();
+    render(<SandboxGrantDialog request={request({ offersRules: true })} onRespond={onRespond} />);
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+    expect(onRespond).toHaveBeenCalledTimes(1);
+    expect(onRespond).toHaveBeenCalledWith("g1", decision);
+  });
+});

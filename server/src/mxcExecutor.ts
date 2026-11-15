@@ -97,3 +97,43 @@ export function bundledMxcExecutor(lookup: MxcExecutorLookup = {}): string | und
   ];
   return candidates.find((candidate) => exists(candidate));
 }
+
+/** MXC's native library, which its SDK loads in process (`mxcSdk.ts`), per platform. */
+export const MXC_FFI_NAMES: Partial<Record<NodeJS.Platform, string>> = { win32: "mxc_ffi.dll", linux: "libmxc_ffi.so", darwin: "libmxc_ffi.dylib" };
+
+/** The files MXC needs beside a standalone executable, which has no `node_modules` (`buildExe.ts`). */
+export function mxcBesideExecutable(platform: NodeJS.Platform, arch: string): string[] {
+  const ffi = MXC_FFI_NAMES[platform];
+  return ffi ? [ffi, path.join("node_modules", "koffi", "package.json"), path.join("node_modules", "@koromix", `koffi-${platform}-${arch}`, "package.json")] : [];
+}
+
+/**
+ * Whether MXC can run in process here: its SDK installed with the native library for this
+ * platform and architecture, or — in a standalone executable — that library and koffi beside it.
+ * A file check, synchronous, for the configuration's load; the SDK itself is loaded on first use.
+ */
+export function mxcSdkInstalled(lookup: MxcExecutorLookup = {}): boolean {
+  const platform = lookup.platform ?? process.platform;
+  const arch = lookup.arch ?? process.arch;
+  const ffi = MXC_FFI_NAMES[platform];
+  if (ffi === undefined || !mxcSupportsArch(platform, arch)) return false;
+  const exists = lookup.exists ?? existsSync;
+  const manifest = (lookup.packageManifest ?? installedPackageManifest)();
+  if (manifest && exists(path.join(path.dirname(manifest), "bin", arch, ffi))) return true;
+  const beside = path.dirname(lookup.execPath ?? process.execPath);
+  return mxcBesideExecutable(platform, arch).every((file) => exists(path.join(beside, file)));
+}
+
+/** Whether a runner path names one of MXC's executors, which `"mxc"` replaces. */
+export function isMxcExecutorPath(runner: string): boolean {
+  return /^(wxc-exec(\.exe)?|lxc-exec|mxc-exec-mac)$/i.test(path.win32.basename(runner)) && runner !== BUNDLED_MXC;
+}
+
+/** Why MXC cannot run in process here, in words a user can act on. */
+export function mxcSdkMissingReason(platform: NodeJS.Platform, arch: string, execPath: string): string {
+  if (MXC_FFI_NAMES[platform] === undefined) return `MXC confines on Windows, Linux and macOS only, not ${platform}`;
+  if (!mxcSupportsArch(platform, arch)) {
+    return platform === "darwin" ? `MXC does not run on ${platform} ${arch}: on macOS, Apple silicon (arm64) only` : `MXC does not run on ${arch}: x64 and arm64 only`;
+  }
+  return `MXC's SDK is not installed for ${arch}: reinstall pi-outpost with its optional dependencies, or rebuild the executable beside ${execPath} where it is installed`;
+}

@@ -120,6 +120,148 @@ test("NoRunnerNoGrantTool: no tool without a runner, or with sandbox.grants neve
   assert.ok(!unconfined.hello.tools.some((entry) => entry.name === "run_with_grant"), "offered without a runner");
 });
 
+/** A rule the user made before this server started: in the store a previous server left. */
+async function ruleBeforeStart(root, rule) {
+  const { SandboxRulesStore } = await import("../src/sandboxRules.ts");
+  return new SandboxRulesStore({ agentDir: path.join(root, ".pi-agent"), root }).setRule(rule);
+}
+
+// openlore: scenario=AnAllowedDirectoryIsReadableInANewSession spec=sandbox-durable-rules
+test("AnAllowedDirectoryIsReadableInANewSession: a rule made before the server started reaches the first command, nobody asked", async (t) => {
+  const { root, beside } = await project();
+  await ruleBeforeStart(root, { kind: "directory", target: beside, access: "write", decision: "allow" });
+  let asked = false;
+  const { results } = await run(t, {
+    root,
+    steps: [{ tool: "bash", args: { command: printWritable } }],
+    beforePrompt: async (client) => {
+      client.waitFor("sandbox_grant_request", 60_000).then(() => (asked = true), () => {});
+    },
+  });
+  assert.ok(writableIn(results[0].text, beside), `the rule's directory is not writable: ${results[0].text}`);
+  assert.equal(asked, false, "nobody was asked");
+});
+
+// openlore: scenario=NeverMeansNoRules spec=sandbox-durable-rules
+test("NeverMeansNoRules: with sandbox.grants never, a rule in the store reaches no command", async (t) => {
+  const { root, beside } = await project();
+  await ruleBeforeStart(root, { kind: "directory", target: beside, access: "write", decision: "allow" });
+  const { results } = await run(t, { root, steps: [{ tool: "bash", args: { command: printWritable } }], sandbox: { grants: "never" } });
+  assert.match(results[0].text, /writable=/, "the command ran");
+  assert.ok(!writableIn(results[0].text, beside), `a rule applied under grants never: ${results[0].text}`);
+});
+
+// openlore: scenario=ARefusedFileIsRecordedAgainstItsDirectory spec=sandbox-durable-rules
+// node plays landstrip, whose refusals are read from stderr outside Windows only (`fileReporting`).
+test("a refusal a command meets is recorded for the project, and every client is shown it", { skip: process.platform === "win32" ? "landstrip's refusals are read outside Windows only" : false }, async (t) => {
+  const { root, beside } = await project();
+  const denied = JSON.stringify({ kind: "filesystem", code: "FILESYSTEM_DENIED", state: "info", operation: "read", path: path.join(beside, "notes.txt") });
+  const command = `process.stderr.write(${JSON.stringify(`${denied}\n`)})`;
+  const { client } = await run(t, {
+    root,
+    steps: [{ tool: "bash", args: { command } }],
+    beforePrompt: async (connection) => {
+      connection.send({ type: "sandbox_rules_get" });
+      await connection.waitFor("sandbox_rules", 30_000);
+    },
+  });
+  const shown = await client.waitFor((message) => message.type === "sandbox_rules" && message.state.refusals.length === 1, 10_000);
+  assert.deepEqual(
+    [shown.state.refusals[0].kind, shown.state.refusals[0].target, shown.state.refusals[0].access, shown.state.refusals[0].command],
+    ["directory", beside, "read", command],
+  );
+  const { SandboxRulesStore } = await import("../src/sandboxRules.ts");
+  assert.equal((await new SandboxRulesStore({ agentDir: path.join(root, ".pi-agent"), root }).refusals()).length, 1);
+});
+
+/** A refusal a command met before this server started, as the store keeps it. */
+async function refusedBeforeStart(root, refusal) {
+  const { SandboxRulesStore } = await import("../src/sandboxRules.ts");
+  await new SandboxRulesStore({ agentDir: path.join(root, ".pi-agent"), root }).record(refusal);
+}
+
+test("always allow in the dialog: the command runs, a rule is kept and shown to every client, the next command is not asked", async (t) => {
+  const { root, beside } = await project();
+  let request;
+  const { results, client } = await run(t, {
+    root,
+    steps: [grantStep(beside), grantStep(beside), { tool: "bash", args: { command: printWritable } }],
+    answer: async (connection) => {
+      ({ request } = await connection.waitFor("sandbox_grant_request", 60_000));
+      assert.equal(request.offersRules, true, "the dialog may offer rules");
+      connection.send({ type: "sandbox_grant_response", id: request.id, decision: "always-allow" });
+      const resolved = await connection.waitFor((message) => message.type === "sandbox_grant_resolved" && message.id === request.id);
+      assert.equal(resolved.outcome, "approved-always");
+    },
+  });
+  assert.match(results[0].text, /^Ran with the user's grant always, from now on: read-write /);
+  assert.match(results[1].text, /already gives what was asked/, "the second request needs no question");
+  assert.equal(client.received.filter((message) => message.type === "sandbox_grant_request").length, 1);
+  assert.ok(writableIn(results[2].text, beside), `the rule did not reach the next command: ${results[2].text}`);
+  const shown = await client.waitFor((message) => message.type === "sandbox_rules" && message.state.rules.length === 1, 10_000);
+  assert.deepEqual(shown.state.rules.map((rule) => [rule.kind, rule.target, rule.access, rule.decision]), [["directory", beside, "write", "allow"]]);
+});
+
+// openlore: scenario=ARuleIsMadeFromARecordedRefusal spec=sandbox-durable-rules
+// openlore: scenario=RulesAreListedAndRevoked spec=sandbox-durable-rules
+// openlore: scenario=TheAgentDirectoryTakesNoRule spec=sandbox-durable-rules
+test("the recorded refusals and rules over the wire: a rule from a refusal, none on the agent directory, and revoked", async (t) => {
+  const { root, beside } = await project();
+  const agentDir = path.join(root, ".pi-agent");
+  await refusedBeforeStart(root, { kind: "directory", target: beside, access: "read", command: "cat beside/x" });
+  await refusedBeforeStart(root, { kind: "directory", target: agentDir, access: "read", command: "cat auth.json" });
+  const { client } = await run(t, {
+    root,
+    steps: [{ tool: "bash", args: { command: printWritable } }],
+    beforePrompt: async (connection) => {
+      connection.send({ type: "sandbox_rules_get" });
+      const { state } = await connection.waitFor("sandbox_rules", 30_000);
+      assert.equal(state.enabled, true);
+      assert.equal(state.files, process.platform === "win32" ? "not-reported" : "reported", "node plays landstrip");
+      const [keys, besideRefusal] = state.refusals;
+      assert.equal(keys.target, agentDir, "most recent first");
+      assert.match(keys.notAllowable ?? "", /never granted: the agent directory holds the provider keys/);
+      assert.equal(besideRefusal.notAllowable, undefined);
+
+      connection.send({ type: "sandbox_rule_set", refusalKey: keys.key, decision: "allow" });
+      const refused = await connection.waitFor("sandbox_rule_refused", 30_000);
+      assert.match(refused.message, /Always allow is not offered for .*\.pi-agent: never granted/);
+
+      connection.send({ type: "sandbox_rule_set", refusalKey: besideRefusal.key, decision: "allow" });
+      const made = await connection.waitFor((message) => message.type === "sandbox_rules" && message.state.rules.length === 1, 30_000);
+      const [rule] = made.state.rules;
+      assert.deepEqual([rule.kind, rule.target, rule.access, rule.decision], ["directory", beside, "read", "allow"]);
+      assert.equal(made.state.refusals.find((r) => r.key === besideRefusal.key).ruleId, rule.id, "the record shows the rule");
+
+      connection.send({ type: "sandbox_rule_revoke", id: rule.id });
+      const revoked = await connection.waitFor((message) => message.type === "sandbox_rules" && message.state.rules.length === 0, 30_000);
+      assert.equal(revoked.state.refusals.find((r) => r.key === besideRefusal.key).ruleId, undefined);
+    },
+  });
+  assert.ok(client);
+});
+
+// openlore: scenario=NeverMeansNoRules spec=sandbox-durable-rules
+test("with sandbox.grants never, the interface is told rules are off and none can be made", async (t) => {
+  const { root, beside } = await project();
+  await refusedBeforeStart(root, { kind: "directory", target: beside, access: "read", command: "cat x" });
+  await run(t, {
+    root,
+    sandbox: { grants: "never" },
+    steps: [{ tool: "bash", args: { command: printWritable } }],
+    beforePrompt: async (connection) => {
+      connection.send({ type: "sandbox_rules_get" });
+      const { state } = await connection.waitFor("sandbox_rules", 30_000);
+      assert.equal(state.enabled, false);
+      connection.send({ type: "sandbox_rule_set", refusalKey: state.refusals[0].key, decision: "allow" });
+      const refused = await connection.waitFor("sandbox_rule_refused", 30_000);
+      assert.match(refused.message, /Rules are off for this project/);
+    },
+  });
+  const { SandboxRulesStore } = await import("../src/sandboxRules.ts");
+  assert.deepEqual(await new SandboxRulesStore({ agentDir: path.join(root, ".pi-agent"), root }).rules(), []);
+});
+
 // openlore: scenario=AOnceGrantIsBoundToItsCommand spec=sandbox-approved-grants
 test("AOnceGrantIsBoundToItsCommand: allowed once, the command runs with its grant; the same command after it runs without", async (t) => {
   const { root, beside } = await project();

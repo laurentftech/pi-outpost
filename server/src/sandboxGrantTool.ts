@@ -17,6 +17,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { SandboxGrantOutcome } from "@pi-outpost/shared";
 import { grantLogLine, type SandboxGrantBroker } from "./sandboxGrantBroker.ts";
 import { checkGrantRequest, describeGrant, isEmptyGrant, type Grant, type GrantContext } from "./sandboxGrants.ts";
+import { directoryDecision, type SandboxRule } from "./sandboxRules.ts";
 
 export const RUN_WITH_GRANT_TOOL = "run_with_grant";
 
@@ -38,8 +39,9 @@ const parameters = Type.Object({
 type Params = { command: string; reason: string; directories?: Array<{ path: string; access: "read" | "write" }>; timeout?: number };
 
 /** Why nothing ran, for the model: refused, unanswered, or nobody there to ask. */
-const NOT_RUN: Record<Exclude<SandboxGrantOutcome, "approved-once" | "approved-session">, string> = {
+const NOT_RUN: Record<Exclude<SandboxGrantOutcome, "approved-once" | "approved-session" | "approved-always">, string> = {
   refused: "The user refused the grant. The command did not run.",
+  "refused-always": "The user refused the grant, and always will: do not ask for it again. The command did not run.",
   expired: "Nobody answered the grant request in time. The command did not run.",
   aborted: "The grant request was cancelled with the turn or the session. The command did not run.",
   unattended: "No one was connected to approve the grant. The command did not run.",
@@ -51,6 +53,11 @@ export interface RunWithGrantOptions {
   context: () => GrantContext;
   /** The shell tool's own name: `bash`, or `powershell`. */
   shellTool: string;
+  /**
+   * The user's durable rules, read at each call: always refuse answers without asking, always
+   * allow needs no question — its directories are already given to every launch. Absent: none.
+   */
+  rules?: () => Promise<SandboxRule[]>;
   /**
    * Runs `command` as the shell tool does — its output, truncation and exit status — with `grant`
    * added to the sandbox for that launch alone.
@@ -93,7 +100,15 @@ export function createRunWithGrantToolDefinition(options: RunWithGrantOptions): 
           `Not asked: ${check.refusals.map((refusal) => `${refusal.target} — ${refusal.why}`).join("; ")}. The command did not run.`,
         );
       }
-      const { grant } = check;
+      // What can never be granted was refused above; then the user's rules, then the user.
+      const rules = (await options.rules?.().catch(() => [])) ?? [];
+      const refusedByRule = check.grant.directories.filter((directory) => directoryDecision(rules, directory.path, directory.access) === "refuse");
+      if (refusedByRule.length > 0) {
+        const targets = refusedByRule.map((directory) => directory.path).join(", ");
+        options.broker.log(grantLogLine("refused", targets, params.command, `${params.reason} (a rule of the user's)`));
+        throw new Error(`Not asked: a rule of the user's always refuses ${targets}. The command did not run. Do not ask again: tell the user what it blocked.`);
+      }
+      const grant = { ...check.grant, directories: check.grant.directories.filter((directory) => directoryDecision(rules, directory.path, directory.access) !== "allow") };
       if (isEmptyGrant(grant)) {
         // Everything asked for the sandbox gives already: an ordinary command, nobody to ask.
         const result = await options.run(grant, { command: params.command, timeout: params.timeout }, toolCallId, signal, onUpdate, ctx);
@@ -107,9 +122,9 @@ export function createRunWithGrantToolDefinition(options: RunWithGrantOptions): 
         overridesReadOnly: !context.allowWrite && grant.directories.some((directory) => directory.access === "write"),
         ...(signal ? { signal } : {}),
       });
-      if (outcome !== "approved-once" && outcome !== "approved-session") throw new Error(NOT_RUN[outcome]);
+      if (outcome === "refused" || outcome === "refused-always" || outcome === "expired" || outcome === "aborted" || outcome === "unattended") throw new Error(NOT_RUN[outcome]);
       const result = await options.run(grant, { command: params.command, timeout: params.timeout }, toolCallId, signal, onUpdate, ctx);
-      const scope = outcome === "approved-once" ? "for this command" : "for the rest of the session";
+      const scope = outcome === "approved-once" ? "for this command" : outcome === "approved-always" ? "always, from now on" : "for the rest of the session";
       return withLead(result, `Ran with the user's grant ${scope}: ${describeGrant(grant)}.`);
     },
   };

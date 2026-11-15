@@ -24,8 +24,11 @@ import {
   seaConfigFor,
   findBuildInputs,
   placeMxcExecutor,
+  placeMxcNative,
   resignMacho,
 } from "../src/buildExe.ts";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mxcSdkInstalled } from "../src/mxcExecutor.ts";
 
 describe("the generated SEA config", () => {
   test("declares the module format the bundle needs", () => {
@@ -383,5 +386,43 @@ describe("building directly", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("placeMxcNative", () => {
+  // openlore: scenario=AStandaloneExecutableFindsTheExecutorBesideIt spec=sandbox-runner-bash
+  test("MXC's native library, koffi and its platform package are placed beside the executable, kept unless forced", async () => {
+    const base = await mkdtemp(path.join(tmpdir(), "mxc-native-"));
+    try {
+      const src = path.join(base, "src");
+      await mkdir(path.join(src, "koffi"), { recursive: true });
+      await mkdir(path.join(src, "koffi-win32-x64"), { recursive: true });
+      await writeFile(path.join(src, "mxc_ffi.dll"), "ffi-1");
+      await writeFile(path.join(src, "koffi", "package.json"), '{"name":"koffi"}');
+      await writeFile(path.join(src, "koffi-win32-x64", "package.json"), '{"name":"@koromix/koffi-win32-x64"}');
+      const out = path.join(base, "out");
+      await mkdir(out);
+      const sources = { ffi: path.join(src, "mxc_ffi.dll"), koffi: path.join(src, "koffi"), koffiNative: path.join(src, "koffi-win32-x64") };
+      const lines: string[] = [];
+      const placed = placeMxcNative(path.join(out, "pi-outpost.exe"), { platform: "win32", arch: "x64", sources, log: (l) => lines.push(l) });
+      assert.deepEqual(placed.map((p) => path.relative(out, p)), ["mxc_ffi.dll", path.join("node_modules", "koffi"), path.join("node_modules", "@koromix", "koffi-win32-x64")]);
+      assert.equal(await readFile(path.join(out, "mxc_ffi.dll"), "utf8"), "ffi-1");
+      assert.ok(mxcSdkInstalled({ platform: "win32", arch: "x64", execPath: path.join(out, "pi-outpost.exe"), packageManifest: () => undefined }), "what is placed is what the executable looks for");
+      await writeFile(sources.ffi, "ffi-2");
+      placeMxcNative(path.join(out, "pi-outpost.exe"), { platform: "win32", arch: "x64", sources, log: () => {} });
+      assert.equal(await readFile(path.join(out, "mxc_ffi.dll"), "utf8"), "ffi-1", "kept");
+      placeMxcNative(path.join(out, "pi-outpost.exe"), { platform: "win32", arch: "x64", sources, force: true, log: () => {} });
+      assert.equal(await readFile(path.join(out, "mxc_ffi.dll"), "utf8"), "ffi-2", "forced");
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  // openlore: scenario=AnExecutableWithoutTheSdkSaysSo spec=standalone-executable
+  test("a part not installed is said, and nothing is placed", () => {
+    const lines: string[] = [];
+    const placed = placeMxcNative(path.join(tmpdir(), "nowhere", "pi-outpost.exe"), { platform: "win32", arch: "x64", sources: { ffi: "C:/x/mxc_ffi.dll" }, log: (l) => lines.push(l) });
+    assert.deepEqual(placed, []);
+    assert.match(lines.join("\n"), /MXC's SDK is not installed for win32-x64: "mxc" will be refused/);
   });
 });

@@ -30,6 +30,11 @@ export interface Grant {
 
 export const EMPTY_GRANT: Grant = { hosts: [], directories: [] };
 
+/** Whether an answer lets the command through: once, for the session, or always. */
+export function isApproved(outcome: unknown): boolean {
+  return outcome === "approved-once" || outcome === "approved-session" || outcome === "approved-always";
+}
+
 /** What the sandbox already gives a command, so that a grant asks only for more. */
 export interface GrantContext {
   root: string;

@@ -177,8 +177,8 @@ questions. On Windows, landstrip refuses the key: use MXC.
 }
 ```
 
-On Linux, `"mxc"` names MXC's Linux executor (`lxc-exec`), installed with pi-outpost like Windows'
-`wxc-exec.exe`; a path ending in `lxc-exec` names it too. Its Bubblewrap backend runs each command, and
+On Linux, `"mxc"` runs MXC's Bubblewrap backend in process, through the SDK installed with pi-outpost;
+a path ending in `lxc-exec`, MXC's former executor, is read as `"mxc"`. It runs each command, and
 each terminal, in namespaces holding only the system trees, the root and the command's temporary
 folder — no home, no other project, no agent directory. What it adds over landstrip:
 
@@ -217,7 +217,7 @@ refused at its self-check — a confined `/bin/true` — with MXC's reason, and 
 On an Ubuntu 24.04+ host, AppArmor also refuses unprivileged user namespaces to every process outside a
 profile that allows them, inside a container or not: set `kernel.apparmor_restrict_unprivileged_userns=0`
 on the host (a host-wide loosening), or give the container an AppArmor profile that permits `userns`.
-MXC's refusal names this case. `--init` puts an init in front of pi-outpost: a terminal closed under `lxc-exec` leaves its `bwrap`
+MXC's refusal names this case. `--init` puts an init in front of pi-outpost: a terminal closed under MXC leaves its `bwrap`
 processes to the container's first process, and Node does not reap them — without it, three zombies
 pile up per closed terminal. Keep the rest of the advice above: an ordinary user, no Docker socket, no
 `--privileged`. If loosening the container is not acceptable, landstrip is the runner.
@@ -227,8 +227,8 @@ container both ways; CI's `mxc-linux` job runs it on every pull request.
 
 ## macOS on Apple silicon: MXC
 
-`@microsoft/mxc-sdk`, installed with pi-outpost, carries MXC's macOS executor, `mxc-exec-mac`, built on
-Seatbelt — the sandbox macOS applies to its own apps. Nothing has to be installed or loosened:
+`@microsoft/mxc-sdk`, installed with pi-outpost, runs MXC's Seatbelt backend in process — the sandbox
+macOS applies to its own apps. Nothing has to be installed or loosened:
 
 ```json
 {
@@ -250,7 +250,7 @@ clients can validate certificate chains. This does not enable access to the user
 on every call: the confined search path puts the developer tools' own `git` first (Xcode's or the
 Command Line Tools', whichever `xcode-select -p` names).
 
-The executor exists for Apple silicon only: on an Intel Mac `"mxc"` is refused at start, saying so —
+MXC's native library exists for Apple silicon only: on an Intel Mac `"mxc"` is refused at start, saying so —
 [Seatbelt](#macos-every-mac-seatbelt) is the runner there.
 `sandbox.bashImage` (WSLC) is Windows only. CI's `mxc-macos` job runs this runner's tests on a real
 Mac (`scripts/mxc-macos/test.sh`, on any Apple-silicon Mac with `npm ci` done).
@@ -296,12 +296,13 @@ run unconfined. On Apple silicon either runner works; MXC's is maintained by Mic
 ```
 
 1. **Windows 11 24H2 or 25H2 with the August 2026 update or later** (build 26100/26200.9278+).
-   `wxc-exec.exe --probe` must report `"tier": "base-container"`; pi-outpost refuses the lower tiers.
-2. **MXC's executor comes with pi-outpost**: `wxc-exec.exe`, signed by Microsoft, in the optional
-   dependency `@microsoft/mxc-sdk` — installed by default, see
-   [MXC comes with pi-outpost](configuration.md#mxc-comes-with-pi-outpost). `"mxc"` names it, for this
-   machine's architecture; a path to another `wxc-exec.exe` works too. The standalone executable looks
-   for `wxc-exec.exe` beside itself, where `pi-outpost build-exe` puts it.
+   MXC's probe must report `"tier": "base-container"`; pi-outpost refuses the lower tiers.
+2. **MXC comes with pi-outpost**: the optional dependency `@microsoft/mxc-sdk`, installed by default
+   (see [MXC comes with pi-outpost](configuration.md#mxc-comes-with-pi-outpost)). `"mxc"` runs it in
+   process for this machine's architecture; a path to `wxc-exec.exe` is read as `"mxc"`. The confined
+   terminal alone runs under `wxc-exec.exe`, signed by Microsoft, in the same package. The standalone
+   executable finds MXC's native parts and `wxc-exec.exe` beside itself, where `pi-outpost build-exe`
+   puts them. pi-outpost needs Node.js 24.21 or 26.8 for it on Windows.
 3. **Run the server in your interactive session**, not as a service nor over SSH.
 
 **Diagnostic data.** From `@microsoft/mxc-sdk` 1.1.0, on Windows builds routed for Microsoft telemetry,
@@ -346,6 +347,24 @@ MXC for no clipboard and no input injection. Limits:
   give both yourself to a shell you name in `terminal.shell`.
 
 Details and probes: [`investigations/windows-sandboxing.md`](investigations/windows-sandboxing.md).
+
+### Microsoft's telemetry
+
+MXC has two kinds of telemetry, and pi-outpost can switch off only one:
+
+- **Optional telemetry** needs a request to opt in, MXC's stored consent and a policy that allows
+  it. pi-outpost never opts in (`telemetry: { enabled: false }` on every call) and never asks for
+  consent: it is off. An administrator can also block it machine-wide with the `REG_DWORD`
+  `AllowTelemetry` under `HKLMSOFTWAREPoliciesMxc` (only `3` permits it).
+- **Four Required events** — `ExecutionStart`, `ExecutionEnd`, `Error`, `ProcessExited` — are
+  emitted on eligible Windows builds whatever is asked. They carry random identifiers, the backend,
+  the outcome, the exit code and the duration; no command, no path, no free text. MXC's
+  documentation states that no setting, registry key or administrative policy of MXC's turns them
+  off: they are written to Windows' event tracing (provider `Microsoft.MXC`) and routed by a
+  component signed into MXC's build. This holds for every use of MXC, executor or SDK alike. On
+  Linux and macOS MXC has no telemetry.
+
+Sources: MXC's [telemetry](https://github.com/microsoft/mxc/blob/v1.1.0/docs/telemetry.md) page.
 
 ### The network: only named hosts
 
@@ -468,7 +487,8 @@ list, a directory beside the root. Rather than widening the configuration for ev
 are asked — and you answer in the interface, for that command only, for the rest of the session, or not
 at all. No answer within five minutes, an aborted turn, or no browser connected to the project refuses.
 A grant never takes a command out of the sandbox: it widens it, and nothing more. Nothing is written to
-the configuration or to the project's settings: to keep a host for good, add it to `sandbox.allowedHosts`.
+the configuration or to the project's settings. To keep an answer for good, make it a
+[rule](#rules-always-allow-always-refuse) for the project, or add the host to `sandbox.allowedHosts`.
 
 **A host is asked about when a command connects to it.** Each command gets a proxy of its own, and a
 connection to a host the list does not name waits there while you are asked, with the running command
@@ -478,6 +498,8 @@ in front of you:
 - **Allow for this session**: the same, and every later command of the session reaches that host too,
   until the session ends or is replaced, a sandbox settings change is applied, or the server restarts.
 - **Refuse**: the connection is refused, saying so.
+- **Always allow** / **Always refuse**: the same answer, kept as a [rule](#rules-always-allow-always-refuse)
+  for the project: later commands are not asked about that host, in this session or the next.
 
 The agent does not ask for hosts and cannot: a request exists only once a command has really connected.
 The command's output ends with what you answered, which the agent reads and the transcript keeps:
@@ -538,6 +560,59 @@ nobody asked and no grant tool:
 ```json
 { "sandbox": { "grants": "never" } }
 ```
+
+`"never"` also switches [rules](#rules-always-allow-always-refuse) off: none is made, and none in the store applies.
+
+### What the sandbox refused
+
+When the sandbox refuses a command something, the command's output ends by saying what, so the agent
+can ask for exactly that rather than guess from the program's own "Permission denied":
+
+```
+[pi-outpost] the sandbox refused reading /home/me/work/notes.
+[pi-outpost] If the task needs one of these, ask run_with_grant for exactly it; judge the command by its exit status and output.
+```
+
+Each refusal is also recorded for the project — the directory or host, the access, the last command
+that met it — and listed under the shell's lock (click it). What each runner can tell:
+
+| Runner | Refused files | Refused hosts |
+| --- | --- | --- |
+| landstrip on Linux | as they happen | yes |
+| MXC on Windows 11 | on a diagnosis the agent asks for (below) | yes |
+| MXC on Linux and macOS, Seatbelt, landstrip on Windows | not reported: the panel says so | yes, where hosts are asked about |
+
+**MXC on Windows reports refusals only on demand.** Its report costs about a second per command, and it
+leaves out every path the policy names to deny — which is how the folders beside the root are refused.
+So a command runs without it; when one fails, its output ends offering a diagnosis, and the agent may
+run the same command again with `diagnose: true`. That second run is narrower than the first, never
+wider: no drive root, the folders beside the root left to the default deny, the agent directory and the
+configuration still denied, no network, no grant, no rule. Its output is not shown — only the
+directories the sandbox refused it, and the agent asks for those. The command runs twice, effects
+included; the agent is told never to diagnose a command that must not run twice. The first diagnosis
+also measures what the shell itself is refused starting up (PowerShell reads the default profile), and
+leaves that out of every report.
+
+### Rules: always allow, always refuse
+
+A rule keeps your answer for the project: across sessions and server restarts, without a question.
+You make one from a grant dialog (**Always allow**, **Always refuse**), or from a refusal listed under
+the shell's lock. It names a resource, never a command: a directory with its access (read, or read
+and write), or a host.
+
+- **Always allow**: the directory is given to every command of the project's confined shell when it
+  starts; a connection to the host goes through. A rule on a directory deleted since is skipped.
+- **Always refuse**: a request for the directory, or a connection to the host, is refused at once,
+  and the agent is told it was your rule and not to ask again.
+
+What can never be granted takes no always-allow rule (the panel says why), and only you make rules:
+the agent's tools have no way to. The rules are listed under the shell's lock, each revoked in one
+click; a revoked rule stops applying from the next command.
+
+They are kept by the server under the agent directory
+(`<agentDir>/pi-outpost/sandbox-rules/`, a file per project named by a hash of its root), beside the
+sessions — never in the project or the configuration file. A confined command can neither read nor
+write them: the agent directory is denied to every runner.
 
 ## Check that it is really confined
 

@@ -27,7 +27,7 @@ import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/struct
 import { normalizeCommandPattern } from "./commandPolicy.ts";
 import { isAllowedHostPattern } from "./egressProxy.ts";
 import { AUTO_RUNNER, NO_RUNNER, platformRunner } from "./autoRunner.ts";
-import { BUNDLED_MXC, bundledMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
+import { BUNDLED_MXC, isMxcExecutorPath, mxcSdkInstalled, mxcSdkMissingReason } from "./mxcExecutor.ts";
 
 /** The value of `sandbox.bashRunner` and `terminal.sandbox` that names macOS' `sandbox-exec`. */
 const SEATBELT = "seatbelt";
@@ -1024,10 +1024,12 @@ export function loadConfig(
       if (process.platform !== "darwin") fail(`"${field}" is "${SEATBELT}", macOS' own sandbox: it confines on macOS only — on ${process.platform}, name another runner`);
       return SANDBOX_EXEC;
     }
-    if (runner !== BUNDLED_MXC) return resolve(runner);
-    const executor = bundledMxcExecutor();
-    if (executor === undefined) fail(`"${field}" is "${BUNDLED_MXC}", but ${mxcMissingReason(process.platform, process.arch, process.execPath)}`);
-    return executor;
+    // MXC runs in process through its SDK: "mxc", or the path to one of its executors that a
+    // configuration written before may hold — read as "mxc", and said once the file has loaded.
+    if (runner !== BUNDLED_MXC && !isMxcExecutorPath(runner)) return resolve(runner);
+    if (!mxcSdkInstalled()) fail(`"${field}" names MXC, but ${mxcSdkMissingReason(process.platform, process.arch, process.execPath)}`);
+    if (runner !== BUNDLED_MXC) deprecations.push(`"${field}" names MXC's executor (${runner}): read as "${BUNDLED_MXC}" — MXC now runs in process, no executor is started`);
+    return BUNDLED_MXC;
   };
   /** Settings still read under an old name, announced once the file has loaded. */
   const deprecations: string[] = [];

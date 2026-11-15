@@ -258,6 +258,18 @@ neither returns pictures, and both say so; an SVG picture
 gets an empty fallback, so PowerPoint 2016 and later show it and older readers show nothing.
 The npm package has neither limit.
 
+## MXC's native parts sit beside the executable
+
+MXC, which confines the agent's shell with `"mxc"`, runs in process through its SDK. The executable carries
+the SDK's JavaScript, but not the native files a bundle cannot hold: MXC's library (`mxc_ffi.dll`,
+`libmxc_ffi.so`, `libmxc_ffi.dylib`), `node_modules/koffi` and its platform package
+`node_modules/@koromix/koffi-<os>-<arch>` (about 3 MB), and on Windows `wxc-exec.exe` for the confined terminal.
+`pi-outpost build-exe` places them beside the executable it builds, from the installed `@microsoft/mxc-sdk`,
+and says so when that package is missing; the executable then refuses `"mxc"` with the reason.
+
+A release executable is a single file: downloaded alone, it has none of them, and `"mxc"` is refused. Build
+your own with `build-exe` where pi-outpost is installed, or copy those files from an installation beside it.
+
 ## Skills are not inside the executable
 
 The npm package ships the bundled skills under `dist/skills/`, and the server finds

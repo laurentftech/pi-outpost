@@ -7,7 +7,7 @@
  * command waits; if they fail, every command is refused with the reason, and nothing runs
  * unconfined. `"none"` is the deliberate way back to an unconfined shell, written in the file.
  */
-import { bundledMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
+import { BUNDLED_MXC, mxcSdkInstalled, mxcSdkMissingReason } from "./mxcExecutor.ts";
 import { SANDBOX_EXEC } from "./terminalSandbox.ts";
 
 /** The value of `sandbox.bashRunner` that asks the server to choose a runner. */
@@ -23,7 +23,7 @@ export interface PlatformRunnerLookup {
   platform?: NodeJS.Platform;
   arch?: string;
   execPath?: string;
-  /** The bundled MXC executor; a parameter for tests. */
+  /** `"mxc"` where MXC can run in process, else undefined; a parameter for tests. */
   mxcExecutor?: () => string | undefined;
 }
 
@@ -35,11 +35,12 @@ export function platformRunner(lookup: PlatformRunnerLookup = {}): PlatformRunne
   const platform = lookup.platform ?? process.platform;
   if (platform === "darwin") return { runner: SANDBOX_EXEC, label: "Seatbelt" };
   if (platform !== "win32" && platform !== "linux") return { reason: `no sandbox runner confines commands on ${platform}` };
-  const executor = (lookup.mxcExecutor ?? (() => bundledMxcExecutor({ platform, ...(lookup.arch ? { arch: lookup.arch } : {}) })))();
-  if (executor === undefined) {
-    return { reason: mxcMissingReason(platform, lookup.arch ?? process.arch, lookup.execPath ?? process.execPath) };
+  // MXC runs in process through its SDK: `"mxc"` is the runner, once its native parts are there.
+  const installed = (lookup.mxcExecutor ?? (() => (mxcSdkInstalled({ platform, ...(lookup.arch ? { arch: lookup.arch } : {}) }) ? BUNDLED_MXC : undefined)))();
+  if (installed === undefined) {
+    return { reason: mxcSdkMissingReason(platform, lookup.arch ?? process.arch, lookup.execPath ?? process.execPath) };
   }
-  return { runner: executor, label: "MXC" };
+  return { runner: installed, label: "MXC" };
 }
 
 /** The configuration line that confines an unconfined shell, and the command that writes it after checking. */

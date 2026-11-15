@@ -2880,6 +2880,28 @@ describe("assembling a turn", () => {
     await waitFor(() => expect(result.current.state.sandboxGrants?.pending).toEqual([]));
     expect(result.current.state.sandboxGrants?.active).toEqual(request.grant);
   });
+
+  it("asks for the rules, keeps what the server sends, shows a refusal, and drops them with a new snapshot", async () => {
+    const result = await connected();
+    act(() => result.current.getSandboxRules());
+    expect(JSON.parse(mockWs!.sent.at(-1)!)).toEqual({ type: "sandbox_rules_get" });
+    const rules = { enabled: true, files: "reported" as const, rules: [], refusals: [] };
+    act(() => mockWs!.receive({ type: "sandbox_rules", state: rules }));
+    await waitFor(() => expect(result.current.state.sandboxRules).toEqual(rules));
+
+    act(() => result.current.setSandboxRule("k1", "allow"));
+    expect(JSON.parse(mockWs!.sent.at(-1)!)).toEqual({ type: "sandbox_rule_set", refusalKey: "k1", decision: "allow" });
+    act(() => mockWs!.receive({ type: "sandbox_rule_refused", message: "not offered" }));
+    await waitFor(() => expect(result.current.state.sandboxRuleError).toBe("not offered"));
+    act(() => result.current.revokeSandboxRule("r1"));
+    expect(JSON.parse(mockWs!.sent.at(-1)!)).toEqual({ type: "sandbox_rule_revoke", id: "r1" });
+    act(() => mockWs!.receive({ type: "sandbox_rules", state: rules }));
+    await waitFor(() => expect(result.current.state.sandboxRuleError).toBeNull());
+
+    // Another project or session: its rules are not these.
+    act(() => mockWs!.receive({ type: "hello", sessionId: "sess_2", cwd: "/other", model: "", models: [], commands: [], items: [], isStreaming: false, thinkingLevel: "off", contextUsage: null, gitAvailable: false } as never));
+    await waitFor(() => expect(result.current.state.sandboxRules).toBeNull());
+  });
 });
 
 describe("compaction", () => {

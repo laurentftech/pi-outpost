@@ -13,6 +13,8 @@ import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
 import type * as pty from "node-pty";
+import { mxcPty, mxcSdk, sdkRequest, type MxcWireRequest, type PtyLike } from "./mxcSdk.ts";
+import { bundledMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
 import type { WebSocket } from "ws";
 
 import { installedTerminalShells } from "./terminalShells.ts";
@@ -153,7 +155,8 @@ export function findWindowsGitBash(configuredGitPath?: string): string | undefin
 
 export interface TerminalSession {
   terminalId: string;
-  ptyProcess: pty.IPty;
+  /** node-pty's, or MXC's pseudo-terminal in node-pty's shape (`mxcPty`). */
+  ptyProcess: pty.IPty | PtyLike;
   socket: WebSocket;
   cwd: string;
   /**
@@ -165,7 +168,7 @@ export interface TerminalSession {
    * that is `write EAGAIN`, and, in a test, "asynchronous activity after the test
    * ended". Detaching first makes the shutdown silent, whatever it takes.
    */
-  listeners: pty.IDisposable[];
+  listeners: Array<{ dispose(): void }>;
   /**
    * Set when the shell runs inside a sandbox runner. The runner stays alive as the
    * shell's supervisor, so the pty's pid is the runner's, not the shell's: what the
@@ -223,7 +226,7 @@ export const TERMINAL_KILL_GRACE_MS = 2_000;
  * The timer is unref'd, so it never holds a process open either. Not on Windows, where
  * ConPTY takes no signals and ends its own helper.
  */
-function killIfStillAlive(ptyProcess: pty.IPty): void {
+function killIfStillAlive(ptyProcess: pty.IPty | PtyLike): void {
   if (process.platform === "win32") return;
   const pid = ptyProcess.pid;
   if (!(pid > 0)) return;
@@ -422,15 +425,30 @@ export class TerminalManager {
       let args = shellArgs;
       let env: NodeJS.ProcessEnv = terminalEnvironment(process.env, this.envOverrides);
       let files: Awaited<ReturnType<typeof prepareConfinedTerminal>> | undefined;
+      let mxcRequest: MxcWireRequest | undefined;
       if (confine) {
         const launch = await confinedLaunch(confine, shell, shellArgs, resolvedCwd);
         ({ file, args, env, files } = launch);
+        mxcRequest = launch.mxc;
         resolvedCwd = launch.cwd;
       }
 
+      let ptyProcess: pty.IPty | PtyLike;
+      if (mxcRequest !== undefined && process.platform !== "win32") {
+        // MXC in process: its own pseudo-terminal, no executor and no node-pty.
+        const loaded = await mxcSdk();
+        if ("reason" in loaded) {
+          void files?.dispose().catch(() => {});
+          throw new Error(loaded.reason);
+        }
+        try {
+          ptyProcess = await mxcPty(loaded.sdk, sdkRequest(mxcRequest), Math.max(10, cols), Math.max(5, rows), shell);
+        } catch (error) {
+          void files?.dispose().catch(() => {});
+          throw error;
+        }
+      } else {
       ensureSpawnHelperExecutable();
-
-      let ptyProcess: pty.IPty;
       try {
         ptyProcess = pty.spawn(file, args, {
           name: "xterm-256color",
@@ -459,6 +477,7 @@ export class TerminalManager {
           }
           throw retryErr;
         }
+      }
       }
 
       const session: TerminalSession = {
@@ -606,6 +625,8 @@ export class TerminalManager {
 export interface ConfinedLaunch {
   file: string;
   args: string[];
+  /** MXC's request, run in process through its SDK's PTY (`mxcSdk.ts`), outside Windows: `file` and `args` are then unused. */
+  mxc?: MxcWireRequest;
   env: Record<string, string>;
   cwd: string;
   files: ConfinedTerminalFiles;
@@ -633,7 +654,20 @@ export async function confinedLaunch(confine: TerminalConfinement, shell: string
         ? ["-f", files.policyFile, shell, ...shellArgs]
         : ["run", "-p", files.policyFile, "--", shell, ...shellArgs];
   // sandbox-exec passes its environment on: the policy's (the developer tools' git first).
-  return { file: confine.runner, args, env: files.env ?? shellEnv, cwd: startIn, files };
+  // MXC: its SDK's pseudo-terminal on Linux and macOS. On Windows, MXC's own executor with the
+  // policy as a file: the SDK's ProcessContainer PTY (1.1.0) starts that same executor with the
+  // whole request on its command line, and a terminal's request — every folder beside the path to
+  // the root, denied by name — is far past Windows' 32,767 characters (measured: 193 KB).
+  if (confine.kind === "mxc" && process.platform === "win32") {
+    const executor = bundledMxcExecutor();
+    if (executor === undefined) {
+      await files.dispose().catch(() => {});
+      throw new Error(`a terminal confined by MXC on Windows needs MXC's executor: ${mxcMissingReason(process.platform, process.arch, process.execPath)}`);
+    }
+    // The request still travels: the confinement canary runs it through the SDK, as the agent shell does.
+    return { file: executor, args, env: files.env ?? shellEnv, cwd: startIn, files, mxc: files.policy as MxcWireRequest };
+  }
+  return { file: confine.runner, args, env: files.env ?? shellEnv, cwd: startIn, files, ...(confine.kind === "mxc" ? { mxc: files.policy as MxcWireRequest } : {}) };
 }
 
 /** How a terminal is confined: the runner to spawn, and what its policy allows. */

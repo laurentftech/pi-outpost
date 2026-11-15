@@ -1083,12 +1083,54 @@ export interface SandboxGrantRequest {
   overridesReadOnly: boolean;
   /** Epoch milliseconds: unanswered by then, the request is refused. */
   expiresAt: number;
+  /**
+   * Whether the user may answer with a durable rule (`always-allow`, `always-refuse`): the
+   * project keeps rules. Absent or false: the dialog offers none.
+   */
+  offersRules?: boolean;
 }
 
-export type SandboxGrantDecision = "once" | "session" | "refuse";
+/** `always-*`: the answer, and a rule on every target that answers the same from now on, for the project. */
+export type SandboxGrantDecision = "once" | "session" | "refuse" | "always-allow" | "always-refuse";
 
-/** `unattended`: no client was connected to the project to ask. */
-export type SandboxGrantOutcome = "approved-once" | "approved-session" | "refused" | "expired" | "aborted" | "unattended";
+/** `unattended`: no client was connected to the project to ask. `*-always`: answered with a rule. */
+export type SandboxGrantOutcome = "approved-once" | "approved-session" | "approved-always" | "refused" | "refused-always" | "expired" | "aborted" | "unattended";
+
+/** One of the user's durable rules for a project's confined shell: a directory with an access, or a host. */
+export type SandboxRuleView =
+  | { id: string; kind: "directory"; target: string; access: "read" | "write"; decision: "allow" | "refuse"; createdAt: string }
+  | { id: string; kind: "host"; target: string; decision: "allow" | "refuse"; createdAt: string };
+
+/** What the sandbox refused a command, as the project keeps it. */
+export interface SandboxRefusalView {
+  key: string;
+  kind: "directory" | "host" | "info";
+  target: string;
+  access?: "read" | "write";
+  /** `info`: what was refused, which no rule can name. */
+  detail?: string;
+  /** The last command that met it, cut short. */
+  command: string;
+  count: number;
+  lastSeen: string;
+  /** The rule on it, if any. */
+  ruleId?: string;
+  /** Why always allow is not offered for it (a target never granted); absent when it is. */
+  notAllowable?: string;
+}
+
+/**
+ * A project's rules and recorded refusals. `files` says what the runner reports of refused files:
+ * as they happen, only when the agent asks for a diagnosis, or never — so an empty list is not
+ * read as "nothing was refused".
+ */
+export interface SandboxRulesState {
+  /** False under `sandbox.grants: "never"`: rules are neither made nor applied, and none is offered. */
+  enabled: boolean;
+  files: "reported" | "on-demand" | "not-reported";
+  rules: SandboxRuleView[];
+  refusals: SandboxRefusalView[];
+}
 
 export interface SandboxGrantState {
   pending: SandboxGrantRequest[];
@@ -1395,6 +1437,10 @@ export type ServerMessage =
   | { type: "sandbox_grant_resolved"; id: string; outcome: SandboxGrantOutcome }
   /** The session's grants changed: a session grant approved, or every grant ended with the session. */
   | { type: "sandbox_grants"; active: SandboxGrantSet }
+  /** The project's rules and recorded refusals: asked for, or changed by any client. */
+  | { type: "sandbox_rules"; state: SandboxRulesState }
+  /** A rule could not be made or revoked, and why: to the client that asked. */
+  | { type: "sandbox_rule_refused"; message: string }
   | { type: "work_plan_changed"; workPlan: WorkPlan | null }
   | { type: "workspace_outcome"; requestId: string; outcome: WorkspaceOutcome }
   /**
@@ -1886,6 +1932,12 @@ export type ClientMessage =
   | { type: "terminal_close"; terminalId: string }
   /** The user's answer to a `sandbox_grant_request`. The first answer decides. */
   | { type: "sandbox_grant_response"; id: string; decision: SandboxGrantDecision }
+  /** The project's rules and recorded refusals: answered with `sandbox_rules`. */
+  | { type: "sandbox_rules_get" }
+  /** The user makes a rule from a recorded refusal; any rule on the same resource is replaced. */
+  | { type: "sandbox_rule_set"; refusalKey: string; decision: "allow" | "refuse" }
+  /** The user revokes a rule: it stops applying from the next command. */
+  | { type: "sandbox_rule_revoke"; id: string }
   | ExtensionUIResponse;
 
 /**

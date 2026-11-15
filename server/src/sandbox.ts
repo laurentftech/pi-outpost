@@ -11,6 +11,7 @@
 import fs from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import path from "node:path";
+import { Type, type TSchema } from "typebox";
 import {
   type AgentSession,
   type BashOperations,
@@ -61,12 +62,14 @@ import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
 import { createPosterCheckToolDefinition } from "./posterCheckTool.ts";
 import { createPosterPicturesToolDefinition } from "./posterPicturesTool.ts";
 import { createStructuredExchangeTableToolDefinition } from "./structuredExchangeTableTool.ts";
-import { confinedBashOperations, isPowerShell, type ConfinedBashOperations, type ConfinedBashOptions } from "./confinedBash.ts";
+import { confinedBashOperations, DIAGNOSE_OPTION, isPowerShell, type ConfinedBashOperations, type ConfinedBashOptions } from "./confinedBash.ts";
 import { autoShellRefusal, autoUnavailableRefusal, sharedShellVerdict } from "./confinementStatus.ts";
 import { sharedEgressProxy } from "./egressProxy.ts";
 import type { SandboxGrantBroker } from "./sandboxGrantBroker.ts";
 import { createRunWithGrantToolDefinition } from "./sandboxGrantTool.ts";
-import { hostGrantsRefusal } from "./sandboxGrants.ts";
+import { checkGrantRequest, EMPTY_GRANT, hostGrantsRefusal, mergeGrants, type Grant, type GrantContext } from "./sandboxGrants.ts";
+import type { Refusal } from "./sandboxRefusals.ts";
+import { hostDecision, type SandboxRulesStore } from "./sandboxRules.ts";
 import { userGitConfig } from "./terminalSandbox.ts";
 
 /**
@@ -260,6 +263,11 @@ export async function createSandboxedTools(
    * `run_with_grant` beside it, unless `sandbox.grants` is `"never"`.
    */
   grants?: SandboxGrantBroker,
+  /**
+   * The project's durable rules and recorded refusals (`sandboxRules.ts`). Refusals are recorded
+   * whenever it is given; rules apply only beside the broker — never under `sandbox.grants: "never"`.
+   */
+  rules?: SandboxRulesStore,
 ): Promise<ToolDefinition[]> {
   const realRoot = await fs.realpath(sandbox.root);
   const readFactories: Array<(cwd: string) => ToolDefinition> = [
@@ -394,6 +402,15 @@ export async function createSandboxedTools(
     // `"auto"` with no runner on this platform: the shell is registered, and refuses every command
     // with the reason — never a fallback to running unconfined.
     const unavailable = sandbox.autoRunner?.unavailable;
+    /** What the sandbox already gives a command, and what can never be granted: for grants and rules alike. */
+    const grantContextFor = (options: ConfinedBashOptions) => ({
+      root: realRoot,
+      allowWrite: options.allowWrite,
+      ...(options.writableRoot ? { writableRoot: options.writableRoot } : {}),
+      ...(sandbox.allowedHosts ? { allowedHosts: sandbox.allowedHosts } : {}),
+      ...neverReadable,
+      wslc: sandbox.bashImage !== undefined,
+    });
     const broker = sandbox.bashRunner && unavailable === undefined && sandbox.grants !== "never" ? grants : undefined;
     const bashOptions = sandbox.bashRunner && unavailable === undefined ? await agentBashOptions(sandbox, neverReadable) : undefined;
     // `"auto"` with a runner: its canary starts now, with the session, and a command waits for it.
@@ -405,6 +422,14 @@ export async function createSandboxedTools(
           ...bashOptions,
           ...(sandbox.autoRunner ? { gate: () => autoShellRefusal(sandbox, neverReadable) } : {}),
           ...(broker ? { grants: () => broker.sessionGrants() } : {}),
+          ...(rules ? { onRefusal: (refusal: Refusal) => void rules.record(refusal).catch(() => console.log("[sandbox] could not record a refusal")) } : {}),
+          // A rule is a grant that lasts: where grants are, and only there.
+          ...(broker && rules
+            ? {
+                ruleGrant: () => allowRuleGrant(rules, grantContextFor(bashOptions)),
+                ...(asksAboutHosts(sandbox) ? { hostRule: async (host: string) => hostDecision(await rules.rules(), host) } : {}),
+              }
+            : {}),
           // A host the list does not name is asked about when a command connects to it — only
           // where a command is shown to reach no other command's proxy (`hostGrantsRefusal`).
           ...(broker && asksAboutHosts(sandbox)
@@ -431,28 +456,31 @@ export async function createSandboxedTools(
         ? createPowerShellToolDefinition(realRoot, ops ? { operations: ops } : undefined)
         : createBashToolDefinition(realRoot, ops ? { operations: ops } : undefined)) as ToolDefinition;
     const shellTool = shellToolFor(operations);
+    // Where the sandbox says what it refused only on demand (MXC on Windows), the shell tool takes
+    // `diagnose`: the command once more under a narrower sandbox, returning only what was refused.
+    // The agent asks for it after a failure; nothing calls it on its own.
+    const diagnose = operations?.diagnose?.bind(operations);
+    const diagnosing = diagnose ? shellToolFor({ exec: diagnose }) : undefined;
     tools.push({
       ...shellTool,
+      ...(diagnosing ? { parameters: withDiagnoseParameter(shellTool.parameters) } : {}),
       // A model often batches dependent steps (create, then rename) in one message, and pi
       // runs a message's calls together; a runner's second-long start makes the later step
       // land first. Confined commands therefore run one at a time, in order.
       ...(operations ? { executionMode: "sequential" as const } : {}),
-      execute: (toolCallId, params, signal, onUpdate, ctx) =>
-        shellTool.execute(toolCallId, params, signal, onUpdate, withCwd(ctx, realRoot)),
+      execute: (toolCallId, params, signal, onUpdate, ctx) => {
+        const { [DIAGNOSE_OPTION]: asked, ...rest } = (params ?? {}) as Record<string, unknown>;
+        const tool = asked === true && diagnosing ? diagnosing : shellTool;
+        return tool.execute(toolCallId, diagnosing ? rest : params, signal, onUpdate, withCwd(ctx, realRoot));
+      },
     });
     if (operations && bashOptions && broker) {
-      const grantContext = {
-        root: realRoot,
-        allowWrite: bashOptions.allowWrite,
-        ...(bashOptions.writableRoot ? { writableRoot: bashOptions.writableRoot } : {}),
-        ...(sandbox.allowedHosts ? { allowedHosts: sandbox.allowedHosts } : {}),
-        ...neverReadable,
-        wslc: sandbox.bashImage !== undefined,
-      };
+      const grantContext = grantContextFor(bashOptions);
       tools.push({
         ...createRunWithGrantToolDefinition({
           broker,
           context: () => grantContext,
+          ...(rules ? { rules: () => rules.rules() } : {}),
           shellTool: shellTool.name,
           // pi's own shell tool, its launches carrying the grant the user approved for this command.
           run: (grant, params, toolCallId, signal, onUpdate, ctx) =>
@@ -489,6 +517,47 @@ export const PI_BUILTIN_TOOL_NAMES = ["read", "bash", "powershell", "edit", "wri
  * and a read-only one its unconfined `write` and `edit`. Excluding a name drops it
  * from the registry altogether, whoever registered it.
  */
+/**
+ * The user's always-allow directories as a grant for one launch: each checked again as a grant
+ * request would be — a target that can never be granted takes no rule, even one made before it
+ * became so — and each still an existing directory: a rule on one deleted since is left out
+ * rather than handed to the runner, which would refuse to start.
+ */
+export async function allowRuleGrant(rules: SandboxRulesStore, context: GrantContext): Promise<Grant> {
+  const grants: Grant[] = [];
+  for (const rule of await rules.rules().catch(() => [])) {
+    if (rule.kind !== "directory" || rule.decision !== "allow") continue;
+    const exists = await fs.stat(rule.target).then((stat) => stat.isDirectory(), () => false);
+    if (!exists) continue;
+    const check = await checkGrantRequest({ directories: [{ path: rule.target, access: rule.access }] }, context);
+    if (check.ok) grants.push(check.grant);
+  }
+  return mergeGrants(EMPTY_GRANT, ...grants);
+}
+
+/** The shell tool's parameters with `diagnose` beside them, described for the model. */
+export function withDiagnoseParameter(parameters: ToolDefinition["parameters"]): ToolDefinition["parameters"] {
+  // What the tool required, kept as it was: Type.Object would derive it again from TypeBox's own
+  // markers, which a schema from elsewhere need not carry.
+  const { properties, required } = parameters as unknown as { properties: Record<string, TSchema>; required?: string[] };
+  const schema = Type.Object(
+    {
+      ...properties,
+      [DIAGNOSE_OPTION]: Type.Optional(
+        Type.Boolean({
+          description:
+            "Only after this command failed and its output ends saying the sandbox does not tell what it refused: true runs it once more, " +
+            "under a narrower sandbox without network, and returns only the paths the sandbox refused instead of its output. " +
+            "Its effects happen again — never for a command that must not run twice (install, commit, append, send).",
+        }),
+      ),
+    },
+  ) as unknown as { required?: string[] };
+  if (required) schema.required = [...required];
+  else delete schema.required;
+  return schema as unknown as ToolDefinition["parameters"];
+}
+
 /** A shell that runs nothing: every command, granted or not, fails with `reason`. */
 function refusingOperations(reason: string): ConfinedBashOperations {
   const refuse = async (): Promise<never> => {

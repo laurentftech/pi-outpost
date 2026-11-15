@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { ConfinementVerdict, ContextUsage, ModelChoice, SandboxGrantSet, ThinkingLevel } from "@pi-outpost/shared";
+import type { ConfinementVerdict, ContextUsage, ModelChoice, SandboxGrantSet, SandboxRulesState, ThinkingLevel } from "@pi-outpost/shared";
 import { ConfinementLock } from "./ConfinementLock";
+import { SandboxRulesPanel } from "./SandboxRulesPanel";
 import { THINKING_LEVELS } from "@pi-outpost/shared";
 import { formatCost, formatTokens, type SessionUsage } from "../util/sessionUsage";
 import { eventHitsNode } from "../util/clickOutside";
@@ -18,6 +19,15 @@ interface ModelBarProps {
   shellConfinement?: ConfinementVerdict;
   /** The session's grants beyond the shell's sandbox, shown on its lock. */
   shellGrants?: SandboxGrantSet;
+  /**
+   * The project's durable sandbox rules: with `onGetSandboxRules`, the shell's lock opens a panel
+   * listing them and the recorded refusals. Absent: the lock is a plain indicator.
+   */
+  sandboxRules?: SandboxRulesState | null;
+  sandboxRuleError?: string | null;
+  onGetSandboxRules?: () => void;
+  onSetSandboxRule?: (refusalKey: string, decision: "allow" | "refuse") => void;
+  onRevokeSandboxRule?: (id: string) => void;
   /** Billed totals for the session so far; absent turns simply do not count. */
   sessionUsage: SessionUsage;
   /**
@@ -241,6 +251,67 @@ function ThinkingControl({
   );
 }
 
+/**
+ * The shell's lock, opening the project's sandbox rules and recorded refusals. The rules are asked
+ * for when the panel opens, and again whenever they are dropped while it is open — a project or
+ * session switched under it — so it never shows another project's rules, nor waits on a request
+ * nobody made.
+ */
+function SandboxRulesControl(props: ModelBarProps & { shellConfinement: ConfinementVerdict }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  // A fresh callback each render: held in a ref, so a render alone never sends another request.
+  const getRules = useRef(props.onGetSandboxRules);
+  getRules.current = props.onGetSandboxRules;
+  const missing = props.sandboxRules == null;
+
+  useEffect(() => {
+    if (open && missing) getRules.current?.();
+  }, [open, missing]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onMouseDown(event: MouseEvent) {
+      if (ref.current && !eventHitsNode(event, ref.current)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative ml-auto" ref={ref}>
+      <button
+        type="button"
+        data-testid="sandbox-rules-toggle"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-label="Sandbox rules and refusals"
+        onClick={() => setOpen((was) => !was)}
+        className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+      >
+        <ConfinementLock verdict={props.shellConfinement} surface="shell" grants={props.shellGrants} />
+      </button>
+      {open && (
+        <div className="absolute bottom-full right-0 z-20 mb-1 rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+          <SandboxRulesPanel
+            state={props.sandboxRules ?? null}
+            error={props.sandboxRuleError ?? null}
+            onSet={(key, decision) => props.onSetSandboxRule?.(key, decision)}
+            onRevoke={(id) => props.onRevokeSandboxRule?.(id)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ModelBar(props: ModelBarProps) {
   const { model, models, thinkingLevel, modelSupportsReasoning, isStreaming, contextUsage, sessionUsage, isCompacting } =
     props;
@@ -275,7 +346,8 @@ export function ModelBar(props: ModelBarProps) {
         />
       )}
 
-      {props.shellConfinement && (
+      {props.shellConfinement && props.onGetSandboxRules && <SandboxRulesControl {...props} shellConfinement={props.shellConfinement} />}
+      {props.shellConfinement && !props.onGetSandboxRules && (
         <span className="ml-auto">
           <ConfinementLock verdict={props.shellConfinement} surface="shell" grants={props.shellGrants} />
         </span>

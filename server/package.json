@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": "^24.21.0 || >=26.8.0"
   },
   "scripts": {
     "dev": "node --watch --import tsx --import ./src/providerStackHook.mjs src/index.ts --config ../pi-outpost.config.dev.json",

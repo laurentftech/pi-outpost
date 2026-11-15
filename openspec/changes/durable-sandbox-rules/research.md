@@ -65,3 +65,21 @@ With the report, pi-outpost can end a command's output with "the sandbox refused
 - WSLC with WSL 3.0.5+, and whether its built-in filtering proxy lets `sandbox.allowedHosts` work with `sandbox.bashImage`, refused today.
 
 Related: #500 (the bump to 1.1.0), #501 (seccomp profile for MXC under Docker).
+
+## Measured on Windows 11 (task 1.1, 1.2)
+
+Probe: `scripts/probes/mxc-capture-denials.mjs`, `wxc-exec.exe` 1.1.0 (x64), request `1.0.0`, `processContainer.captureDenials: { mode: "block" }`. Layout: `app\` readable, `app\out\` writable, `other\` in `deniedPaths`; `cmd.exe` reads `app\readme.txt`, reads `other\secret.txt`, writes `other\w.txt`, writes `app\out\a.txt`.
+
+- **Enforcement kept**: both accesses to `other\` refused ("Accès refusé"), `other\w.txt` absent, `app\out\a.txt` written. Same as without capture.
+- **The announcement** is the last stderr line, as documented: `{"type":"captureDenials","outputPath":…,"exitCode","totalDenials","deniedResourcesTruncated"}`. It is mixed into the command's own stderr, so it must be stripped from what the agent sees.
+- **Where**: by default `%TEMP%\mxc_denials_<pid>_<hash>.json` — outside the sandbox's writable zone, left behind (the caller deletes it). With `outputPath: X.json`, MXC writes `X.<pid>_<hash>.json`, **not** `X.json`: only the announced path is reliable.
+- **Shape**: as documented, plus a `filetime` per entry. Values seen: `resourceType` `file`, `other` (a registry key), `ui` (`Handles`); `accessType` `read`, `write`, `execute`, `unknown`. Paths of directories end with `\`.
+- **What it does NOT contain — the finding that matters**: neither refusal under `other\` (an explicit `deniedPaths` entry) appears. The 12 entries were noise: the ancestors of the root (`C:\`, `C:\Users\`, … each `read`), `app\` itself (`execute`, `write`), conhost's registry key and language MUI, a UI `Handles`. So MXC's report records what the *default* deny refused, not what an *explicit* deny refused — and pi-outpost denies every sibling of the path to the root explicitly (`siblingsToDeny`, needed for Git, microsoft/mxc#1464). A file beside the root is therefore never reported, which is exactly `ARefusedFileIsRecordedAgainstItsDirectory`.
+- **Cost** (task 1.2): ~110–180 ms per command without capture (first run 1.26 s, cold), ~1.47 s with capture on every run: **about +1.3 s per command**, the ETW session. Always on is too heavy for an agent's shell.
+- **Needs**: nothing beyond native PSEC: it ran from a non-elevated shell (checked), with no extra install or setup.
+
+Consequences for design.md and the spec (task 1.3, not done): the Windows source cannot, as pi-outpost configures MXC, report the refusal the change is built around; the noise needs a filter (ancestors of the root, the root's own `execute`/`write`, non-`file` kinds); and recording cannot be always on at +1.3 s. Options to decide with the maintainer: (a) Windows reports nothing for files, like Linux, and only hosts are recorded there; (b) capture on demand — rerun a failed command once with capture and with the siblings moved from `deniedPaths` to the default deny where Git allows it; (c) ask upstream whether explicit denies can be reported.
+
+**Rerun with `other\` left to the default deny** (`MXC_DEFAULT_DENY=1`, not in `deniedPaths`): still enforced (`other\w.txt` absent), and the report now holds `file read …\other\` and `file write …\other\w.txt`, beside the same noise. So the report records default-deny refusals only: an explicit `deniedPaths` entry is silent. The read of `other\secret.txt` shows as a read of its directory, which is what a rule names anyway.
+
+**Caveat on that rerun**: the probe's policy had no readable drive. pi-outpost's has `C:\` in `readonlyPaths`, with the siblings refused by name. Dropping the siblings alone would make them *readable*, so a diagnostic rerun drops the drive too (design.md, "On Windows, refusals are reported on demand").

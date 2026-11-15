@@ -19,7 +19,7 @@ import {
 } from "../src/config.ts";
 import type { AppConfig, CliOptions } from "../src/config.ts";
 import { parseCli } from "../src/cli.ts";
-import { bundledMxcExecutor, mxcExecutorName, mxcSupportsArch } from "../src/mxcExecutor.ts";
+import { mxcSdkInstalled } from "../src/mxcExecutor.ts";
 import { STRUCTURED_EXCHANGE_BYTES_CEILING_ANY } from "@pi-outpost/shared/structured-exchange/bounds";
 
 /**
@@ -458,27 +458,25 @@ describe("loadConfig — resource path resolution", () => {
       assert.equal(plain.bashRunner, undefined);
       assert.equal(plain.bashShell, undefined);
 
-      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", bashShell: "tools/sh.exe" } }, null, 2));
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./bin/landstrip", bashShell: "tools/sh.exe" } }, null, 2));
       const confined = loadConfig(dir, { config: configPath }).sandbox!;
-      assert.equal(confined.bashRunner, path.join(dir, "mxc", "wxc-exec.exe"));
+      assert.equal(confined.bashRunner, path.join(dir, "bin", "landstrip"));
       assert.equal(confined.bashShell, path.join(dir, "tools", "sh.exe"));
     });
   });
 
   // openlore: scenario=MxcNamesTheBundledExecutor spec=sandbox-runner-bash
-  test('"mxc" names the executor pi-outpost ships, for bash and for the terminal', async () => {
-    const shipped = bundledMxcExecutor();
+  test('"mxc" names MXC run in process through its SDK, for bash and for the terminal', async () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
       await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc" }, terminal: { sandbox: "mxc" } }, null, 2));
-      if (mxcExecutorName(process.platform) === undefined || !mxcSupportsArch(process.platform, process.arch)) {
-        assert.throws(() => loadConfig(dir, { config: configPath }), /MXC has no executor for /);
+      if (!mxcSdkInstalled()) {
+        assert.throws(() => loadConfig(dir, { config: configPath }), /names MXC, but MXC/);
         return;
       }
-      assert.ok(shipped, "@microsoft/mxc-sdk is an optional dependency, installed in this checkout");
       const config = loadConfig(dir, { config: configPath });
-      assert.equal(config.sandbox!.bashRunner, shipped);
-      assert.equal(config.terminal.sandbox, shipped);
+      assert.equal(config.sandbox!.bashRunner, "mxc", "no executor's path: MXC runs in process");
+      assert.equal(config.terminal.sandbox, "mxc");
       // Only the bare word: a path that happens to end in it is still a path.
       await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc" } }, null, 2));
       assert.equal(loadConfig(dir, { config: configPath }).sandbox!.bashRunner, path.join(dir, "mxc"));
@@ -490,10 +488,10 @@ describe("loadConfig — resource path resolution", () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
       const image = "buildpack-deps:bookworm-scm";
-      // "mxc" names Linux's lxc-exec on a Linux machine, which refuses an image (tested below with
-      // the allowlist): name Windows' executor's file so the test means the same on every platform.
-      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", bashImage: image } }, null, 2));
-      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.bashImage, image);
+      // WSLC is MXC's on Windows: elsewhere "mxc" runs its own backend, which refuses an image.
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "mxc", bashImage: image } }, null, 2));
+      if (process.platform === "win32") assert.equal(loadConfig(dir, { config: configPath }).sandbox!.bashImage, image);
+      else assert.throws(() => loadConfig(dir, { config: configPath }), /which MXC has on Windows only/);
       for (const sandbox of [
         { bashImage: image },
         { bashRunner: "./bin/landstrip", bashImage: image },
@@ -604,15 +602,29 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
-  test("MXC's Linux executor is a runner like Windows': allowed hosts kept, a WSLC image refused", async () => {
+  // openlore: scenario=AnExecutorPathIsReadAsMxc spec=sandbox-runner-bash
+  test("a path to one of MXC's executors, from a configuration written before, is read as \"mxc\" and said", async () => {
     await withTempDir(async (dir) => {
       const configPath = path.join(dir, "config.json");
-      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/lxc-exec", allowedHosts: ["registry.npmjs.org"] } }, null, 2));
-      const sandbox = loadConfig(dir, { config: configPath }).sandbox!;
-      assert.equal(sandbox.bashRunner, path.join(dir, "mxc", "lxc-exec"));
-      assert.deepEqual(sandbox.allowedHosts, ["registry.npmjs.org"]);
-      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/lxc-exec", bashImage: "buildpack-deps:bookworm-scm" } }, null, 2));
-      assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox\.bashImage" runs bash in a WSLC container, which MXC has on Windows only/);
+      for (const executor of ["./mxc/wxc-exec.exe", "./mxc/lxc-exec", "./mxc/mxc-exec-mac"]) {
+        await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: executor, allowedHosts: ["registry.npmjs.org"] } }, null, 2));
+        if (!mxcSdkInstalled()) {
+          assert.throws(() => loadConfig(dir, { config: configPath }), /names MXC, but MXC/);
+          continue;
+        }
+        const lines: string[] = [];
+        const saved = console.log;
+        console.log = (line: string) => void lines.push(String(line));
+        let sandbox;
+        try {
+          sandbox = loadConfig(dir, { config: configPath }).sandbox!;
+        } finally {
+          console.log = saved;
+        }
+        assert.equal(sandbox.bashRunner, "mxc", executor);
+        assert.deepEqual(sandbox.allowedHosts, ["registry.npmjs.org"]);
+        assert.ok(lines.some((line) => line.includes(`names MXC's executor (${executor})`) && line.includes('read as "mxc"')), `nothing said for ${executor}: ${lines.join(" | ")}`);
+      }
     });
   });
 
@@ -1404,7 +1416,8 @@ describe("the default sandbox", () => {
       assert.ok(sandbox.autoRunner, "the runner is chosen automatically");
       if (sandbox.autoRunner!.unavailable === undefined) {
         assert.ok(sandbox.bashRunner, "a platform with a runner names it");
-        assert.ok(path.isAbsolute(sandbox.bashRunner!));
+        // MXC runs in process ("mxc"); Seatbelt is a file (macOS' sandbox-exec).
+        assert.ok(sandbox.bashRunner === "mxc" || path.isAbsolute(sandbox.bashRunner!), sandbox.bashRunner);
       } else {
         assert.equal(sandbox.bashRunner, undefined);
       }
