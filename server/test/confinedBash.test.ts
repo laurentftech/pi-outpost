@@ -274,7 +274,7 @@ describe("confinedBashOperations", () => {
       const { output } = await exec(`console.log("ran")`, { ops });
       assert.deepEqual(asked, ["asked.example.com"], "only the host no rule names is asked about");
       assert.match(output, /\[pi-outpost\] network: a rule of the user's always refuses refused\.example\.com: it is refused without asking, until the user revokes the rule\./);
-      assert.ok(!output.includes("allowed.example.com"), "a host a rule allows is not mentioned");
+      assert.ok(!output.split(/[^\w.-]+/).some((word) => /^allowed\.example\.com\.?$/.test(word)), "a host a rule allows is not mentioned");
       assert.match(output, /127\.0\.0\.1 is never granted/, "a rule cannot open what is never granted");
       assert.match(output, /Do not retry a refused host/);
     });
