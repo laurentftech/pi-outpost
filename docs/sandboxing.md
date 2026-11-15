@@ -187,20 +187,29 @@ folder — no home, no other project, no agent directory. What it adds over land
 - **`sandbox.allowedHosts`**, as on Windows ([below](#the-network-only-named-hosts)): outbound and inbound
   traffic denied, the server's proxy the only way out. Without it, the network is open.
 
-**The price is Docker's own hardening.** Bubblewrap needs user namespaces, which Docker's default seccomp
-and AppArmor profiles refuse; it mounts a fresh `/proc` for the command, which the kernel refuses while
-Docker masks parts of the container's own (`systempaths`); and any network rule needs a tun device for
-slirp4netns:
+**The price is part of Docker's own hardening.** Bubblewrap needs user namespaces, which Docker's default
+seccomp and AppArmor profiles refuse; it mounts a fresh `/proc` for the command, which the kernel refuses
+while Docker masks parts of the container's own (`systempaths`); and any network rule needs a tun device
+for slirp4netns:
 
 ```bash
 docker run \
-  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --security-opt seccomp=deploy/docker/profiles/seccomp-mxc.json --security-opt apparmor=unconfined \
   --security-opt systempaths=unconfined \
+  --cap-drop ALL \
   --init \
   --device /dev/net/tun \
   --security-opt no-new-privileges \
   …
 ```
+
+`seccomp-mxc.json` is Docker's default profile with six more calls allowed, whatever their arguments:
+`clone`, `unshare`, `setns`, `mount`, `umount2` and `pivot_root` — the namespaces Bubblewrap creates and
+the mounts it makes inside them. Everything else Docker's profile refuses stays refused, for the server
+as for its commands, and no capability is needed. `seccomp=unconfined` works too and gives all of that
+up. landstrip's profile is narrower still (it fixes the flags of each call), and does not let MXC start.
+The AppArmor side is not covered here: on a host with AppArmor, `unconfined` as above, or a profile
+that permits `userns` and these mounts.
 
 and the image needs `bubblewrap`, `slirp4netns`, `iptables` and `ip`
 (`apt-get install bubblewrap slirp4netns iptables iproute2`). Under Docker's default profile the runner is
