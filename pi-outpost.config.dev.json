@@ -1,7 +1,7 @@
 {
   "cwd": ".",
   "server": {
-    "port": 3141,
+    "port": 3142,
     "host": "127.0.0.1"
   },
   "branding": {

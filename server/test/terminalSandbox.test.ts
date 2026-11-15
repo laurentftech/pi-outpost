@@ -15,6 +15,7 @@ import {
   isMacMxc,
   mxcErrorMessage,
   mxcLinuxConfig,
+  mxcMacCaptureRequest,
   mxcMacConfig,
   mxcPosixConfig,
   sbplString,
@@ -268,92 +269,84 @@ describe("runnerKind", () => {
   });
 });
 
-describe("checkRunner with MXC's macOS executor", () => {
-  async function withExecutor(run: (runner: string) => Promise<void>): Promise<void> {
-    const dir = await mkdtemp(path.join(tmpdir(), "mxc-mac-runner-"));
-    const runner = path.join(dir, "mxc-exec-mac");
-    await writeFile(runner, "", { mode: 0o755 });
-    try {
-      await run(runner);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }
+/**
+ * MXC's SDK as the self-check sees it: `probe` answers what it is told, `spawn` records the
+ * request it was handed and ends as told — 0, or MXC's own refusal thrown.
+ */
+function fakeMxc(behaviour: { probe?: unknown; probeThrows?: string; refuse?: string } = {}) {
+  const spawned: Array<Record<string, unknown>> = [];
+  const sdk = {
+    probe: () => {
+      if (behaviour.probeThrows) throw new Error(behaviour.probeThrows);
+      return behaviour.probe ?? { tier: "base-container", probes: { baseContainerSupportsDenyPaths: true } };
+    },
+    spawn: async (request: Record<string, unknown>) => {
+      spawned.push(request);
+      if (behaviour.refuse) throw new Error(behaviour.refuse);
+      const { PassThrough } = await import("node:stream");
+      const out = new PassThrough();
+      const err = new PassThrough();
+      return { id: 1, standardOutput: out, standardError: err, outputMetadata: undefined, wait: async () => (out.end(), err.end(), { exitCode: 0, timedOut: false }), kill: () => {} };
+    },
+    spawnWithPty: async () => assert.fail("no pty in a self-check"),
+  };
+  return { load: async () => ({ sdk: sdk as never }), spawned };
+}
+const noExec = async () => assert.fail("MXC's self-check starts no process") as never;
 
-  test("the check runs one confined /usr/bin/true under Seatbelt, network open, and passes when it does", async () => {
-    await withExecutor(async (runner) => {
-      let request: Record<string, unknown> | undefined;
-      const ok = await checkRunner(runner, async (_file, args) => {
-        request = JSON.parse(await readFile(args[0], "utf8"));
-        return { stdout: "", stderr: "" };
-      }, "darwin");
-      assert.deepEqual(ok, { ok: true });
-      assert.equal(request?.containment, "seatbelt");
-      assert.equal((request?.process as { commandLine: string }).commandLine, "/usr/bin/true");
-      assert.deepEqual(request?.network, { egress: { default: "allow" } });
-    });
+describe("checkRunner with MXC on macOS", () => {
+  test("the check runs one confined /usr/bin/true under Seatbelt, network open, through the SDK, and passes when it does", async () => {
+    const mxc = fakeMxc();
+    assert.deepEqual(await checkRunner("mxc", noExec, "darwin", mxc.load), { ok: true });
+    const [request] = mxc.spawned;
+    assert.equal((request.containment as { type: string }).type, "seatbelt");
+    assert.equal(request.command, "/usr/bin/true");
+    assert.deepEqual(request.network, { egress: { default: "allow" } });
+    assert.deepEqual(await checkRunner("/opt/mxc/mxc-exec-mac", noExec, "darwin", fakeMxc().load), { ok: true }, "the old executor's path is MXC too");
   });
 
-  test("MXC's own message is the reason; elsewhere than macOS, refused", async () => {
-    await withExecutor(async (runner) => {
-      const said = "Seatbelt: sandbox_init failed: profile rejected";
-      const refused = await checkRunner(runner, async () => {
-        throw Object.assign(new Error("Command failed"), { stdout: `${said}{"error":{"code":"backend_error","message":"${said}"}}`, stderr: "" });
-      }, "darwin");
-      assert.ok(!refused.ok && refused.reason === `MXC cannot confine commands on this host: ${said}`, !refused.ok ? refused.reason : "");
-      const linuxHost = await checkRunner(runner, async () => ({ stdout: "", stderr: "" }), "linux");
-      assert.ok(!linuxHost.ok && /macOS only/.test(linuxHost.reason));
-    });
+  test("MXC's own message is the reason; its old macOS executor elsewhere than macOS, refused", async () => {
+    const said = "Seatbelt: sandbox_init failed: profile rejected";
+    const refused = await checkRunner("mxc", noExec, "darwin", fakeMxc({ refuse: said }).load);
+    assert.ok(!refused.ok && refused.reason === `MXC cannot confine commands on this host: ${said}`, !refused.ok ? refused.reason : "");
+    const linuxHost = await checkRunner("/opt/mxc/mxc-exec-mac", noExec, "linux", fakeMxc().load);
+    assert.ok(!linuxHost.ok && /macOS only/.test(linuxHost.reason));
   });
 });
+describe("checkRunner with MXC on Linux", () => {
+  const executor = "/opt/mxc/bin/x64/lxc-exec";
+  const neverLoaded = async () => assert.fail("Linux runs MXC's executor: its SDK is not loaded") as never;
 
-describe("checkRunner with MXC's Linux executor", () => {
-  async function withExecutor(run: (runner: string) => Promise<void>): Promise<void> {
-    const dir = await mkdtemp(path.join(tmpdir(), "mxc-linux-runner-"));
-    const runner = path.join(dir, "lxc-exec");
-    await writeFile(runner, "", { mode: 0o755 });
-    try {
-      await run(runner);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }
-
-  test("the check runs one confined /bin/true in Bubblewrap, network open, and passes when it does", async () => {
-    await withExecutor(async (runner) => {
-      let request: Record<string, unknown> | undefined;
-      const ok = await checkRunner(runner, async (_file, args) => {
+  test("the check runs one confined /bin/true in Bubblewrap, network open, through MXC's executor and not its SDK, and passes when it does", async () => {
+    let request: Record<string, unknown> | undefined;
+    let started: string | undefined;
+    const ok = await checkRunner(
+      executor,
+      async (file, args) => {
+        started = file;
         assert.equal(args.length, 1, "the request file alone");
         request = JSON.parse(await readFile(args[0], "utf8"));
         return { stdout: "", stderr: "" };
-      }, "linux");
-      assert.deepEqual(ok, { ok: true });
-      assert.equal(request?.containment, "bubblewrap");
-      assert.equal((request?.process as { commandLine: string }).commandLine, "/bin/true");
-      assert.deepEqual(request?.network, { egress: { default: "allow" } }, "the most demanding shape: a host that runs it runs the proxy too");
-    });
+      },
+      "linux",
+      neverLoaded,
+    );
+    assert.deepEqual(ok, { ok: true });
+    assert.equal(started, executor);
+    assert.equal(request?.containment, "bubblewrap");
+    assert.equal((request?.process as { commandLine: string }).commandLine, "/bin/true");
+    assert.deepEqual(request?.network, { egress: { default: "allow" } }, "the most demanding shape: a host that runs it runs the proxy too");
   });
 
   // openlore: scenario=AContainerWithoutNamespacesRefusesWithTheReason spec=sandbox-runner-bash
-  test("AContainerWithoutNamespacesRefusesWithTheReason: MXC's own message is the reason; elsewhere than Linux, refused", async () => {
-    await withExecutor(async (runner) => {
-      const said =
-        "Bubblewrap: network.egress requires unprivileged user and network namespaces, which this host refused (unshare --user --net exited with exit status: 1).";
-      const refused = await checkRunner(runner, async () => {
-        throw Object.assign(new Error("Command failed"), { stdout: `${said}{"error":{"code":"backend_error","message":"${said}"}}`, stderr: "" });
-      }, "linux");
-      assert.ok(!refused.ok && refused.reason === `MXC cannot confine commands on this host: ${said}`, !refused.ok ? refused.reason : "");
-      const windows = await checkRunner(runner, async () => ({ stdout: "", stderr: "" }), "win32");
-      assert.ok(!windows.ok && /Linux only/.test(windows.reason));
-    });
-  });
-
-  test("MXC's error object is read after its human line, and plain text passes through", () => {
-    assert.equal(mxcErrorMessage('Something.{"error":{"code":"x","message":"the reason"}}'), "the reason");
-    assert.equal(mxcErrorMessage("bwrap: No permissions to create new namespace\n"), "bwrap: No permissions to create new namespace");
+  test("AContainerWithoutNamespacesRefusesWithTheReason: MXC's own message is the reason; its Linux executor elsewhere than Linux, refused", async () => {
+    const said = "Bubblewrap: network.egress requires unprivileged user and network namespaces, which this host refused (unshare --user --net exited with exit status: 1).";
+    const refused = await checkRunner(executor, async () => Promise.reject(Object.assign(new Error("Command failed"), { stdout: "", stderr: `${JSON.stringify({ error: { message: said } })}\n` })), "linux", neverLoaded);
+    assert.ok(!refused.ok && refused.reason.startsWith("MXC cannot confine commands on this host: ") && refused.reason.includes("unshare --user --net"), !refused.ok ? refused.reason : "");
+    const windowsHost = await checkRunner("/opt/mxc/lxc-exec", noExec, "win32", fakeMxc().load);
+    assert.ok(!windowsHost.ok && /Linux only/.test(windowsHost.reason));
   });
 });
-
 describe("mxcLinuxConfig", () => {
   const lroot = "/work/app";
   const ltmp = "/tmp/pi-outpost-bash-1";
@@ -406,6 +399,33 @@ describe("mxcLinuxConfig", () => {
     assert.equal(quotePosixArgument("/bin/bash"), "/bin/bash");
     assert.equal(quotePosixArgument("it's here"), `'it'\\''s here'`);
     assert.equal(mxcLinuxConfig({ ...base, shellArgs: ["-c", "echo $HOME; ls"] }).process.commandLine, `/bin/bash -c 'echo $HOME; ls'`);
+  });
+});
+
+describe("mxcMacCaptureRequest", () => {
+  test("the same request on the development contract, with Seatbelt's report asked for in block mode: nothing else changes", () => {
+    const config = mxcMacConfig({
+      root: "/Users/me/app",
+      allowWrite: true,
+      tmp: "/private/var/folders/xy/T/pi-outpost-bash-1",
+      shell: "/bin/bash",
+      shellArgs: ["/private/var/folders/xy/T/pi-outpost-bash-1/command.sh"],
+      cwd: "/Users/me/app",
+      env: { PATH: "/usr/bin:/bin" },
+      searchPath: "/usr/bin:/bin",
+      agentDir: "/Users/me/.pi/agent",
+      networkProxy: "http://127.0.0.1:4000",
+      developerDir: null,
+      exists: () => true,
+      realPath: (file: string) => file,
+    });
+    const asked = mxcMacCaptureRequest(config, "/private/var/folders/xy/T/pi-outpost-refused-1/report.json");
+    assert.equal(asked.version, "1.1.0-alpha");
+    assert.deepEqual(asked.seatbelt, { ...config.seatbelt, captureDenials: { mode: "block", outputPath: "/private/var/folders/xy/T/pi-outpost-refused-1/report.json" } });
+    const { version: _v, seatbelt: _s, ...rest } = asked;
+    const { version: _cv, seatbelt: _cs, ...before } = config;
+    assert.deepEqual(rest, before, "what the command may touch is the request's own");
+    assert.equal(config.version, "1.0.0", "the request it was made from is left as it was");
   });
 });
 
@@ -568,57 +588,33 @@ describe("checkRunner with macOS' sandbox-exec", () => {
   });
 });
 
-describe("checkRunner with MXC's executor", () => {
-  // The executor's file must exist to be checked at all: an empty one under MXC's name.
-  async function withExecutor(run: (runner: string) => Promise<void>): Promise<void> {
-    const dir = await mkdtemp(path.join(tmpdir(), "mxc-runner-"));
-    const runner = path.join(dir, "wxc-exec.exe");
-    await writeFile(runner, "", { mode: 0o755 });
-    try {
-      await run(runner);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }
-  const probe = (tier: string, denyPaths = true) => async (_file: string, args: string[]) => {
-    assert.deepEqual(args, ["--probe"], "the self-check is the probe, which spawns no sandbox");
-    return { stdout: JSON.stringify({ tier, probes: { baseContainerSupportsDenyPaths: denyPaths } }), stderr: "" };
-  };
+describe("checkRunner with MXC on Windows", () => {
+  const probe = (tier: string, denyPaths = true) => fakeMxc({ probe: { tier, probes: { baseContainerSupportsDenyPaths: denyPaths } } }).load;
 
   // openlore: scenario=AnMxcRunnerBelowTier1MeansNoTerminal spec=terminal
   test("only tier 1 is usable: a lower tier would stamp ACLs over the readable drive", async () => {
-    await withExecutor(async (runner) => {
-      assert.deepEqual(await checkRunner(runner, probe("base-container"), "win32"), { ok: true });
-      const tier3 = await checkRunner(runner, probe("appcontainer-dacl"), "win32");
-      assert.ok(!tier3.ok && /appcontainer-dacl/.test(tier3.reason) && /base-container/.test(tier3.reason), !tier3.ok ? tier3.reason : "");
-      const noDeny = await checkRunner(runner, probe("base-container", false), "win32");
-      assert.ok(!noDeny.ok && /deny paths/.test(noDeny.reason));
-    });
+    assert.deepEqual(await checkRunner("mxc", noExec, "win32", probe("base-container")), { ok: true });
+    assert.deepEqual(await checkRunner("C:\\mxc\\wxc-exec.exe", noExec, "win32", probe("base-container")), { ok: true }, "the old executor's path is MXC too");
+    const tier3 = await checkRunner("mxc", async () => { throw new Error("no reg"); }, "win32", probe("appcontainer-dacl"));
+    assert.ok(!tier3.ok && /appcontainer-dacl/.test(tier3.reason) && /base-container/.test(tier3.reason), !tier3.ok ? tier3.reason : "");
+    const noDeny = await checkRunner("mxc", noExec, "win32", probe("base-container", false));
+    assert.ok(!noDeny.ok && /deny paths/.test(noDeny.reason));
   });
 
   // openlore: scenario=AnOldWindowsBuildRefusesTheShell spec=sandbox-defaults
   test("AnOldWindowsBuildRefusesTheShell: below MXC's table, the reason names the build and the update to install", async () => {
-    await withExecutor(async (runner) => {
-      const host = (build: string, ubr: number) => async (file: string, args: string[]) => {
-        if (args[0] === "--probe") return { stdout: JSON.stringify({ tier: "appcontainer-dacl", probes: {} }), stderr: "" };
-        assert.equal(file, "reg");
-        const value = args.at(-1);
-        return {
-          stdout: value === "UBR" ? `    UBR    REG_DWORD    0x${ubr.toString(16)}\r\n` : `    CurrentBuild    REG_SZ    ${build}\r\n`,
-          stderr: "",
-        };
-      };
-      const old = await checkRunner(runner, host("26100", 8000), "win32");
-      assert.ok(!old.ok);
-      assert.match(old.reason, /Windows build 26100\.8000; MXC's process container needs 26100\.9278: install the August 2026 cumulative update \(KB5120998\)/);
-      const older = await checkRunner(runner, host("22631", 4000), "win32");
-      assert.ok(!older.ok && /22631\.4000; MXC's process container needs Windows 11 24H2/.test(older.reason));
-      const unreadable = await checkRunner(runner, async (_file: string, args: string[]) => {
-        if (args[0] === "--probe") return { stdout: JSON.stringify({ tier: "appcontainer-dacl" }), stderr: "" };
-        throw new Error("reg is not there");
-      }, "win32");
-      assert.ok(!unreadable.ok && /appcontainer-dacl/.test(unreadable.reason) && !/Windows build/.test(unreadable.reason));
-    });
+    const reg = (build: string, ubr: number) => async (file: string, args: string[]) => {
+      assert.equal(file, "reg");
+      const value = args.at(-1);
+      return { stdout: value === "UBR" ? `    UBR    REG_DWORD    0x${ubr.toString(16)}\r\n` : `    CurrentBuild    REG_SZ    ${build}\r\n`, stderr: "" };
+    };
+    const old = await checkRunner("mxc", reg("26100", 8000), "win32", probe("appcontainer-dacl"));
+    assert.ok(!old.ok);
+    assert.match(old.reason, /Windows build 26100\.8000; MXC's process container needs 26100\.9278: install the August 2026 cumulative update \(KB5120998\)/);
+    const older = await checkRunner("mxc", reg("22631", 4000), "win32", probe("appcontainer-dacl"));
+    assert.ok(!older.ok && /22631\.4000; MXC's process container needs Windows 11 24H2/.test(older.reason));
+    const unreadable = await checkRunner("mxc", async () => { throw new Error("reg is not there"); }, "win32", probe("appcontainer-dacl"));
+    assert.ok(!unreadable.ok && /appcontainer-dacl/.test(unreadable.reason) && !/Windows build/.test(unreadable.reason));
   });
 
   test("windowsBuildAdvice: each release's first supported build, and nothing to install at or above it", () => {
@@ -629,20 +625,18 @@ describe("checkRunner with MXC's executor", () => {
     assert.equal(windowsBuildAdvice("29000", 1), "This machine is Windows build 29000.1");
   });
 
-  test("anywhere but Windows, or a probe that fails or says nothing usable, is a reason", async () => {
-    await withExecutor(async (runner) => {
-      const linux = await checkRunner(runner, probe("base-container"), "linux");
-      assert.ok(!linux.ok && /Windows only/.test(linux.reason));
-      const failed = await checkRunner(runner, async () => {
-        throw Object.assign(new Error("Command failed"), { stderr: "processmodel.dll missing" });
-      }, "win32");
-      assert.ok(!failed.ok && /processmodel\.dll missing/.test(failed.reason));
-      const garbled = await checkRunner(runner, async () => ({ stdout: "not json", stderr: "" }), "win32");
-      assert.ok(!garbled.ok && /not JSON/.test(garbled.reason));
-    });
+  test("a probe that fails is a reason; an SDK that cannot load is the reason; nothing is spawned for either", async () => {
+    const failed = await checkRunner("mxc", noExec, "win32", fakeMxc({ probeThrows: "processmodel.dll missing" }).load);
+    assert.ok(!failed.ok && /processmodel\.dll missing/.test(failed.reason));
+    const absent = await checkRunner("mxc", noExec, "win32", async () => ({ reason: "MXC's SDK cannot load here: mxc_ffi.dll was not found" }));
+    assert.deepEqual(absent, { ok: false, reason: "MXC's SDK cannot load here: mxc_ffi.dll was not found" });
+  });
+
+  test("on a platform MXC does not run on, a reason", async () => {
+    const bsd = await checkRunner("mxc", noExec, "freebsd" as NodeJS.Platform, fakeMxc().load);
+    assert.ok(!bsd.ok && /Windows, Linux and macOS only/.test(bsd.reason));
   });
 });
-
 describe("mxcTerminalConfig", () => {
   const wroot = "C:\\Users\\me\\work\\app";
   const wtmp = "C:\\Users\\me\\AppData\\Local\\Temp\\pi-outpost-terminal-1";

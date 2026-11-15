@@ -257,11 +257,11 @@ in [`pi-outpost.config.example.json`](../pi-outpost.config.example.json).
 | `sandbox.allowWrite` | Adds edit/write, confined to `sandbox.writableRoot` (default `false`). Never inside a `.pi` directory, which holds the configuration that confines the agent — see [docs/sandboxing.md](sandboxing.md#what-is-confined) |
 | `sandbox.writableRoot` | Read-write zone: a subdirectory of `root` that edit/write are further confined to. Defaults to `root` itself. Ignored while `allowWrite` is false, and applies to the `cwd` project only: every other open project is writable in its whole directory |
 | `sandbox.allowBash` | Adds bash — **not path-confined** unless `bashRunner` or `bashFrom` confines it (default `false` in a section you write; on in the default sandbox) |
-| `sandbox.bashRunner` | `"auto"`: the server picks this machine's runner and uses it once its check passes, refusing every command otherwise — see [the default](sandboxing.md#the-default). `"none"`: the shell runs unconfined. Otherwise, runs every command of pi-outpost's own `bash` inside a sandbox runner — MXC's `wxc-exec.exe` (Windows 11; `"mxc"` names the one installed with pi-outpost, see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost)), landstrip's binary (Linux), or — as an option on Linux, loosening Docker's profile — MXC's `lxc-exec` (`"mxc"` there; see [docs/sandboxing.md](sandboxing.md#linux-as-an-option-mxc)), or on Apple-silicon macOS MXC's `mxc-exec-mac` (`"mxc"`; see [docs/sandboxing.md](sandboxing.md#macos-on-apple-silicon-mxc)), or on any Mac `"seatbelt"`, macOS' own `sandbox-exec` (see [docs/sandboxing.md](sandboxing.md#macos-every-mac-seatbelt)) — with the policy of a confined terminal: reads in the root, writes in the writable zone, no keys. A missing or failing runner refuses each command, never runs it unconfined. Exclusive with `bashFrom`. See [docs/sandboxing.md](sandboxing.md#recommended-setup) |
+| `sandbox.bashRunner` | `"auto"`: the server picks this machine's runner and uses it once its check passes, refusing every command otherwise — see [the default](sandboxing.md#the-default). `"none"`: the shell runs unconfined. Otherwise, runs every command of pi-outpost's own `bash` inside a sandbox runner — `"mxc"`, MXC run in process through its SDK, installed with pi-outpost (Windows 11; see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost)), landstrip's binary (Linux), or — as an option on Linux, loosening Docker's profile — `"mxc"` there too, MXC's Bubblewrap backend (see [docs/sandboxing.md](sandboxing.md#linux-as-an-option-mxc)), or on Apple-silicon macOS `"mxc"`, MXC's Seatbelt backend (see [docs/sandboxing.md](sandboxing.md#macos-on-apple-silicon-mxc)), or on any Mac `"seatbelt"`, macOS' own `sandbox-exec` (see [docs/sandboxing.md](sandboxing.md#macos-every-mac-seatbelt)) — with the policy of a confined terminal: reads in the root, writes in the writable zone, no keys. A missing or failing runner refuses each command, never runs it unconfined. Exclusive with `bashFrom`. See [docs/sandboxing.md](sandboxing.md#recommended-setup) |
 | `sandbox.bashShell` | The shell `bashRunner` runs commands in (default `/bin/bash`). With `"bashRunner": "none"`, a PowerShell shell gives the agent its `powershell` tool, unconfined. Required on Windows, where Git Bash cannot start in a sandbox: `powershell.exe` (the agent then gets a `powershell` tool instead of `bash`), or busybox-w32's `sh.exe` — a full path, or a bare name found on `PATH` |
 | `sandbox.bashImage` | Experimental, Windows 11 with MXC: a Linux image (e.g. `buildpack-deps:bookworm-scm`) every command of the agent's `bash` runs in, through MXC's WSLC backend — a real bash, with only the root mounted (at `/mnt/c/…`). Needs MXC as `bashRunner` and no `bashShell`; the writable zone is the whole root. See [docs/sandboxing.md](sandboxing.md#a-real-bash-wslc-experimental) |
 | `sandbox.allowedHosts` | With MXC (Windows 11, Linux with [its Docker flags](sandboxing.md#linux-as-an-option-mxc), or [Apple-silicon macOS](sandboxing.md#macos-on-apple-silicon-mxc)) or [Seatbelt](sandboxing.md#macos-every-mac-seatbelt) (any Mac): the only hosts the agent's shell may reach — names (`"registry.npmjs.org"`) or suffixes (`"*.githubusercontent.com"`). Outbound traffic is denied and a proxy the server runs is the only way out; any other host is refused with a reason naming it. Needs MXC or Seatbelt as `bashRunner` and no `bashImage`. Absent: the network is open. See [docs/sandboxing.md](sandboxing.md#the-network-only-named-hosts) |
-| `sandbox.grants` | `"ask"` (default) or `"never"`. With a `bashRunner`, you are asked when a command connects to a host `allowedHosts` does not list (the connection waits for your answer), or when the agent needs a directory beyond the sandbox; allow it for that command or the rest of the session, or refuse. Only your click grants, and the agent directory and the configuration can never be granted. `"never"`: nobody is asked, the list alone decides. Settings do not edit it. See [docs/sandboxing.md](sandboxing.md#grants-beyond-the-sandbox-when-you-say-so) |
+| `sandbox.grants` | `"ask"` (default) or `"never"`. With a `bashRunner`, you are asked when a command connects to a host `allowedHosts` does not list (the connection waits for your answer), or when the agent needs a directory beyond the sandbox; allow it for that command or the rest of the session, or refuse — or keep the answer as a rule for the project. Only your click grants, and the agent directory and the configuration can never be granted. `"never"`: nobody is asked, the list alone decides, and no rule is made or applied. Settings do not edit it. See [docs/sandboxing.md](sandboxing.md#grants-beyond-the-sandbox-when-you-say-so) |
 | `sandbox.bashFrom` | Hands bash to a sandboxing extension instead: its package source as pi lists it (`"npm:pi-landstrip"`) or the path of its file or directory. pi-outpost then supplies no `bash` of its own — which would otherwise shadow the extension's, since an application's tool wins over an extension's of the same name. The session refuses to start unless that extension registers `bash`, and a Settings change that would leave it without one is rolled back. Only while `allowBash` is on. See [Confining bash with an extension](#confining-bash-with-an-extension) |
 | `sandboxLocks` | Which sandbox fields Settings may **not** change: `root`, `writableRoot`, `allowWrite`, `allowBash` |
 | `workspaceLock` | Pin the server to one project: opening, closing and switching are refused, and no control is offered |
@@ -312,7 +312,7 @@ agent directory and the configuration can never be granted. See
 
 #### MXC comes with pi-outpost
 
-MXC's executor (`wxc-exec.exe`, signed by Microsoft, MIT; on Linux `lxc-exec`; on Apple-silicon macOS `mxc-exec-mac`) ships in
+MXC (Microsoft, MIT) ships as an SDK,
 [`@microsoft/mxc-sdk`](https://www.npmjs.com/package/@microsoft/mxc-sdk), which pi-outpost declares
 as an **optional dependency**. In npm, *optional* does not mean *opt-in*: `npm install -g
 pi-outpost`, `npx --allow-scripts=node-pty,koffi pi-outpost` and `npm ci` **install it by default**, with nothing to add. It only
@@ -333,18 +333,27 @@ means that an install which fails for that package does not fail pi-outpost's in
 }
 ```
 
-`"mxc"` resolves to the installed package's `wxc-exec.exe` for this machine's architecture
-(`x64` or `arm64`). If it is not there, the server refuses to start and says so; reinstall
+`"mxc"` runs MXC **in process**, through the SDK's API, as Microsoft recommends: its native library
+(`mxc_ffi`) for this machine's architecture (`x64` or `arm64`), loaded through `koffi`. No executor of
+MXC's is started for the agent's shell, its self-check or its diagnosis. Two exceptions. The confined
+**terminal on Windows** runs under MXC's executor, `wxc-exec.exe` (signed by Microsoft, in the same
+package), because the SDK's Windows pseudo-terminal takes its request on the command line, which a
+terminal's request outgrows. And on **Linux** everything runs through MXC's executor, `lxc-exec`, started
+with the command's own environment: in process, Bubblewrap would hold the server's where a command can
+read it. A configuration written before that names one of MXC's executors
+(`wxc-exec.exe`, `lxc-exec`, `mxc-exec-mac`) still works: the path is read as `"mxc"`, and the
+startup line says so. If the SDK is not there, the server refuses to start and says so; reinstall
 without `--omit=optional`:
 
 ```powershell
 npm install -g --allow-scripts=node-pty,koffi pi-outpost --include=optional
 ```
 
-The **standalone executable** has no `node_modules`: `"mxc"` looks for `wxc-exec.exe` **beside
-`pi-outpost.exe`**. `pi-outpost build-exe` puts it there on Windows when the package is installed;
-otherwise copy `node_modules\@microsoft\mxc-sdk\bin\x64\wxc-exec.exe` (`arm64` on ARM) next to
-the executable.
+The **standalone executable** has no `node_modules`: it carries the SDK's JavaScript inside, and
+loads MXC's native parts from **beside `pi-outpost.exe`** — `mxc_ffi.dll`, `node_modules\koffi` and
+`node_modules\@koromix\koffi-win32-x64` (about 3 MB), plus `wxc-exec.exe` for the terminal.
+`pi-outpost build-exe` puts them there when the package is installed, and says so when it is not; the
+executable then refuses `"mxc"` with the reason.
 The package is about 100 MB and is installed on every platform, though only Windows uses it; an
 install that must stay small can omit it and name no `"mxc"`.
 
@@ -404,7 +413,7 @@ install that must stay small can omit it and name no `"mxc"`.
 | `terminal.enabled` | Enable integrated interactive web terminal (default `false` — explicit opt-in only). See [Integrated Terminal](features.md#integrated-terminal) |
 | `terminal.shell` | Path to the shell executable (default: PowerShell -> cmd on Windows; `$SHELL` -> `/bin/zsh` -> `/bin/bash` on Unix) |
 | `terminal.shellArgs` | Arguments passed to the shell (default: `["-l"]` on Unix login shells) |
-| `terminal.sandbox` | Path to a sandbox runner (landstrip's binary, or MXC's `wxc-exec.exe` on Windows 11, `lxc-exec` on Linux or `mxc-exec-mac` on Apple-silicon macOS, or `"seatbelt"` for macOS' own `sandbox-exec` on any Mac — `"mxc"` names the one installed with pi-outpost, see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost)) every terminal runs inside, confined to the sandbox root, with no keys in its environment. A missing or failing runner means no terminal, never an unconfined one. See [docs/sandboxing.md](sandboxing.md#recommended-setup) |
+| `terminal.sandbox` | A sandbox runner (landstrip's binary, `"mxc"` for MXC — on Windows 11, Linux or Apple-silicon macOS, see [MXC comes with pi-outpost](#mxc-comes-with-pi-outpost) — or `"seatbelt"` for macOS' own `sandbox-exec` on any Mac) every terminal runs inside, confined to the sandbox root, with no keys in its environment. A missing or failing runner means no terminal, never an unconfined one. See [docs/sandboxing.md](sandboxing.md#recommended-setup) |
 | `embed.workspaceControls` | What a mounted widget offers: `"settings"` (default, one project), `"root"` (a compact root chooser), `"projects"` (open/switch/close) |
 | `updateCheck` / `updateRegistry` / `changelogNotice` | See [Staying up to date](deployment.md#staying-up-to-date) |
 | `gitPath` | Path to the git executable. Unset, git is found on `PATH` and then where installers put it. See [Git](#git) |

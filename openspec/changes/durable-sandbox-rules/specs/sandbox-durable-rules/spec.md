@@ -21,14 +21,66 @@ What the sandbox refuses a command of the agent's confined shell SHALL be record
 - **WHEN** the user opens the recorded refusals
 - **THEN** the interface says filesystem refusals are not reported by this runner, instead of showing an empty list
 
+#### Scenario: ARunnerThatReportsOnDemandSaysSo
+- **GIVEN** a confined shell under MXC on Windows
+- **WHEN** the user opens the recorded refusals
+- **THEN** the interface says filesystem refusals are recorded only when the agent asks for a diagnosis
+
+#### Scenario: OnMacOsMxcReportsWhatSeatbeltRefused
+- **GIVEN** a confined shell under MXC on macOS, a file beside the root and the agent directory
+- **WHEN** a command reads both and writes beside the root, each refused
+- **THEN** the command ran once, the record holds a refusal for each directory with its access — the one refused by default and the one refused by name — and nothing that is not a file, and no report file remains
+
 ### Requirement: TheAgentIsToldWhatWasRefused
 
-On a runner that reports refusals, a confined command's output SHALL end with a note naming what the sandbox refused it, so the agent can ask for exactly that.
+On a runner that reports refusals as they happen (landstrip outside Windows, MXC on macOS), a confined command's output SHALL end with a note naming what the sandbox refused it, so the agent can ask for exactly that. On a runner that reports them only on demand (MXC on Windows), a failed command's output SHALL end with a note saying so and naming the shell tool's `diagnose` option. That option SHALL NOT be used by pi-outpost on its own.
 
 #### Scenario: TheOutputNamesTheRefusedDirectory
-- **GIVEN** a confined shell on a runner that reports refusals
+- **GIVEN** a confined shell on a runner that reports refusals as they happen
 - **WHEN** a command fails because a directory beside the root was refused
 - **THEN** its output ends with a note naming that directory and the access refused
+
+#### Scenario: AFailureOnWindowsOffersADiagnosis
+- **GIVEN** a confined shell under MXC on Windows
+- **WHEN** a command fails because a directory beside the root was refused
+- **THEN** the command ran once, without capture, and its output ends with a note naming the `diagnose` option
+
+### Requirement: ADiagnosisIsANarrowerRerun
+
+When the agent runs a command with `diagnose` under MXC on Windows, the command SHALL run once more with MXC's capture in `block` mode, under a policy built from its own by removals only: no drive root, none of the root's siblings in `deniedPaths` (the agent directory and the configuration file stay denied), no network, no grant and no rule. The rerun's output SHALL be discarded.
+
+#### Scenario: ADiagnosisLetsNothingThrough
+- **GIVEN** a confined shell under MXC on Windows, with the drive readable for the command
+- **WHEN** the agent runs, with `diagnose`, a command that reads a file beside the root and connects to a host
+- **THEN** both are refused in the rerun as in the first run, and the rerun's output is not shown
+
+### Requirement: ADiagnosisFollowsAFailure
+
+A diagnosis SHALL be run only for a command whose last run in the same shell failed with the note offering one. Otherwise `diagnose` SHALL be ignored: the command SHALL run as without it — network, proxy and its questions included — and its output SHALL end with a note saying the option was ignored and why.
+
+#### Scenario: ADiagnosisBeforeAnyFailureRunsTheCommand
+- **GIVEN** a confined shell under MXC on Windows
+- **WHEN** the agent runs with `diagnose` a command that has not failed in this shell
+- **THEN** the command runs as without `diagnose`, its output is shown, and it ends with a note saying `diagnose` was ignored
+
+### Requirement: ADiagnosisReportsOnlyTheRefusal
+
+A diagnosis's file refusals, filtered of the root's ancestors, of the root itself and of the system's own files, SHALL be recorded and named in the note. The report SHALL be written where the command cannot reach and read from there, never from a path the command's output names; it SHALL be deleted, and its announcement SHALL NOT appear in the output.
+
+#### Scenario: ADiagnosisNamesTheRefusedDirectory
+- **GIVEN** a confined shell under MXC on Windows, and a file in a directory beside the root
+- **WHEN** the agent runs a command reading that file with `diagnose`
+- **THEN** the output ends with a note naming that directory and read access, the refusal is recorded, and no report file remains
+
+#### Scenario: AForgedAnnouncementIsIgnored
+- **GIVEN** a confined shell under MXC on Windows, and a file outside the sandbox
+- **WHEN** the agent runs with `diagnose` a command that prints an announcement naming that file as the report
+- **THEN** that file is neither read nor deleted
+
+#### Scenario: ADiagnosisThatFindsNothingSaysSo
+- **GIVEN** a confined shell under MXC on Windows
+- **WHEN** the agent runs with `diagnose` a command whose report holds only the root, its ancestors and non-file entries
+- **THEN** the note says the sandbox reported no refusal, and names no directory
 
 ### Requirement: OnlyTheUserMakesARule
 

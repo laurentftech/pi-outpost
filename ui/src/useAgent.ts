@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { randomId } from "./util/randomId";
-import type { LoginEvent, LoginPrompt, OutpostChanges, OutpostUpdateNotice, PiPackageInfo, SandboxGrantDecision, SandboxGrantState, SessionSnapshot } from "@pi-outpost/shared";
+import type { LoginEvent, LoginPrompt, OutpostChanges, OutpostUpdateNotice, PiPackageInfo, SandboxGrantDecision, SandboxGrantState, SandboxRulesState, SessionSnapshot } from "@pi-outpost/shared";
 type PiPackageScope = PiPackageInfo["scope"];
 import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
@@ -520,6 +520,14 @@ export interface AgentState {
    */
   sandboxGrants: SandboxGrantState | null;
   /**
+   * The project's durable sandbox rules and recorded refusals, once asked for. Null again with
+   * every new snapshot — another project or session — so a panel left open never shows the
+   * rules of the project it was opened on under another one.
+   */
+  sandboxRules: SandboxRulesState | null;
+  /** Why the last rule could not be made or revoked, from the server. */
+  sandboxRuleError: string | null;
+  /**
    * Skill paths added through Settings — the list the user may add to and remove
    * from. The configuration file's own `skillPaths` are not carried into the UI:
    * they load regardless, and nothing here may touch them.
@@ -612,6 +620,8 @@ const initialState: AgentState = {
   isCompacting: false,
   dialogQueue: [],
   sandboxGrants: null,
+  sandboxRules: null,
+  sandboxRuleError: null,
   notifications: [],
   statuses: {},
   widgets: {},
@@ -876,6 +886,8 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     confinement: message.confinement ?? null,
     // The server's word on what is still waiting: a request answered while this client was away is gone.
     sandboxGrants: message.sandboxGrants ?? null,
+    sandboxRules: null,
+    sandboxRuleError: null,
     userSkillPaths: message.userSkillPaths ?? [],
     serverBrowse: null,
     settingsApply: null,
@@ -1696,6 +1708,10 @@ function reduce(state: AgentState, action: Action): AgentState {
       return { ...state, sandboxGrants: { ...state.sandboxGrants, pending: state.sandboxGrants.pending.filter((request) => request.id !== message.id) } };
     case "sandbox_grants":
       return { ...state, sandboxGrants: { pending: state.sandboxGrants?.pending ?? [], active: message.active } };
+    case "sandbox_rules":
+      return { ...state, sandboxRules: message.state, sandboxRuleError: null };
+    case "sandbox_rule_refused":
+      return { ...state, sandboxRuleError: message.message };
     case "compaction_start":
       return { ...state, isCompacting: true };
     case "compaction_end":
@@ -3030,6 +3046,11 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     },
     /** Answer a grant request. Its dialog stays until the server resolves it, whoever answered first. */
     respondToGrant: (id: string, decision: SandboxGrantDecision) => sendMessage({ type: "sandbox_grant_response", id, decision }),
+    /** Ask for the project's rules and recorded refusals: `sandboxRules` holds them once answered. */
+    getSandboxRules: () => sendMessage({ type: "sandbox_rules_get" }),
+    /** Make a rule from a recorded refusal. Kept, every client is sent the rules again. */
+    setSandboxRule: (refusalKey: string, decision: "allow" | "refuse") => sendMessage({ type: "sandbox_rule_set", refusalKey, decision }),
+    revokeSandboxRule: (id: string) => sendMessage({ type: "sandbox_rule_revoke", id }),
     dismissNotification: (id: string) => dispatch({ type: "dismiss_notification", id }),
     /** List a directory's children (path is relative to the browser root; "" = root). */
     listDirectory: (path: string) => requestDirectory(path),

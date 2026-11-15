@@ -13,18 +13,23 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
 import type { SandboxGrantOutcome } from "@pi-outpost/shared";
 import { startEgressProxy, type EgressProxy, type EgressProxyOptions } from "./egressProxy.ts";
-import { EMPTY_GRANT, forbiddenHost, isEmptyGrant, mergeGrants, type Grant } from "./sandboxGrants.ts";
+import { EMPTY_GRANT, forbiddenHost, isApproved, isEmptyGrant, mergeGrants, type Grant } from "./sandboxGrants.ts";
+import { linuxMxcExecutor, mxcMissingReason, mxcRunsInProcess } from "./mxcExecutor.ts";
+import { mxcSdk, runThroughSdk, SdkDocumentRefused, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
+import { hostRefusal, landstripRefusal, mxcReportFile, mxcReportRefusals, refusalCollector, refusalKey, seatbeltReportRefusals, type Refusal } from "./sandboxRefusals.ts";
 import {
   checkRunner,
   confinedEnvironment,
   gitReadOnlyFiles,
   isPosixMxc,
+  mxcDiagnosticConfig,
+  mxcMacCaptureRequest,
   mxcPosixConfig,
   proxyEnvironment,
   seatbeltPolicy,
@@ -32,6 +37,7 @@ import {
   runnerKind,
   siblingsToDeny,
   terminalPolicy,
+  type MxcMacConfig,
   type RunnerCheck,
 } from "./terminalSandbox.ts";
 
@@ -90,6 +96,27 @@ export interface ConfinedBashOptions {
    * command of this session beyond the sandbox. Absent: none.
    */
   grants?: () => Grant;
+  /**
+   * Told of each thing the sandbox refused a command, once per command, as it is known
+   * (`sandboxRefusals.ts`): what is recorded for the project.
+   */
+  onRefusal?: (refusal: Refusal) => void;
+  /**
+   * MXC's SDK, for a diagnosis (`mxcSdkDiagnosis.ts`): undefined where it cannot load, and the
+   * executor runs the diagnosis instead. A parameter for tests; loaded once otherwise.
+   */
+  mxcSdk?: () => Promise<{ sdk: MxcSdk } | { reason: string }>;
+  /**
+   * The user's always-allow directories (`sandboxRules.ts`), read at each launch so a revoke
+   * applies from the next command: already checked, existing, and not what the sandbox gives.
+   * Never applied to a diagnosis. Absent: none.
+   */
+  ruleGrant?: () => Promise<Grant>;
+  /**
+   * What the user's rules say of a host a command connects to, asked before anyone is: always
+   * refuse answers at once, always allow lets it through. Absent: no rules.
+   */
+  hostRule?: (host: string) => Promise<"allow" | "refuse" | undefined>;
 }
 
 type ExecOptions = Parameters<BashOperations["exec"]>[2];
@@ -97,6 +124,62 @@ type ExecOptions = Parameters<BashOperations["exec"]>[2];
 /** pi's `BashOperations`, and one command run with a grant the user approved for it alone. */
 export interface ConfinedBashOperations extends BashOperations {
   execWithGrant(command: string, cwd: string, options: ExecOptions, grant: Grant): ReturnType<BashOperations["exec"]>;
+  /**
+   * Present only where the runner says what it refused on demand alone (MXC on Windows): the
+   * command once more under a narrower sandbox, its output replaced by what was refused
+   * (`mxcDiagnosticConfig`). The agent asks for it; nothing here calls it on its own.
+   */
+  diagnose?(command: string, cwd: string, options: ExecOptions): ReturnType<BashOperations["exec"]>;
+}
+
+/** How many failed commands keep their offer of a diagnosis, the oldest forgotten first. */
+const MAX_OFFERED = 64;
+
+/** The shell tool's option that asks for a diagnosis. */
+export const DIAGNOSE_OPTION = "diagnose";
+
+/** What ends a failed command where the sandbox says nothing on its own: that a diagnosis can. */
+export function diagnosisOfferNote(): string {
+  return (
+    `[pi-outpost] This sandbox does not say on its own what it refused. If this failure looks like a refused path, ` +
+    `run the same command again with ${DIAGNOSE_OPTION}: true — it runs once more under a narrower sandbox, without network, ` +
+    `and returns only what the sandbox refused. Its effects happen again: never diagnose a command that must not run twice.`
+  );
+}
+
+/**
+ * What ends a command run with `diagnose` before it failed: it ran as usual. A diagnosis takes the
+ * network away and hides the output, so one asked at once leaves the agent nothing to judge by,
+ * and the user no question about a host.
+ */
+export function diagnosisIgnoredNote(): string {
+  return (
+    `[pi-outpost] ${DIAGNOSE_OPTION} was ignored: this command has not failed here yet, so it ran as usual, output and network included. ` +
+    `Ask for a diagnosis only after it fails and its output offers one.`
+  );
+}
+
+/**
+ * What ends a command the sandbox refused directories while it ran (landstrip tells each as it
+ * happens): each directory and its access, so the agent can ask for exactly that. Undefined for none.
+ */
+export function refusedDirectoriesNote(refusals: readonly Refusal[]): string | undefined {
+  const directories = refusals.filter((refusal) => refusal.kind === "directory");
+  if (directories.length === 0) return undefined;
+  const lines = directories.map((refusal) => `[pi-outpost] the sandbox refused ${refusal.access === "write" ? "writing to" : "reading"} ${refusal.target}.`);
+  lines.push("[pi-outpost] If the task needs one of these, ask run_with_grant for exactly it; judge the command by its exit status and output.");
+  return lines.join("\n");
+}
+
+/** What a diagnosis returns in place of the command's output. */
+export function diagnosisNote(refusals: readonly Refusal[]): string {
+  const directories = refusals.filter((refusal) => refusal.kind === "directory");
+  if (directories.length === 0) {
+    return "[pi-outpost] diagnosis: the sandbox reported no refused directory. The failure is not one it can name: read the command's own error.";
+  }
+  const lines = directories.map((refusal) => `[pi-outpost] diagnosis: the sandbox refused ${refusal.access === "write" ? "writing to" : "reading"} ${refusal.target}.`);
+  lines.push(`[pi-outpost] The command's output is not shown. If the task needs one of these, ask run_with_grant for exactly it.`);
+  return lines.join("\n");
 }
 
 /** What ends a command whose hosts the proxy refused without anyone to ask: which ones, and the way through. */
@@ -132,9 +215,13 @@ export function landstripNote(line: string): string | undefined {
  * landstrip's stderr, line by line: its refusals rewritten by `landstripNote`, the rest unchanged.
  * A line is held only until its end arrives, and what is left is written at `end`.
  */
-export function landstripStderr(onData: (data: Buffer) => void): { write: (data: Buffer) => void; end: () => void } {
+export function landstripStderr(onData: (data: Buffer) => void, onLine?: (line: string) => void): { write: (data: Buffer) => void; end: () => void } {
   let pending = "";
-  const emit = (line: string, newline: boolean) => onData(Buffer.from(`${landstripNote(line.replace(/\r$/, "")) ?? line}${newline ? "\n" : ""}`));
+  const emit = (raw: string, newline: boolean) => {
+    const line = raw.replace(/\r$/, "");
+    onLine?.(line);
+    onData(Buffer.from(`${landstripNote(line) ?? raw}${newline ? "\n" : ""}`));
+  };
   return {
     write: (data) => {
       pending += data.toString("utf8");
@@ -152,18 +239,26 @@ export function landstripStderr(onData: (data: Buffer) => void): { write: (data:
 }
 
 /** What the user answered about a host a command connected to, or why nobody was asked. */
-export type HostAnswer = SandboxGrantOutcome | { forbidden: string };
+export type HostAnswer = SandboxGrantOutcome | { forbidden: string } | { rule: "refuse" };
 
 /** How an answer reads, in the proxy's refusal and in the note after the command. */
 export function hostAnswerText(host: string, answer: HostAnswer): string {
-  if (typeof answer === "object") return `${host} is never granted: ${answer.forbidden}`;
+  if (typeof answer === "object") {
+    return "rule" in answer
+      ? `a rule of the user's always refuses ${host}: it is refused without asking, until the user revokes the rule`
+      : `${host} is never granted: ${answer.forbidden}`;
+  }
   switch (answer) {
     case "approved-once":
       return `the user allowed ${host} for this command`;
     case "approved-session":
       return `the user allowed ${host} for the rest of the session`;
+    case "approved-always":
+      return `the user always allows ${host}, from now on`;
     case "refused":
       return `the user refused ${host}`;
+    case "refused-always":
+      return `the user always refuses ${host}: it will be refused without asking`;
     case "expired":
       return `nobody answered about ${host} in time`;
     case "aborted":
@@ -176,7 +271,7 @@ export function hostAnswerText(host: string, answer: HostAnswer): string {
 /** What ends a command that connected to hosts the list does not name, the user asked about each. */
 export function networkNote(answers: ReadonlyMap<string, HostAnswer>): string {
   const lines = [...answers].map(([host, answer]) => `[pi-outpost] network: ${hostAnswerText(host, answer)}.`);
-  const refused = [...answers.values()].some((answer) => answer !== "approved-once" && answer !== "approved-session");
+  const refused = [...answers.values()].some((answer) => !isApproved(answer));
   if (refused) lines.push("[pi-outpost] Do not retry a refused host for this request: tell the user what it blocked.");
   return lines.join("\n");
 }
@@ -271,7 +366,20 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
   const wslc = options.image !== undefined && kind === "mxc";
   const shell = wslc ? "/bin/bash" : (options.shell ?? (windows ? undefined : "/bin/bash"));
   const powerShell = !wslc && isPowerShell(shell);
-  const launchCommand = async (command: string, cwd: string, { onData, signal, timeout }: ExecOptions, extra: Grant) => {
+  // MXC on Windows reports what it refused only when asked, at a cost of a second per command:
+  // a diagnosis, on the agent's request, after a failure (`mxcDiagnosticConfig`).
+  const diagnosable = kind === "mxc" && windows && !wslc && !isPosixMxc(options.runner);
+  /** The commands whose last run failed with the offer of a diagnosis: the only ones diagnosed. */
+  const offered = new Set<string>();
+  // macOS: whether MXC's SDK refused the document that asks for Seatbelt's report (`mxcMacCaptureRequest`).
+  let captureRefused = false;
+  /**
+   * One command. With `diagnosis`, run as a diagnosis (`mxcDiagnosticConfig`): none of its output is
+   * shown, and what MXC's report names — filtered, undefined when MXC wrote none — goes there.
+   */
+  const launchCommand = async (command: string, cwd: string, { onData: shown, signal, timeout }: ExecOptions, extra: Grant, diagnosis?: (found: Refusal[] | undefined) => void) => {
+    const diagnose = diagnosis !== undefined;
+    const onData: (data: Buffer) => void = diagnose ? () => {} : shown;
     const timeoutMs = timeoutInMs(timeout);
     if (signal?.aborted) throw new Error("aborted");
     const refusal = await options.gate?.();
@@ -285,8 +393,10 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
       );
     }
 
-    const session = options.grants?.() ?? EMPTY_GRANT;
-    const grant = mergeGrants(session, extra);
+    // No grant, of the session or of this command, reaches a diagnosis: it only ever narrows.
+    const session = diagnose ? EMPTY_GRANT : (options.grants?.() ?? EMPTY_GRANT);
+    const ruled = diagnose ? EMPTY_GRANT : ((await options.ruleGrant?.()) ?? EMPTY_GRANT);
+    const grant = diagnose ? EMPTY_GRANT : mergeGrants(session, ruled, extra);
     if (wslc && grant.directories.length > 0) {
       throw new Error("a directory grant cannot reach bash in a WSLC container: its mounts are fixed when it starts");
     }
@@ -294,24 +404,39 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     // A host the list does not name is asked about while the connection waits — by a proxy of
     // this command's own, so that what it asks is this command's, and closed after it. The shared
     // proxy of the list is left as it is, for every other command and session using it.
-    let networkProxy = options.networkProxy;
+    // Nor any way out: a diagnosis runs with the network closed.
+    let networkProxy = diagnose ? undefined : options.networkProxy;
     let dedicated: EgressProxy | undefined;
     const answers = new Map<string, HostAnswer>();
+    const refusals = refusalCollector(options.onRefusal);
     const askHost = options.askHost;
     if (networkProxy !== undefined && askHost !== undefined && !wslc) {
       dedicated = await (options.startProxy ?? startEgressProxy)({
         allowedHosts: [...(options.allowedHosts ?? []), ...session.hosts],
         ask: async (host) => {
+          // What can never be granted, then the user's rules, then the user.
           const forbidden = forbiddenHost(host);
-          const answer: HostAnswer = forbidden ? { forbidden } : await askHost({ command, host, ...(signal ? { signal } : {}) });
+          const rule = forbidden ? undefined : await options.hostRule?.(host).catch(() => undefined);
+          if (rule === "allow") return { allowed: true };
+          const answer: HostAnswer = forbidden ? { forbidden } : rule === "refuse" ? { rule: "refuse" } : await askHost({ command, host, ...(signal ? { signal } : {}) });
           answers.set(host, answer);
-          return answer === "approved-once" || answer === "approved-session" ? { allowed: true } : { allowed: false, why: hostAnswerText(host, answer) };
+          if (!isApproved(answer)) refusals.add(hostRefusal(host, command));
+          return isApproved(answer) ? { allowed: true } : { allowed: false, why: hostAnswerText(host, answer) };
         },
       });
       networkProxy = dedicated;
     }
 
     const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-bash-"));
+    // Where MXC writes a diagnosis' report: a directory of the server's, given to no sandbox. Never
+    // the path announced on stderr — the command writes there too, and could name any file.
+    let reportDir: string | undefined;
+    // MXC's request, run in process through its SDK (`mxcSdk.ts`): no executor runs, but on Linux.
+    let mxcWire: MxcWireRequest | undefined;
+    // The same, as a document sent as written: macOS, with Seatbelt's report asked for.
+    let mxcJson: string | undefined;
+    let sdkReportPath: string | undefined;
+    let exitCode: number | null | undefined;
     try {
       const script = path.join(tmp, powerShell ? "command.ps1" : "command.sh");
       await writeFile(script, powerShell ? powerShellScript(command) : command, { mode: 0o600 });
@@ -322,6 +447,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
       const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
       const policyFile = path.join(tmp, "policy.json");
       let args: string[];
+      // What is started, when it is not `options.runner` itself: MXC's executor on Linux.
+      let executor: string | undefined;
       // sandbox-exec hands the command its own environment: the one its policy says.
       let runnerEnv = env;
       if (kind === "seatbelt") {
@@ -355,8 +482,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           script,
           cwd: startIn,
         });
-        await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
-        args = ["--config", policyFile];
+        mxcWire = request as MxcWireRequest;
+        args = [];
       } else if (kind === "mxc" && isPosixMxc(options.runner)) {
         const request = mxcPosixConfig(options.runner, {
           root: options.root,
@@ -374,8 +501,24 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           readOnlyFiles,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
         });
-        await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
-        args = [policyFile];
+        if (mxcRunsInProcess(platform)) {
+          // macOS: the same request on MXC's development contract, which reports what Seatbelt
+          // refused — in a directory of the server's, given to no sandbox, as a diagnosis' is.
+          mxcWire = request as MxcWireRequest;
+          if (!captureRefused) {
+            reportDir = await realpath(await mkdtemp(path.join(tmpdir(), "pi-outpost-refused-")));
+            mxcJson = JSON.stringify(mxcMacCaptureRequest(request as MxcMacConfig, path.join(reportDir, "report.json")));
+          }
+          args = [];
+        } else {
+          // Linux: MXC's executor, started with the command's environment and nothing of the
+          // server's — `bwrap` inherits what its parent holds (`mxcRunsInProcess`).
+          const found = linuxMxcExecutor(options.runner);
+          if (found === undefined) throw new Error(`bash is confined by MXC, which cannot run it: ${mxcMissingReason(platform, process.arch, process.execPath)}`);
+          executor = found;
+          await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
+          args = [policyFile];
+        }
       } else if (kind === "mxc") {
         const request = mxcTerminalConfig({
           root: options.root,
@@ -395,8 +538,12 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           readOnlyFiles,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
         });
-        await writeFile(policyFile, JSON.stringify(request), { mode: 0o600 });
-        args = [policyFile];
+        if (diagnose) reportDir = await mkdtemp(path.join(tmpdir(), "pi-outpost-diagnosis-"));
+        const sent = reportDir === undefined
+          ? request
+          : mxcDiagnosticConfig(request, { root: options.root, agentDir: options.agentDir, configFile: options.configFile, reportPath: path.join(reportDir, "report.json") });
+        mxcWire = sent as MxcWireRequest;
+        args = [];
       } else {
         const policy = terminalPolicy({
           root: options.root,
@@ -419,29 +566,143 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         if (networkProxy !== undefined) runnerEnv = { ...env, ...proxyEnvironment(networkProxy.url) };
       }
       // landstrip reports each refusal as a JSON line on stderr: told to the agent in words.
-      const stderr = kind === "landstrip" && !windows ? landstripStderr(onData) : undefined;
-      const launch = () => run(options.runner, args, { cwd: startIn, env: runnerEnv, onData, ...(stderr ? { stderr } : {}), signal, timeoutMs, timeout, windows });
+      const stderr = kind === "landstrip" && !windows ? landstripStderr(onData, (line) => refusals.add(landstripRefusal(line, command, platform))) : undefined;
+      const loadedSdk = mxcWire === undefined ? undefined : await (options.mxcSdk ?? mxcSdk)();
+      if (loadedSdk !== undefined && "reason" in loadedSdk) throw new Error(`bash is confined by MXC, which cannot run it: ${loadedSdk.reason}`);
+      const launch = async (): Promise<{ exitCode: number | null }> => {
+        if (loadedSdk !== undefined && mxcWire !== undefined) {
+          const stable = () => runThroughSdk(loadedSdk.sdk, sdkRequest(mxcWire!), { onData, signal, timeoutMs, timeout });
+          // The development contract can change under pi-outpost: an SDK that no longer takes the
+          // document started nothing, so the command runs on the stable one, confined the same,
+          // and this shell stops asking — it then reports nothing of files.
+          const result =
+            mxcJson === undefined
+              ? await stable()
+              : await runThroughSdk(loadedSdk.sdk, { json: mxcJson }, { onData, signal, timeoutMs, timeout }).catch((error) => {
+                  if (!(error instanceof SdkDocumentRefused)) throw error;
+                  captureRefused = true;
+                  return stable();
+                });
+          sdkReportPath = result.metadata?.captureDenials?.outputPath;
+          return { exitCode: result.exitCode };
+        }
+        return run(executor ?? options.runner, args, { cwd: startIn, env: runnerEnv, onData, ...(stderr ? { stderr } : {}), signal, timeoutMs, timeout, windows });
+      };
       // curl, git and PowerShell print only "403" for a refused tunnel: the model is told which
       // host, and why. Commands of the agent's shell run one at a time, so these are this one's.
       const refused = new Set<string>();
-      const unwatch = wslc ? undefined : networkProxy?.watchRefusals((host) => refused.add(host));
+      const unwatch = wslc ? undefined : networkProxy?.watchRefusals((host) => {
+        refused.add(host);
+        // A host the user was asked about was recorded with the answer; this is one nobody was.
+        if (!answers.has(host.toLowerCase())) refusals.add(hostRefusal(host, command));
+      });
       try {
-        return await (wslc ? oneWslcAtATime(launch) : launch());
+        const result = await (wslc ? oneWslcAtATime(launch) : launch());
+        exitCode = result.exitCode;
+        if (mxcJson !== undefined && reportDir !== undefined) {
+          // Only a file inside the directory MXC was told to use, and one it named by its rule.
+          const named = sdkReportPath !== undefined && path.dirname(path.resolve(sdkReportPath)) === reportDir ? path.basename(sdkReportPath) : undefined;
+          if (named !== undefined && mxcReportFile([named], path.join(reportDir, "report.json")) !== undefined) {
+            try {
+              for (const refusal of seatbeltReportRefusals(JSON.parse(await readFile(path.join(reportDir, named), "utf8")), command)) refusals.add(refusal);
+            } catch {
+              // No report to read: the command's own error is all there is.
+            }
+          }
+        }
+        if (diagnosis !== undefined) {
+          let report: unknown;
+          const reportPath = path.join(reportDir!, "report.json");
+          // The SDK names the report in its result, never on the command's stderr. Only a file
+          // inside the directory it was asked to use is read, and one MXC named by its rule.
+          const named = sdkReportPath !== undefined && path.dirname(path.resolve(sdkReportPath)).toLowerCase() === path.resolve(reportDir!).toLowerCase() ? path.basename(sdkReportPath) : undefined;
+          const name = named !== undefined && mxcReportFile([named], reportPath) !== undefined ? named : undefined;
+          if (name !== undefined) {
+            try {
+              report = JSON.parse(await readFile(path.join(reportDir!, name), "utf8"));
+            } catch {
+              report = undefined;
+            }
+          }
+          const context = { root: options.root, command, systemRoot: process.env.SystemRoot, programFiles: process.env.ProgramFiles };
+          diagnosis(report === undefined ? undefined : mxcReportRefusals(report, context));
+        }
+        return result;
       } finally {
         unwatch?.();
         // With someone to ask, every unlisted host was asked about: what each answer was. Without,
         // the hosts refused, and that the list is where they would go.
         if (answers.size > 0) onData(Buffer.from(`\n${networkNote(answers)}\n`));
         else if (refused.size > 0) onData(Buffer.from(`\n${refusalNote([...refused])}\n`));
+        // The directories refused while it ran, gathered at the end where the agent reads last.
+        const directoriesNote = diagnose ? undefined : refusedDirectoriesNote(refusals.all());
+        if (directoriesNote !== undefined) onData(Buffer.from(`\n${directoriesNote}\n`));
+        // Last, so the agent reads it after everything else: what it can do about a failure here.
+        // Not when the proxy already named a refused host — that is what failed, and a diagnosis
+        // runs without network: it would contradict "do not retry".
+        const hostRefused = refused.size > 0 || [...answers.values()].some((answer) => !isApproved(answer));
+        if (diagnosable && !diagnose && !hostRefused && exitCode !== undefined && exitCode !== 0) {
+          onData(Buffer.from(`\n${diagnosisOfferNote()}\n`));
+          offered.delete(command);
+          offered.add(command);
+          // Bounded: the oldest offer goes first.
+          if (offered.size > MAX_OFFERED) offered.delete(offered.values().next().value!);
+        } else if (!diagnose) {
+          // Its last run did not fail with the offer: no diagnosis for it until one does.
+          offered.delete(command);
+        }
       }
     } finally {
+      if (reportDir !== undefined) await rm(reportDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
       await rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
       await dedicated?.close().catch(() => {});
     }
   };
+  /**
+   * What the shell is refused doing nothing under a diagnosis' sandbox — PowerShell reads the
+   * default profile's `AppData` as it starts, refused, whatever the command. Measured once, on the
+   * first diagnosis, and left out of every report: never what the command wanted. A failed
+   * measure is not kept, so the next diagnosis measures again.
+   */
+  let noiseMeasure: Promise<Set<string>> | undefined;
+  const shellNoise = (): Promise<Set<string>> => {
+    noiseMeasure ??= (async () => {
+      let found: Refusal[] | undefined;
+      await launchCommand("", options.root, { onData: () => {} }, EMPTY_GRANT, (report) => void (found = report));
+      if (found === undefined) throw new Error("MXC wrote no report for an empty command");
+      return new Set(found.map(refusalKey));
+    })();
+    return noiseMeasure.catch(() => {
+      noiseMeasure = undefined;
+      return new Set<string>();
+    });
+  };
   return {
     exec: (command, cwd, execOptions) => launchCommand(command, cwd, execOptions, EMPTY_GRANT),
     execWithGrant: (command, cwd, execOptions, grant) => launchCommand(command, cwd, execOptions, isEmptyGrant(grant) ? EMPTY_GRANT : grant),
+    ...(diagnosable
+      ? {
+          diagnose: async (command: string, cwd: string, execOptions: ExecOptions) => {
+            // Asked before the command failed here: run it as usual, and say why.
+            if (!offered.has(command)) {
+              const result = await launchCommand(command, cwd, execOptions, EMPTY_GRANT);
+              execOptions.onData(Buffer.from(`\n${diagnosisIgnoredNote()}\n`));
+              return result;
+            }
+            const noise = await shellNoise();
+            let found: Refusal[] | undefined;
+            const result = await launchCommand(command, cwd, execOptions, EMPTY_GRANT, (report) => void (found = report));
+            if (found === undefined) {
+              execOptions.onData(Buffer.from("[pi-outpost] diagnosis: MXC wrote no report of what it refused. Read the command's own error.\n"));
+              return result;
+            }
+            const refusals = refusalCollector(options.onRefusal);
+            for (const refusal of found) if (!noise.has(refusalKey(refusal))) refusals.add(refusal);
+            execOptions.onData(Buffer.from(`${diagnosisNote(refusals.all())}\n`));
+            return result;
+          },
+        }
+      : {}),
   };
 }
 

@@ -15,7 +15,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { bundledMxcExecutor, MXC_EXECUTOR_NAME } from "./mxcExecutor.ts";
+import { createRequire } from "node:module";
+import { bundledMxcExecutor, MXC_FFI_NAMES, mxcExecutorName, mxcRunsInProcess } from "./mxcExecutor.ts";
 
 /** What `node --build-sea` needs, and the reason each field is here. */
 export interface SeaConfig {
@@ -202,12 +203,14 @@ export interface BuildResult {
   path: string;
   /** Which path produced it — the two artifacts differ, and someone debugging needs to know. */
   method: "build-sea" | "postject";
-  /** MXC's executor, placed beside a Windows executable so `"mxc"` finds it there. */
+  /** MXC's executor, placed beside a Windows executable for its confined terminal. */
   mxcExecutor?: string;
+  /** MXC's native parts placed beside the executable, which runs MXC in process from them. */
+  mxcNative?: string[];
 }
 
 /**
- * Put MXC's executor beside a Windows executable, where `"mxc"` looks for it.
+ * Put MXC's executor beside a Windows or Linux executable, where `"mxc"` looks for it.
  *
  * A standalone executable has no `node_modules`, so the executor the package ships would
  * stay behind on the build machine. Copied, not embedded: it is Microsoft's signed file,
@@ -219,9 +222,11 @@ export function placeMxcExecutor(
   target: string,
   options: { platform: NodeJS.Platform; force?: boolean; log: (line: string) => void; executor?: string | undefined },
 ): string | undefined {
-  if (options.platform !== "win32") return undefined;
-  const source = "executor" in options ? options.executor : bundledMxcExecutor({ platform: "win32" });
-  const destination = path.join(path.dirname(target), MXC_EXECUTOR_NAME);
+  // Windows' confined terminal, and everything MXC does on Linux (`mxcRunsInProcess`).
+  const name = options.platform === "win32" || options.platform === "linux" ? mxcExecutorName(options.platform) : undefined;
+  if (name === undefined) return undefined;
+  const source = "executor" in options ? options.executor : bundledMxcExecutor({ platform: options.platform });
+  const destination = path.join(path.dirname(target), name);
   if (source === undefined) {
     if (fs.existsSync(destination)) return destination;
     options.log(`[build-exe] MXC's executor is not installed: "mxc" will not resolve beside ${target}`);
@@ -229,12 +234,95 @@ export function placeMxcExecutor(
   }
   if (path.resolve(source).toLowerCase() === path.resolve(destination).toLowerCase()) return destination;
   if (fs.existsSync(destination) && options.force !== true) {
-    options.log(`[build-exe] kept the ${MXC_EXECUTOR_NAME} already beside it — pass --force to replace it`);
+    options.log(`[build-exe] kept the ${name} already beside it — pass --force to replace it`);
     return destination;
   }
   fs.copyFileSync(source, destination);
+  if (options.platform !== "win32") fs.chmodSync(destination, 0o755);
   options.log(`[build-exe] placed MXC's executor beside it: ${destination}`);
   return destination;
+}
+
+/** The root of the package named `name` above a file it resolves to, or undefined. */
+function packageRootOf(resolve: () => string, name: string): string | undefined {
+  let dir: string;
+  try {
+    dir = path.dirname(resolve());
+  } catch {
+    return undefined;
+  }
+  for (let depth = 0; depth < 6; depth++, dir = path.dirname(dir)) {
+    try {
+      if (JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).name === name) return dir;
+    } catch {
+      // not this one
+    }
+  }
+  return undefined;
+}
+
+/** Where MXC's native parts are on the build machine: undefined for any part that is not installed. */
+export function installedMxcNative(platform: NodeJS.Platform, arch: string): { ffi?: string; koffi?: string; koffiNative?: string } {
+  const require = createRequire(import.meta.url);
+  const resolveDir = (manifest: string, from?: string) => {
+    try {
+      return path.dirname(from ? createRequire(from).resolve(manifest) : require.resolve(manifest));
+    } catch {
+      return undefined;
+    }
+  };
+  const ffiName = MXC_FFI_NAMES[platform];
+  const sdk = resolveDir("@microsoft/mxc-sdk/package.json");
+  const ffi = sdk && ffiName ? path.join(sdk, "bin", arch, ffiName) : undefined;
+  // koffi exports no package.json: its root is the directory above its entry that holds one.
+  const koffi = sdk ? packageRootOf(() => createRequire(path.join(sdk, "package.json")).resolve("koffi"), "koffi") : undefined;
+  // Where koffi 3 itself looks for its native module: its platform package, beside it.
+  const koffiNative = koffi ? path.join(path.dirname(koffi), "@koromix", `koffi-${platform}-${arch}`) : undefined;
+  return {
+    ...(ffi && fs.existsSync(ffi) ? { ffi } : {}),
+    ...(koffi ? { koffi } : {}),
+    ...(koffiNative && fs.existsSync(path.join(koffiNative, "package.json")) ? { koffiNative } : {}),
+  };
+}
+
+/**
+ * Put MXC's native parts beside an executable, where it runs MXC in process from (`mxcSdk.ts`):
+ * its native library, koffi, and koffi's package for this platform — koffi 3 keeps its native
+ * module there, beside its own. The bundle inside the executable carries the SDK's JavaScript;
+ * these are the files a bundle cannot hold. Copied as they are, Microsoft's library signed.
+ * What is not installed is said, not refused: the executable works, and refuses `"mxc"` saying why.
+ */
+export function placeMxcNative(
+  target: string,
+  options: { platform: NodeJS.Platform; arch: string; force?: boolean; log: (line: string) => void; sources?: { ffi?: string; koffi?: string; koffiNative?: string } },
+): string[] {
+  // Linux runs MXC's executor, not its SDK: nothing native to carry.
+  if (!mxcRunsInProcess(options.platform)) return [];
+  const sources = options.sources ?? installedMxcNative(options.platform, options.arch);
+  const beside = path.dirname(target);
+  const ffiName = MXC_FFI_NAMES[options.platform];
+  const parts: Array<[string | undefined, string]> = [
+    [sources.ffi, ffiName ? path.join(beside, ffiName) : ""],
+    [sources.koffi, path.join(beside, "node_modules", "koffi")],
+    [sources.koffiNative, path.join(beside, "node_modules", "@koromix", `koffi-${options.platform}-${options.arch}`)],
+  ];
+  if (ffiName === undefined || parts.some(([source]) => source === undefined)) {
+    options.log(`[build-exe] MXC's SDK is not installed for ${options.platform}-${options.arch}: "mxc" will be refused by ${target}`);
+    return [];
+  }
+  const placed: string[] = [];
+  for (const [source, destination] of parts as Array<[string, string]>) {
+    if (fs.existsSync(destination) && options.force !== true) {
+      options.log(`[build-exe] kept the ${path.relative(beside, destination)} already beside it — pass --force to replace it`);
+    } else {
+      fs.rmSync(destination, { recursive: true, force: true });
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.cpSync(source, destination, { recursive: true });
+    }
+    placed.push(destination);
+  }
+  options.log(`[build-exe] placed MXC's native parts beside it: ${placed.map((file) => path.relative(beside, file)).join(", ")}`);
+  return placed;
 }
 
 /**
@@ -368,7 +456,8 @@ export function buildExecutable(options: BuildOptions = {}): BuildResult {
 
 function withMxcExecutor(result: BuildResult, platform: NodeJS.Platform, force: boolean | undefined, log: (line: string) => void): BuildResult {
   const executor = placeMxcExecutor(result.path, { platform, force, log });
-  return executor === undefined ? result : { ...result, mxcExecutor: executor };
+  const native = placeMxcNative(result.path, { platform, arch: process.arch, force, log });
+  return { ...result, ...(executor === undefined ? {} : { mxcExecutor: executor }), ...(native.length > 0 ? { mxcNative: native } : {}) };
 }
 
 /**

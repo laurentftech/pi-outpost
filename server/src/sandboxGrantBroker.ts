@@ -27,6 +27,11 @@ export interface GrantBrokerOptions {
   /** Told when the pending requests change: the project's attention follows them. */
   onPendingChanged?(): void;
   timeoutMs?: number;
+  /**
+   * Makes the user's durable rule from an "always" answer, on every target of the request
+   * (`sandboxRules.ts`). Absent: the project keeps no rules, and no request offers them.
+   */
+  makeRule?(grant: Grant, decision: "allow" | "refuse"): Promise<void>;
 }
 
 export interface GrantAsk {
@@ -41,12 +46,15 @@ export interface GrantAsk {
 
 interface Pending {
   request: SandboxGrantRequest;
+  grant: Grant;
   settle(outcome: SandboxGrantOutcome): void;
 }
 
 const LOGGED: Record<SandboxGrantOutcome, string> = {
   "approved-once": "approved once",
   "approved-session": "approved for the session",
+  "approved-always": "approved, and always from now on",
+  "refused-always": "refused, and always from now on",
   refused: "refused",
   expired: "expired",
   aborted: "aborted",
@@ -103,6 +111,7 @@ export class SandboxGrantBroker {
       reason: input.reason,
       overridesReadOnly: input.overridesReadOnly,
       expiresAt: Date.now() + timeoutMs,
+      ...(this.options.makeRule ? { offersRules: true } : {}),
     };
     return new Promise((resolve) => {
       const timer = setTimeout(() => settle("expired"), timeoutMs);
@@ -118,7 +127,7 @@ export class SandboxGrantBroker {
         resolve(outcome);
       };
       input.signal?.addEventListener("abort", onAbort, { once: true });
-      this.pending.set(request.id, { request, settle });
+      this.pending.set(request.id, { request, grant: input.grant, settle });
       this.options.announce({ type: "sandbox_grant_request", request });
       this.options.onPendingChanged?.();
     });
@@ -128,7 +137,19 @@ export class SandboxGrantBroker {
   answer(id: string, decision: SandboxGrantDecision): boolean {
     const entry = this.pending.get(id);
     if (!entry) return false;
-    entry.settle(decision === "once" ? "approved-once" : decision === "session" ? "approved-session" : "refused");
+    const always = decision === "always-allow" || decision === "always-refuse";
+    // An "always" answer where the project keeps no rules is no answer: the request waits.
+    if (always && !this.options.makeRule) return false;
+    // The answer decides now, so a second client's answer finds nothing; the rule follows, and the
+    // store reads behind its own writes, so the next command already sees it.
+    entry.settle(
+      decision === "once" ? "approved-once" : decision === "session" ? "approved-session" : decision === "always-allow" ? "approved-always" : decision === "always-refuse" ? "refused-always" : "refused",
+    );
+    if (always) {
+      this.options.makeRule!(entry.grant, decision === "always-allow" ? "allow" : "refuse").catch((error: unknown) =>
+        this.log(`[sandbox] could not keep the rule for ${describeGrant(entry.grant)}: ${(error as Error).message}`),
+      );
+    }
     return true;
   }
 

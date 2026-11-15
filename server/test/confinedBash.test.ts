@@ -16,6 +16,7 @@ import { after, before, describe, test } from "node:test";
 import type { SandboxGrantOutcome } from "@pi-outpost/shared";
 import { confinedBashOperations } from "../src/confinedBash.ts";
 import type { EgressProxyOptions } from "../src/egressProxy.ts";
+import type { Refusal } from "../src/sandboxRefusals.ts";
 
 const FAKE_RUNNER = `
 const fs = require("node:fs");
@@ -133,6 +134,21 @@ describe("confinedBashOperations", () => {
     }
   });
 
+  test("the always-allow directories reach every launch, read when each one starts", async () => {
+    const slashed = (p: string) => p.replaceAll("\\", "/");
+    const ruled = path.join(base, "ruled");
+    let directories: Array<{ path: string; access: "read" | "write" }> = [{ path: ruled, access: "read" }];
+    const ops = operations({ ruleGrant: async () => ({ hosts: [], directories }) });
+    await exec("0", { ops });
+    let policy = (await lastRecord()).policy.filesystem;
+    assert.ok(policy.allowRead.map(slashed).includes(slashed(ruled)), "given");
+    assert.ok(!policy.allowWrite.map(slashed).includes(slashed(ruled)), "read only");
+    directories = [];
+    await exec("0", { ops });
+    policy = (await lastRecord()).policy.filesystem;
+    assert.ok(!policy.allowRead.map(slashed).includes(slashed(ruled)), "a revoked rule is gone from the next launch");
+  });
+
   test("a session's grants reach every launch, read when each one starts", async () => {
     const slashed = (paths: string[]) => paths.map((p) => p.replaceAll("\\", "/"));
     const beside = path.join(base, "session-beside");
@@ -146,6 +162,30 @@ describe("confinedBashOperations", () => {
       // Writing off: the zone is gone, the user's grant is not.
       assert.ok(slashed((await lastRecord()).policy.filesystem.allowWrite).includes(slashed([beside])[0]), `launch ${i + 1}`);
     }
+  });
+
+  // openlore: scenario=ARefusedFileIsRecordedAgainstItsDirectory spec=sandbox-durable-rules
+  test("landstrip's refusals are told once each, a file as its directory, while the agent still reads them in words", async () => {
+    const told: Refusal[] = [];
+    const line = JSON.stringify({ kind: "filesystem", code: "FILESYSTEM_DENIED", state: "info", operation: "read", path: "/home/u/other/secret.txt" });
+    const command = `process.stderr.write(${JSON.stringify(`${line}\n${line}\n`)})`;
+    const { output } = await exec(command, { ops: operations({ platform: "linux", onRefusal: (refusal) => told.push(refusal) }) });
+    assert.deepEqual(told, [{ kind: "directory", target: "/home/u/other", access: "read", command }]);
+    assert.match(output, /\[sandbox\] refused read \/home\/u\/other\/secret\.txt/);
+    assert.doesNotMatch(output, /FILESYSTEM_DENIED/);
+  });
+
+  // openlore: scenario=TheOutputNamesTheRefusedDirectory spec=sandbox-durable-rules
+  test("a command landstrip refused directories ends naming each one and its access, once", async () => {
+    const line = (operation: string, file: string) => JSON.stringify({ kind: "filesystem", code: "FILESYSTEM_DENIED", state: "info", operation, path: file });
+    const lines = [line("read", "/home/u/other/a.txt"), line("read", "/home/u/other/b.txt"), line("write", "/srv/data/out.txt")].join("\n");
+    const { output } = await exec(`process.stderr.write(${JSON.stringify(`${lines}\n`)}); process.exit(1)`, { ops: operations({ platform: "linux" }) });
+    assert.match(
+      output,
+      /\n\[pi-outpost\] the sandbox refused reading \/home\/u\/other\.\n\[pi-outpost\] the sandbox refused writing to \/srv\/data\.\n\[pi-outpost\] If the task needs one of these, ask run_with_grant for exactly it; judge the command by its exit status and output\.\n$/,
+    );
+    const quiet = await exec("process.exit(1)", { ops: operations({ platform: "linux" }) });
+    assert.doesNotMatch(quiet.output, /the sandbox refused/, "nothing refused, nothing said");
   });
 
   describe("with someone to ask, each command gets a proxy of its own that asks", () => {
@@ -193,6 +233,69 @@ describe("confinedBashOperations", () => {
       assert.match(output, /\[pi-outpost\] network: the user refused example\.org\./);
       assert.match(output, /\[pi-outpost\] network: 127\.0\.0\.1 is never granted: a grant names a host by its name, never an IP address\./);
       assert.match(output, /Do not retry a refused host for this request: tell the user what it blocked\.\s*$/);
+    });
+
+    // openlore: scenario=ARefusedHostIsRecorded spec=sandbox-durable-rules
+    test("each host refused is told once as a refusal: by the user, by the shared proxy, or as information when no rule could name it", async () => {
+      const told: Refusal[] = [];
+      const ops = operations({
+        ...LINUX_POLICY,
+        networkProxy: base,
+        allowedHosts: [],
+        askHost: async ({ host }) => (host === "example.com" ? "approved-once" : "refused"),
+        startProxy: proxies(["example.com", "example.org", "Example.org", "127.0.0.1"]).start,
+        onRefusal: (refusal) => told.push(refusal),
+      });
+      await exec(`console.log("ran")`, { ops });
+      assert.deepEqual(told, [
+        { kind: "host", target: "example.org", command: `console.log("ran")` },
+        { kind: "info", target: "127.0.0.1", detail: "network: a grant names a host by its name, never an IP address", command: `console.log("ran")` },
+      ]);
+
+      const unasked: Refusal[] = [];
+      const shared = { url: base.url, watchRefusals: (listener: (host: string) => void) => (listener("example.net"), listener("example.net"), () => {}) };
+      await exec("0", { ops: operations({ ...LINUX_POLICY, networkProxy: shared, allowedHosts: [], onRefusal: (refusal) => unasked.push(refusal) }) });
+      assert.deepEqual(unasked, [{ kind: "host", target: "example.net", command: "0" }]);
+    });
+
+    // openlore: scenario=ARefusedHostIsRefusedAtOnce spec=sandbox-durable-rules
+    // openlore: scenario=AnAllowedHostIsNotAskedAbout spec=sandbox-durable-rules
+    test("the user's rules answer before anyone is asked: refuse names the rule, allow lets it through unsaid; the forbidden stays forbidden", async () => {
+      const asked: string[] = [];
+      const decisions: Record<string, "allow" | "refuse"> = { "refused.example.com": "refuse", "allowed.example.com": "allow", "127.0.0.1": "allow" };
+      const ops = operations({
+        ...LINUX_POLICY,
+        networkProxy: base,
+        allowedHosts: [],
+        askHost: async ({ host }) => (asked.push(host), "approved-once"),
+        hostRule: async (host) => decisions[host],
+        startProxy: proxies(["refused.example.com", "allowed.example.com", "asked.example.com", "127.0.0.1"]).start,
+      });
+      const { output } = await exec(`console.log("ran")`, { ops });
+      assert.deepEqual(asked, ["asked.example.com"], "only the host no rule names is asked about");
+      assert.match(output, /\[pi-outpost\] network: a rule of the user's always refuses refused\.example\.com: it is refused without asking, until the user revokes the rule\./);
+      assert.ok(!output.split(/[^\w.-]+/).some((word) => /^allowed\.example\.com\.?$/.test(word)), "a host a rule allows is not mentioned");
+      assert.match(output, /127\.0\.0\.1 is never granted/, "a rule cannot open what is never granted");
+      assert.match(output, /Do not retry a refused host/);
+    });
+
+    // openlore: scenario=ARevokedRuleAsksAgain spec=sandbox-durable-rules
+    test("a host rule revoked between two commands: the first is let through unasked, the next is asked again", async () => {
+      const asked: string[] = [];
+      let rule: "allow" | undefined = "allow";
+      const ops = operations({
+        ...LINUX_POLICY,
+        networkProxy: base,
+        allowedHosts: [],
+        askHost: async ({ host }) => (asked.push(host), "refused"),
+        hostRule: async () => rule,
+        startProxy: proxies(["example.com"]).start,
+      });
+      await exec("0", { ops });
+      assert.deepEqual(asked, [], "the rule answered");
+      rule = undefined;
+      await exec("0", { ops });
+      assert.deepEqual(asked, ["example.com"], "revoked: asked, as before the rule existed");
     });
 
     test("without someone to ask, the shared proxy refuses, and the note names the list", async () => {
@@ -262,7 +365,8 @@ describe("confinedBashOperations", () => {
 
   // openlore: scenario=AMissingRunnerRefusesTheCommand spec=sandbox-runner-bash
   test("a missing runner refuses the command with a reason naming it; nothing runs", async () => {
-    const missing = path.join(base, "nowhere", "wxc-exec.exe");
+    // Not one of MXC's executors: a path to one of those is read as "mxc", which runs in process.
+    const missing = path.join(base, "nowhere", "landstrip.exe");
     const marker = path.join(root, "out", "ran.txt");
     // The real self-check, not the fake: it is what finds the runner missing.
     await assert.rejects(

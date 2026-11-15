@@ -83,6 +83,9 @@ await esbuild.build({
     "fastify",
     "node-pty",
     "ws",
+    // MXC's SDK finds its native library beside its own files: it must stay in node_modules.
+    "@microsoft/mxc-sdk",
+    "koffi",
     ...MERMAID_RUNTIME,
   ],
   define: { __PI_OUTPOST_VERSION__: JSON.stringify(version), __PI_SDK_VERSION__: JSON.stringify(piSdkVersion), __PI_OUTPOST_CHANGELOG__: JSON.stringify(changelog) },
@@ -148,6 +151,8 @@ await esbuild.build({
   // As in server/scripts/build-sea.mjs: photon, QuickJS and codemode's worker inside the
   // bundle, or the executable reads no image and runs no script (sea-inline-assets.mjs).
   plugins: [inlineSeaAssets()],
+  // As in server/scripts/build-sea.mjs: koffi, MXC's native addon, loaded from beside the executable.
+  alias: { koffi: resolve(REPO_ROOT, "server/scripts/koffi-beside-executable.cjs") },
   banner: {
     js: [
       "#!/usr/bin/env node",

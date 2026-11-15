@@ -10,13 +10,14 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { lookup } from "node:dns/promises";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations } from "../src/confinedBash.ts";
 import { startEgressProxy, type EgressProxy } from "../src/egressProxy.ts";
+import type { Refusal } from "../src/sandboxRefusals.ts";
 import { checkRunner } from "../src/terminalSandbox.ts";
 
 const RUNNER = process.env.MXC_MAC_EXEC;
@@ -56,6 +57,46 @@ describe("the agent's bash under MXC on macOS", { skip }, () => {
     const { exitCode } = await ops.exec(command, root, { onData: (data) => (output += data.toString()) });
     return { output, exitCode };
   }
+
+  // openlore: scenario=OnMacOsMxcReportsWhatSeatbeltRefused spec=sandbox-durable-rules
+  test("OnMacOsMxcReportsWhatSeatbeltRefused: what Seatbelt refused is told as it happens — by default or by name, each file as its directory — and the output ends naming it", async (t) => {
+    const told: Refusal[] = [];
+    const ops = confinedBashOperations({ runner: RUNNER!, root, allowWrite: true, agentDir, onRefusal: (refusal) => told.push(refusal) });
+    const realBase = await realpath(base);
+    // A temporary directory of this test's own: the suites beside it run commands of theirs.
+    const ownTmp = path.join(base, "server-tmp");
+    await mkdir(ownTmp);
+    const savedTmp = process.env.TMPDIR;
+    process.env.TMPDIR = ownTmp;
+    t.after(() => {
+      if (savedTmp === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = savedTmp;
+    });
+    let output = "";
+    const command = [`cat ${base}/secret.txt`, `echo outside > ${base}/out.txt`, `cat ${agentDir}/auth.json`, "echo done"].join("\n");
+    const { exitCode } = await ops.exec(command, root, { onData: (data) => (output += data.toString()) });
+    assert.equal(exitCode, 0, output);
+    assert.doesNotMatch(output, /other-secret|sk-agent-secret/, "the report is asked for with enforcement kept");
+    await assert.rejects(stat(path.join(base, "out.txt")), "a write landed beside the root");
+    const directories = told.filter((refusal) => refusal.kind === "directory").map((refusal) => `${refusal.kind === "directory" ? refusal.access : ""} ${refusal.target}`).sort();
+    // Beside the root: refused by default. The agent's directory: refused by name. Both are reported.
+    assert.deepEqual(directories, [`read ${realBase}`, `read ${path.join(realBase, "agent")}`, `write ${realBase}`]);
+    assert.ok(told.every((refusal) => refusal.kind === "directory"), `nothing but files is recorded: ${JSON.stringify(told)}`);
+    assert.match(output, new RegExp(`\\n\\[pi-outpost\\] the sandbox refused reading ${realBase.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&")}\\.\\n`));
+    assert.match(output, /\[pi-outpost\] If the task needs one of these, ask run_with_grant for exactly it; judge the command by its exit status and output\.\n$/);
+    assert.deepEqual(await readdir(ownTmp), [], "MXC's report, its verbose twin and their directory are gone");
+  });
+
+  test("a command refused nothing records nothing and ends with no note: what Seatbelt refuses every command is not a file", async () => {
+    const told: Refusal[] = [];
+    const ops = confinedBashOperations({ runner: RUNNER!, root, allowWrite: true, agentDir, onRefusal: (refusal) => told.push(refusal) });
+    let output = "";
+    const { exitCode } = await ops.exec("ls -la . >/dev/null && git init -q quiet && git -C quiet status -sb && echo fine", root, { onData: (data) => (output += data.toString()) });
+    assert.equal(exitCode, 0, output);
+    assert.deepEqual(told, []);
+    assert.doesNotMatch(output, /\[pi-outpost\]/);
+    assert.match(output, /fine\n$/);
+  });
 
   // openlore: scenario=OnMacOsACommandCannotReachOutsideTheRoot spec=sandbox-runner-bash
   test("OnMacOsACommandCannotReachOutsideTheRoot: reads and writes beside the root fail, the server's user is not signalled, no key", async () => {

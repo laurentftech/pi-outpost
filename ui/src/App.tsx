@@ -172,6 +172,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     fetchOlderItems,
     respondToDialog,
     respondToGrant,
+    getSandboxRules,
+    setSandboxRule,
+    revokeSandboxRule,
     dismissNotification,
     listDirectory,
     refreshFileTree,
@@ -1887,6 +1890,15 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 contextUsage={state.contextUsage}
                 shellConfinement={state.confinement?.bash}
                 shellGrants={state.sandboxGrants?.active}
+                {...(state.sandboxGrants
+                  ? {
+                      sandboxRules: state.sandboxRules,
+                      sandboxRuleError: state.sandboxRuleError,
+                      onGetSandboxRules: getSandboxRules,
+                      onSetSandboxRule: setSandboxRule,
+                      onRevokeSandboxRule: revokeSandboxRule,
+                    }
+                  : {})}
                 sessionUsage={usage}
                 analysisOpen={analysisOpen}
                 onToggleAnalysis={toggleAnalysis}

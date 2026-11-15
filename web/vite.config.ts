@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 
-// Dev backend port; override with PI_OUTPOST_PORT when the server runs elsewhere.
-const port = process.env.PI_OUTPOST_PORT ?? '3141'
+// Dev backend port, as pi-outpost.config.dev.json sets it (3142: WSL often holds 3141, the
+// default port of an installed pi-outpost); override with PI_OUTPOST_PORT when the server runs elsewhere.
+const port = process.env.PI_OUTPOST_PORT ?? '3142'
 
 // https://vite.dev/config/
 export default defineConfig({

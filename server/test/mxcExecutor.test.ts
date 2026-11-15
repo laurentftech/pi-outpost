@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, test } from "node:test";
-import { BUNDLED_MXC, bundledMxcExecutor, MXC_EXECUTOR_NAME, MXC_LINUX_EXECUTOR_NAME, MXC_MAC_EXECUTOR_NAME, mxcExecutorName, mxcMissingReason, mxcSupportsArch } from "../src/mxcExecutor.ts";
+import { BUNDLED_MXC, bundledMxcExecutor, MXC_EXECUTOR_NAME, MXC_LINUX_EXECUTOR_NAME, MXC_MAC_EXECUTOR_NAME, mxcExecutorName, mxcMissingReason, mxcSupportsArch, isMxcExecutorPath, mxcSdkInstalled, mxcSdkMissingReason } from "../src/mxcExecutor.ts";
 
 const pkg = path.resolve("/opt/app/node_modules/@microsoft/mxc-sdk");
 const manifest = path.join(pkg, "package.json");
@@ -70,5 +70,35 @@ describe("bundledMxcExecutor", () => {
     assert.equal(path.basename(found), mxcExecutorName(process.platform));
     assert.equal(path.basename(path.dirname(found)), process.arch);
     assert.ok(existsSync(found));
+  });
+});
+
+describe("MXC in process: whether it can run here", () => {
+  const files = (present: string[]) => (file: string) => present.includes(file.replaceAll("\\", "/"));
+
+  test("installed: the SDK's native library for this platform and architecture", () => {
+    const manifest = "/n/@microsoft/mxc-sdk/package.json";
+    assert.equal(mxcSdkInstalled({ platform: "linux", arch: "x64", packageManifest: () => manifest, exists: files(["/n/@microsoft/mxc-sdk/bin/x64/libmxc_ffi.so"]) }), true);
+    assert.equal(mxcSdkInstalled({ platform: "win32", arch: "x64", packageManifest: () => manifest, exists: files(["/n/@microsoft/mxc-sdk/bin/x64/libmxc_ffi.so"]) }), false, "Windows needs its DLL");
+    assert.equal(mxcSdkInstalled({ platform: "darwin", arch: "x64", packageManifest: () => manifest, exists: () => true }), false, "macOS: Apple silicon only");
+    assert.equal(mxcSdkInstalled({ platform: "freebsd", arch: "x64", packageManifest: () => manifest, exists: () => true }), false);
+  });
+
+  test("standalone: the native library, koffi and its platform package beside the executable, all three", () => {
+    const beside = ["/app/mxc_ffi.dll", "/app/node_modules/koffi/package.json", "/app/node_modules/@koromix/koffi-win32-x64/package.json"];
+    const lookup = (present: string[]) => ({ platform: "win32" as const, arch: "x64", execPath: "/app/pi-outpost.exe", packageManifest: () => undefined, exists: files(present) });
+    assert.equal(mxcSdkInstalled(lookup(beside)), true);
+    for (const missing of beside) assert.equal(mxcSdkInstalled(lookup(beside.filter((file) => file !== missing))), false, missing);
+  });
+
+  test("a path to one of MXC's executors, never the bare word nor another program", () => {
+    for (const runner of [String.raw`C:\mxc\wxc-exec.exe`, "./wxc-exec", "/opt/mxc/lxc-exec", "/opt/mxc/mxc-exec-mac", "WXC-EXEC.EXE"]) assert.equal(isMxcExecutorPath(runner), true, runner);
+    for (const runner of ["mxc", "./mxc", "/usr/bin/landstrip", "/usr/bin/sandbox-exec", "wxc-exec-old.exe"]) assert.equal(isMxcExecutorPath(runner), false, runner);
+  });
+
+  test("why it cannot run, in words a user can act on", () => {
+    assert.match(mxcSdkMissingReason("freebsd", "x64", "/x"), /Windows, Linux and macOS only/);
+    assert.match(mxcSdkMissingReason("darwin", "x64", "/x"), /Apple silicon/);
+    assert.match(mxcSdkMissingReason("win32", "x64", String.raw`C:\app\pi-outpost.exe`), /reinstall pi-outpost with its optional dependencies/);
   });
 });

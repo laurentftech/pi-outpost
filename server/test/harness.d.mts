@@ -49,6 +49,8 @@ export interface StartServerOptions {
   env?: Record<string, string | undefined>;
   /** Run an already-bundled server instead of the TypeScript source. */
   entry?: string;
+  /** A standalone executable to run instead of node, with the same configuration and environment. */
+  executable?: string;
 }
 
 /** How long stop() waits after SIGTERM before killing, outside and inside a coverage run. */

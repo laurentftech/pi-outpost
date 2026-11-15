@@ -164,7 +164,8 @@ test("ApplyingSettingsKeepsTheRunner: a Settings apply leaves bash in the runner
 // openlore: scenario=AMissingRunnerRefusesTheCommand spec=sandbox-runner-bash
 test("a missing runner: the session starts, and bash refuses with a reason naming the path", async (t) => {
   const project = await fakeProject();
-  const missing = path.join(project, "nowhere", "wxc-exec.exe");
+  // Not one of MXC's executor names: those are read as "mxc", which runs in process and needs no file.
+  const missing = path.join(project, "nowhere", process.platform === "win32" ? "landstrip.exe" : "landstrip");
   const { result } = await runBash(t, {
     project,
     sandbox: { bashRunner: missing, bashShell: process.execPath },

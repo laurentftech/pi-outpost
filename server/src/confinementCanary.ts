@@ -70,7 +70,7 @@ export async function prepareBait(options: BaitOptions): Promise<CanaryBait> {
     await rm(besideDir, { recursive: true, force: true });
     besideDir = undefined;
   }
-  const victim = spawn(process.execPath, ["-e", "setTimeout(() => {}, 120000)"], { stdio: "ignore" });
+  const victim = spawn(...victimCommand(), { stdio: "ignore", windowsHide: true });
   const envName = `PI_OUTPOST_CANARY_${id.toUpperCase()}`;
   const envValue = `canary-${id}`;
   process.env[envName] = envValue;
@@ -246,6 +246,28 @@ export async function serverEnvironment(): Promise<Record<string, string>> {
     }
   }
   return Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
+}
+
+/**
+ * A process of the server's user that only waits, for the canary to try to signal. Node itself where
+ * it is node; in a standalone executable `process.execPath` is pi-outpost, which takes no `-e` and
+ * exits at once — the victim then died on its own, and every runner read as letting a signal
+ * through (found running MXC from the executable). There, the system's own sleeper.
+ */
+export function victimCommand(sea: boolean = isStandaloneExecutable(), platform: NodeJS.Platform = process.platform): [string, string[]] {
+  if (!sea) return [process.execPath, ["-e", "setTimeout(() => {}, 120000)"]];
+  if (platform === "win32") {
+    return [path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 120"]];
+  }
+  return ["/bin/sleep", ["120"]];
+}
+
+function isStandaloneExecutable(): boolean {
+  try {
+    return (process as unknown as { getBuiltinModule?: (id: string) => { isSea?: () => boolean } | undefined }).getBuiltinModule?.("node:sea")?.isSea?.() ?? false;
+  } catch {
+    return false;
+  }
 }
 
 export interface CanaryRun extends BaitOptions {

@@ -7102,8 +7102,35 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
     case "sandbox_grant_response": {
       // Only this message answers a grant, and only with one of three decisions: anything
       // else — an extension's answer, a malformed frame — leaves the request waiting.
-      if (typeof message.id !== "string" || !["once", "session", "refuse"].includes(message.decision)) return;
+      if (typeof message.id !== "string" || !["once", "session", "refuse", "always-allow", "always-refuse"].includes(message.decision)) return;
+      // An "always" answer makes a rule: the workspace announces it to every client once kept.
       workspace.grants.answer(message.id, message.decision);
+      break;
+    }
+    // The user's rules, from the interface alone: no tool reaches these.
+    case "sandbox_rules_get": {
+      void workspace.sandboxRules().then(
+        (state) => state && send(socket, { type: "sandbox_rules", state }),
+        (error: unknown) => send(socket, { type: "sandbox_rule_refused", message: `The rules could not be read: ${(error as Error).message}` }),
+      );
+      break;
+    }
+    case "sandbox_rule_set": {
+      if (typeof message.refusalKey !== "string" || (message.decision !== "allow" && message.decision !== "refuse")) return;
+      // Kept, it is announced to every client by the workspace; refused, this client is told why.
+      void workspace.makeSandboxRule(message.refusalKey, message.decision).then((result) => {
+        if (!result.ok) send(socket, { type: "sandbox_rule_refused", message: result.message });
+      }, (error: unknown) => send(socket, { type: "sandbox_rule_refused", message: `The rule could not be kept: ${(error as Error).message}` }));
+      break;
+    }
+    case "sandbox_rule_revoke": {
+      if (typeof message.id !== "string") return;
+      void workspace.revokeSandboxRule(message.id).then(async (found) => {
+        // Already gone from another tab: nothing changed, so this client is told what is.
+        if (found) return;
+        const state = await workspace.sandboxRules();
+        if (state) send(socket, { type: "sandbox_rules", state });
+      }, (error: unknown) => send(socket, { type: "sandbox_rule_refused", message: `The rule could not be revoked: ${(error as Error).message}` }));
       break;
     }
     case "extension_ui_response": {

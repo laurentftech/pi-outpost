@@ -78,6 +78,9 @@ await esbuild.build({
   // Nothing beside the executable: photon, QuickJS and codemode's worker travel inside
   // the bundle, or the agent reads no image and runs no script (sea-inline-assets.mjs).
   plugins: [inlineSeaAssets()],
+  // MXC's SDK is bundled; koffi, the native addon it loads its library through, is not: it is
+  // loaded from beside the executable, where build-exe places it (server/src/buildExe.ts).
+  alias: { koffi: resolve(SERVER_DIR, "scripts/koffi-beside-executable.cjs") },
   // Dependencies (e.g. cross-spawn) use CJS require() for Node builtins — esbuild's
   // ESM output needs this shim, since plain `import` can't do that at the top level.
   banner: {

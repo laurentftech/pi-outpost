@@ -3,6 +3,7 @@
  * shell through `confinedBashOperations` with the options its tools are built with, the terminal
  * through the launch a terminal gets (`confinedLaunch`), without a pty. See `confinementCanary.ts`.
  */
+import { mxcSdk, runThroughSdk, sdkRequest } from "./mxcSdk.ts";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import type { ConfinementVerdict } from "@pi-outpost/shared";
@@ -121,6 +122,15 @@ export async function terminalVerdict(confine: TerminalConfinement, shell: strin
       const shellArgs = powerShell ? ["-NoProfile", "-NonInteractive", "-Command", oneLine] : ["-c", oneLine];
       const launch = await confinedLaunch(confine, shell, shellArgs, confine.root);
       try {
+        if (launch.mxc) {
+          // MXC in process, through its SDK: what the canary tries is what a command would.
+          const loaded = await mxcSdk();
+          if ("reason" in loaded) return loaded.reason;
+          let said = "";
+          const write = (data: Buffer) => void (said += data.toString());
+          await runThroughSdk(loaded.sdk, sdkRequest(launch.mxc), { onData: write, timeoutMs: CANARY_TIMEOUT_MS, timeout: CANARY_TIMEOUT_MS / 1000 }).catch((error: Error) => void (said += error.message));
+          return said;
+        }
         return await new Promise<string>((resolve) => {
           const child = execFile(launch.file, launch.args, { env: launch.env, cwd: launch.cwd, timeout: CANARY_TIMEOUT_MS, windowsHide: true }, (_error, stdout, stderr) =>
             resolve(`${stdout}${stderr}`),

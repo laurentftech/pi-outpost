@@ -27,12 +27,19 @@ npm run dev
 ```
 
 - Web UI: http://localhost:5173 (Vite dev server, proxies `/ws`, `/branding`, `/health`)
-- Agent server: ws://127.0.0.1:3141/ws
+- Agent server: ws://127.0.0.1:3142/ws
 
 `npm run dev` passes the repository's committed
 [`pi-outpost.config.dev.json`](../pi-outpost.config.dev.json) — the same code path and the
 same "no config, no start" rule as any other deployment, with no special case for
 developers.
+
+`npm run dev:sandbox` does the same with
+[`pi-outpost.config.dev-sandbox.json`](../pi-outpost.config.dev-sandbox.json): the agent's
+shell is PowerShell confined by MXC, and `allowedHosts: []` sends every connection through
+the proxy, so each host is asked about — the way to try grants and network questions by hand.
+It needs Windows 11 with MXC (see [sandboxing](sandboxing.md)); stop `npm run dev` first, both
+listen on 3142. Settings you apply there are written back to that file: `git restore` it after.
 
 `npm run start` builds `web/dist` once and serves everything from a single process, using
 *your* configuration rather than the dev one. There is no hot reload in that mode: rebuild

@@ -95,9 +95,32 @@ export function SandboxGrantDialog({ request, onRespond }: SandboxGrantDialogPro
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-zinc-700">
         <span className="mr-auto text-xs text-zinc-500 dark:text-zinc-400">Refused if unanswered by {until(request.expiresAt)}</span>
+        {request.offersRules && (
+          // A rule outlasts the session and the server: set apart, never the default, and saying so.
+          <button
+            type="button"
+            className={buttonBase}
+            disabled={answered !== null}
+            title="Refuse, and refuse it from now on in this project without asking. Revoke it from the shell's lock."
+            onClick={() => answer("always-refuse")}
+          >
+            Always refuse
+          </button>
+        )}
         <button type="button" className={buttonBase} disabled={answered !== null} onClick={() => answer("refuse")}>
           Refuse
         </button>
+        {request.offersRules && (
+          <button
+            type="button"
+            className={buttonBase}
+            disabled={answered !== null}
+            title="Allow, and allow it from now on in this project without asking, across sessions and restarts. Revoke it from the shell's lock."
+            onClick={() => answer("always-allow")}
+          >
+            Always allow
+          </button>
+        )}
         <button type="button" className={buttonBase} disabled={answered !== null} onClick={() => answer("session")}>
           Allow for this session
         </button>

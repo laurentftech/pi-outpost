@@ -27,6 +27,8 @@ import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, 
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
+import { linuxMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
+import { mxcSdk, runThroughSdk, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
 
 /** Whether terminals can be confined, and if not, the reason a user is shown. */
 export type RunnerCheck = { ok: true } | { ok: false; reason: string };
@@ -51,13 +53,19 @@ const defaultExec: Exec = (file, args, options) =>
  * Every failure is a reason, never a throw: an unusable runner makes the terminal
  * unavailable, and the server must start regardless.
  */
-export async function checkRunner(runner: string, exec: Exec = defaultExec, platform: NodeJS.Platform = process.platform): Promise<RunnerCheck> {
+export async function checkRunner(
+  runner: string,
+  exec: Exec = defaultExec,
+  platform: NodeJS.Platform = process.platform,
+  sdk: () => Promise<{ sdk: MxcSdk } | { reason: string }> = mxcSdk,
+): Promise<RunnerCheck> {
+  // MXC runs in process: there is no file to find, only its SDK to load.
+  if (runnerKind(runner) === "mxc") return checkMxcRunner(runner, platform, sdk, exec);
   try {
     await access(runner, fsConstants.X_OK);
   } catch {
     return { ok: false, reason: `The terminal sandbox runner was not found or is not executable: ${runner}` };
   }
-  if (runnerKind(runner) === "mxc") return checkMxcRunner(runner, exec, platform);
   if (runnerKind(runner) === "seatbelt") return checkSeatbeltRunner(runner, exec, platform);
   let output: ExecFileResult;
   try {
@@ -79,26 +87,29 @@ export async function checkRunner(runner: string, exec: Exec = defaultExec, plat
 export type RunnerKind = "landstrip" | "mxc" | "seatbelt";
 
 export function runnerKind(runner: string): RunnerKind {
-  if (/^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) || isPosixMxc(runner)) return "mxc";
+  if (runner === MXC || /^wxc-exec(\.exe)?$/i.test(path.win32.basename(runner)) || isLinuxMxc(runner, "linux") || isMacMxc(runner, "darwin")) return "mxc";
   return path.win32.basename(runner) === "sandbox-exec" ? "seatbelt" : "landstrip";
 }
 
 /** macOS' own Seatbelt runner, which `"seatbelt"` names. */
 export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 
-/** Whether a runner is MXC's Linux executor (`lxc-exec`): Bubblewrap, not Windows' containers. */
-export function isLinuxMxc(runner: string): boolean {
-  return path.win32.basename(runner) === "lxc-exec";
+/** The runner value that names MXC, run in process through its SDK (`mxcSdk.ts`). */
+export const MXC = "mxc";
+
+/** Whether a runner is MXC on Linux — `"mxc"` there, or a path to its old executor (`lxc-exec`): Bubblewrap. */
+export function isLinuxMxc(runner: string, platform: NodeJS.Platform = process.platform): boolean {
+  return runner === MXC ? platform === "linux" : path.win32.basename(runner) === "lxc-exec";
 }
 
-/** Whether a runner is MXC's macOS executor (`mxc-exec-mac`): Seatbelt. */
-export function isMacMxc(runner: string): boolean {
-  return path.win32.basename(runner) === "mxc-exec-mac";
+/** Whether a runner is MXC on macOS — `"mxc"` there, or a path to its old executor (`mxc-exec-mac`): Seatbelt. */
+export function isMacMxc(runner: string, platform: NodeJS.Platform = process.platform): boolean {
+  return runner === MXC ? platform === "darwin" : path.win32.basename(runner) === "mxc-exec-mac";
 }
 
 /** MXC on Linux or macOS: a POSIX shell's command line, and the same request but for the backend. */
-export function isPosixMxc(runner: string): boolean {
-  return isLinuxMxc(runner) || isMacMxc(runner);
+export function isPosixMxc(runner: string, platform: NodeJS.Platform = process.platform): boolean {
+  return isLinuxMxc(runner, platform) || isMacMxc(runner, platform);
 }
 
 /**
@@ -138,43 +149,47 @@ async function windowsBuild(exec: Exec): Promise<{ build: string; ubr: number } 
 }
 
 /**
- * MXC's self-check: `wxc-exec --probe` names the tier it would pick.
+ * MXC's self-check, through its SDK: on Windows its probe names the tier it would pick; on Linux
+ * and macOS one confined `true` in its Bubblewrap or Seatbelt backend, network open.
  *
  * Only tier 1 (`base-container`, Windows 11 24H2 with the August 2026 update) is accepted.
  * The lower tiers emulate it with AppContainer ACLs stamped on every allowed tree at each
  * launch — and the terminal's policy allows a whole drive for reading (see
  * `mxcTerminalConfig`): that would rewrite the ACLs of the disk.
+ *
+ * On Linux, Bubblewrap is listed wherever `bwrap` is installed, even in a container that refuses
+ * it user namespaces; only a run tells. Its network shape is the most demanding one a command is
+ * given (slirp4netns, `/dev/net/tun`, iptables, `ip`), so a host that passes runs both the open
+ * network and `sandbox.allowedHosts`' proxy. MXC says why it cannot, and that is the reason.
  */
-async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platform): Promise<RunnerCheck> {
-  if (isLinuxMxc(runner)) {
-    if (platform !== "linux") return { ok: false, reason: `MXC's lxc-exec confines commands on Linux only: ${runner}` };
-    return checkPosixMxcRunner(runner, exec, "bubblewrap");
+async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: () => Promise<{ sdk: MxcSdk } | { reason: string }>, exec: Exec): Promise<RunnerCheck> {
+  const linux = isLinuxMxc(runner, platform);
+  const mac = isMacMxc(runner, platform);
+  const file = path.win32.basename(runner);
+  if (runner !== MXC && file === "lxc-exec" && platform !== "linux") return { ok: false, reason: `MXC's Bubblewrap backend confines commands on Linux only: ${runner}` };
+  if (runner !== MXC && file === "mxc-exec-mac" && platform !== "darwin") return { ok: false, reason: `MXC's Seatbelt backend confines commands on macOS only: ${runner}` };
+  if (!linux && !mac && platform !== "win32") return { ok: false, reason: `MXC confines commands on Windows, Linux and macOS only, not ${platform}` };
+  // Linux runs MXC's executor, not its SDK (`mxcRunsInProcess`): the check runs what a command will.
+  if (linux) {
+    const executor = linuxMxcExecutor(runner);
+    if (executor === undefined) return { ok: false, reason: mxcMissingReason(platform, process.arch, process.execPath) };
+    return checkPosixMxcRunner({ executor, exec }, "bubblewrap");
   }
-  if (isMacMxc(runner)) {
-    if (platform !== "darwin") return { ok: false, reason: `MXC's mxc-exec-mac confines commands on macOS only: ${runner}` };
-    return checkPosixMxcRunner(runner, exec, "seatbelt");
-  }
-  if (platform !== "win32") return { ok: false, reason: `MXC's wxc-exec confines commands on Windows only — on Linux and macOS, "mxc" names that platform's executor: ${runner}` };
-  let output: ExecFileResult;
+  const loaded = await load();
+  if ("reason" in loaded) return { ok: false, reason: loaded.reason };
+  if (mac) return checkPosixMxcRunner({ sdk: loaded.sdk }, "seatbelt");
+  let probe: { tier?: unknown; probes?: { baseContainerSupportsDenyPaths?: unknown }; error?: unknown };
   try {
-    output = await exec(runner, ["--probe"], { timeout: RUNNER_CHECK_TIMEOUT_MS });
+    probe = (await loaded.sdk.probe()) as typeof probe;
   } catch (error) {
-    const detail = error as { stderr?: string; stdout?: string; message?: string };
-    const said = (detail.stderr || detail.stdout || detail.message || "").trim();
-    return { ok: false, reason: `MXC's executor failed its probe${said ? `: ${said}` : ""}` };
-  }
-  let probe: { tier?: unknown; probes?: { baseContainerSupportsDenyPaths?: unknown } };
-  try {
-    probe = JSON.parse(output.stdout);
-  } catch {
-    return { ok: false, reason: `MXC's executor answered its probe with something that is not JSON: ${output.stdout.trim().slice(0, 200)}` };
+    return { ok: false, reason: `MXC failed its probe: ${(error as Error).message}` };
   }
   if (probe.tier !== "base-container") {
     const build = await windowsBuild(exec);
     return {
       ok: false,
       reason:
-        `MXC would confine terminals with tier "${String(probe.tier)}"; a terminal needs "base-container" (Windows 11 24H2 or 25H2 with the August 2026 update or later)` +
+        `MXC would confine terminals with tier "${String(probe.tier ?? probe.error)}"; a terminal needs "base-container" (Windows 11 24H2 or 25H2 with the August 2026 update or later)` +
         (build ? `. ${windowsBuildAdvice(build.build, build.ubr)}` : ""),
     };
   }
@@ -184,35 +199,40 @@ async function checkMxcRunner(runner: string, exec: Exec, platform: NodeJS.Platf
   return { ok: true };
 }
 
-/**
- * MXC's Linux and macOS self-check: one confined `true` in its Bubblewrap or Seatbelt
- * backend, network open.
- *
- * `lxc-exec --available-backends` lists Bubblewrap wherever `bwrap` is installed, even in a
- * container that refuses it user namespaces; only a run tells. The network shape is the
- * most demanding one a command is given (slirp4netns, `/dev/net/tun`, iptables, `ip`), so a host
- * that passes runs both the open network and `sandbox.allowedHosts`' proxy. MXC says why it
- * cannot — namespaces, AppArmor, a missing tool — and that is the reason passed on.
- */
-async function checkPosixMxcRunner(runner: string, exec: Exec, containment: "bubblewrap" | "seatbelt"): Promise<RunnerCheck> {
+/** MXC's Linux and macOS self-check: one confined `true`, network open — through the SDK on macOS, the executor on Linux. */
+async function checkPosixMxcRunner(through: { sdk: MxcSdk } | { executor: string; exec: Exec }, containment: "bubblewrap" | "seatbelt"): Promise<RunnerCheck> {
   const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-mxc-check-"));
   try {
     const mac = containment === "seatbelt";
-    const request = {
+    const request: MxcWireRequest = {
       version: "1.0.0",
       containment,
       process: { commandLine: mac ? "/usr/bin/true" : "/bin/true", cwd: mac ? realPath(tmp) : tmp, env: ["PATH=/usr/bin:/bin"] },
       filesystem: { readwritePaths: [mac ? realPath(tmp) : tmp], readonlyPaths: mac ? macSystemTrees() : linuxSystemTrees() },
       network: { egress: { default: "allow" } },
+      ...(mac ? { seatbelt: { extraMachLookups: [] } } : {}),
     };
-    const file = path.join(tmp, "check.json");
-    await writeFile(file, JSON.stringify(request), { mode: 0o600 });
+    if ("executor" in through) {
+      const file = path.join(tmp, "check.json");
+      await writeFile(file, JSON.stringify(request), { mode: 0o600 });
+      try {
+        await through.exec(through.executor, [file], { timeout: RUNNER_CHECK_TIMEOUT_MS });
+        return { ok: true };
+      } catch (error) {
+        const detail = error as { stderr?: string; stdout?: string; message?: string };
+        return { ok: false, reason: `MXC cannot confine commands on this host: ${mxcErrorMessage(`${detail.stdout ?? ""}${detail.stderr ?? ""}`) || detail.message || "it failed"}` };
+      }
+    }
+    let said = "";
     try {
-      await exec(runner, [file], { timeout: RUNNER_CHECK_TIMEOUT_MS });
-      return { ok: true };
+      const { exitCode } = await runThroughSdk(through.sdk, sdkRequest(request), {
+        onData: (data) => (said += data.toString()),
+        timeoutMs: RUNNER_CHECK_TIMEOUT_MS,
+        timeout: RUNNER_CHECK_TIMEOUT_MS / 1000,
+      });
+      return exitCode === 0 ? { ok: true } : { ok: false, reason: `MXC cannot confine commands on this host: ${mxcErrorMessage(said) || `exit ${exitCode}`}` };
     } catch (error) {
-      const detail = error as { stderr?: string; stdout?: string; message?: string };
-      return { ok: false, reason: `MXC cannot confine commands on this host: ${mxcErrorMessage(`${detail.stdout ?? ""}${detail.stderr ?? ""}`) || detail.message || "it failed"}` };
+      return { ok: false, reason: `MXC cannot confine commands on this host: ${mxcErrorMessage((error as Error).message) || (error as Error).message}` };
     }
   } finally {
     await rm(tmp, { recursive: true, force: true }).catch(() => {});
@@ -463,9 +483,42 @@ export interface MxcTerminalConfig {
    */
   network:
     | { egress: { default: "allow" } }
-    | { egress: { default: "deny" }; ingress: { default: "allow"; hostLoopback: "allow" } };
+    | { egress: { default: "deny" }; ingress: { default: "allow"; hostLoopback: "allow" } }
+    | { egress: { default: "deny" } };
   /** The only way out, with `egress` denied: MXC sets `HTTPS_PROXY` and `HTTP_PROXY` to it. */
   runtimeConfig?: { networkProxy: string };
+  /** A diagnosis only (`mxcDiagnosticConfig`): MXC's report of what it refused, enforcement kept. */
+  processContainer?: { captureDenials: { mode: "block"; outputPath: string } };
+}
+
+/**
+ * The request for a diagnosis of a command (`durable-sandbox-rules`): the command's own request
+ * with things taken away, never added, and MXC asked to report what it refused.
+ *
+ * MXC reports only what its default deny refused, never a path named in `deniedPaths`, and every
+ * sibling of the path to the root is named there because the drive is readable for Git
+ * (microsoft/mxc#1464). Both go: the siblings alone would leave them readable through the drive.
+ * The agent directory and the configuration file stay named — either can sit inside the root,
+ * where only its name keeps it out. The network is closed, without a proxy. Built from a request
+ * made without the user's grants, so none reaches a diagnosis.
+ *
+ * `block` only: `allow` lets through what it records. The report is written where `reportPath`
+ * says — MXC adds `.<pid>_<hash>` before `.json` — in a directory the command cannot reach.
+ */
+export function mxcDiagnosticConfig(config: MxcTerminalConfig, keep: { root: string; agentDir?: string; configFile?: string; reportPath: string }): MxcTerminalConfig {
+  const drive = path.win32.parse(keep.root).root.toLowerCase();
+  const kept = new Set([keep.agentDir, keep.configFile].filter((p): p is string => Boolean(p)).map((p) => p.toLowerCase()));
+  const { runtimeConfig: _proxy, ...rest } = config;
+  return {
+    ...rest,
+    filesystem: {
+      readwritePaths: [...config.filesystem.readwritePaths],
+      readonlyPaths: config.filesystem.readonlyPaths.filter((p) => p.toLowerCase() !== drive),
+      deniedPaths: config.filesystem.deniedPaths.filter((p) => kept.has(p.toLowerCase())),
+    },
+    network: { egress: { default: "deny" } },
+    processContainer: { captureDenials: { mode: "block", outputPath: keep.reportPath } },
+  };
 }
 
 export interface MxcTerminalInput {
@@ -748,6 +801,23 @@ export function mxcMacConfig(input: MxcMacInput): MxcMacConfig {
       ? { network: { egress: { default: "allow" } } }
       : { network: { egress: { default: "deny" }, ingress: { default: "deny" } }, runtimeConfig: { networkProxy: input.networkProxy } }),
   };
+}
+
+/**
+ * A macOS request that also asks MXC what Seatbelt refused (`durable-sandbox-rules`): the same
+ * limits, enforced the same (`block`), and a report of each refusal written where `reportPath`
+ * says — MXC adds `.<pid>_<hash>` before `.json`, and a `.verbose.json` beside it.
+ *
+ * Only MXC's development contract carries `seatbelt.captureDenials`, so the document changes
+ * version and nothing else. Measured on an Apple M1 (`research.md`, "Measured on macOS"): what
+ * Seatbelt refuses by default and what `deniedPaths` names are both reported, each file by its
+ * own path, for about 50 ms a command — so every command asks, as landstrip reports on Linux.
+ */
+export function mxcMacCaptureRequest(config: MxcMacConfig, reportPath: string): Omit<MxcMacConfig, "version" | "seatbelt"> & {
+  version: "1.1.0-alpha";
+  seatbelt: MxcMacConfig["seatbelt"] & { captureDenials: { mode: "block"; outputPath: string } };
+} {
+  return { ...config, version: "1.1.0-alpha", seatbelt: { ...config.seatbelt, captureDenials: { mode: "block", outputPath: reportPath } } };
 }
 
 /** What `sandbox-exec` is given: the profile it applies, and the environment the command starts with. */
@@ -1052,6 +1122,8 @@ export interface ConfinedTerminalFiles {
   /** Under `sandbox-exec`: the environment the shell starts with, which the runner hands it as is. */
   env?: Record<string, string>;
   dispose(): Promise<void>;
+  /** The policy itself: MXC's request, which its SDK takes as an object rather than a file. */
+  policy: TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy;
 }
 
 /** Create the private directory and write the policy (landstrip's, MXC's request, or a Seatbelt profile) into it, owner-only. */
@@ -1063,5 +1135,5 @@ export async function prepareConfinedTerminal(
   const seatbelt = "seatbelt" in policy && typeof policy.seatbelt === "string" ? (policy as SeatbeltPolicy) : undefined;
   const policyFile = path.join(tmp, seatbelt ? "policy.sb" : "policy.json");
   await writeFile(policyFile, seatbelt ? seatbelt.seatbelt : JSON.stringify(policy, null, 2), { mode: 0o600 });
-  return { tmp, policyFile, ...(seatbelt ? { env: seatbelt.env } : {}), dispose: () => rm(tmp, { recursive: true, force: true }) };
+  return { tmp, policyFile, policy, ...(seatbelt ? { env: seatbelt.env } : {}), dispose: () => rm(tmp, { recursive: true, force: true }) };
 }

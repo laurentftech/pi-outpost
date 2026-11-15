@@ -12,7 +12,7 @@ import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations, POWERSHELL_SCRIPT_ARGS, powerShellScript } from "../src/confinedBash.ts";
 import { shellIsConfined } from "../src/confinementStatus.ts";
-import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables } from "../src/confinementCanary.ts";
+import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables, victimCommand } from "../src/confinementCanary.ts";
 
 const base = { runner: "/r", checkedAt: "2026-10-18T00:00:00.000Z", notChecked: [] };
 
@@ -257,4 +257,14 @@ test("NoRunnerNoLock: the shell is judged only with bash allowed, a runner, and 
   assert.equal(shellIsConfined({ ...base, allowBash: true }), false, "no runner, no lock");
   assert.equal(shellIsConfined({ ...base, allowBash: true, bashRunner: "/r", bashFrom: "npm:pi-landstrip" }), false, "an extension runs bash");
   assert.equal(shellIsConfined(undefined), false);
+});
+
+describe("victimCommand", () => {
+  test("node itself where it is node; the system's sleeper inside a standalone executable, where -e means nothing", () => {
+    assert.deepEqual(victimCommand(false), [process.execPath, ["-e", "setTimeout(() => {}, 120000)"]]);
+    const [windowsFile, windowsArgs] = victimCommand(true, "win32");
+    assert.match(windowsFile, /powershell\.exe$/i);
+    assert.ok(windowsArgs.includes("Start-Sleep -Seconds 120"));
+    assert.deepEqual(victimCommand(true, "linux"), ["/bin/sleep", ["120"]]);
+  });
 });

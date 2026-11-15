@@ -30,7 +30,10 @@ import { ExtensionRenderer } from "./extensionRender.ts";
 import { QueuedPrompts } from "./queuedPrompts.ts";
 import { createSandboxedTools } from "./sandbox.ts";
 import { SandboxGrantBroker } from "./sandboxGrantBroker.ts";
-import type { ServerMessage } from "@pi-outpost/shared";
+import { makeRulesFromGrant, rulesStoreFor, type SandboxRulesStore } from "./sandboxRules.ts";
+import { ruleFromRefusal, rulesState } from "./sandboxRulesView.ts";
+import type { Grant, GrantContext } from "./sandboxGrants.ts";
+import type { SandboxRulesState, ServerMessage } from "@pi-outpost/shared";
 import type { RenderSettings } from "./presentationRender.ts";
 import type { ExtensionUIRequest, GitUnavailable, WorkPlan } from "@pi-outpost/shared";
 
@@ -147,6 +150,8 @@ export interface WorkspaceOptions {
   };
   /** Set by `Workspace.create`: one broker shared by every rebuild of this workspace. */
   grants?: SandboxGrantBroker;
+  /** Set by `Workspace.create`: the project's durable rules, under the agent directory. Absent without one. */
+  rulesStore?: SandboxRulesStore;
 }
 
 /** The identity of a project's `index`th side session. */
@@ -271,6 +276,55 @@ export class Workspace {
     return this.options.grants!;
   }
 
+  private unwatchRules?: () => void;
+  private rulesAnnounce?: ReturnType<typeof setTimeout>;
+
+  /**
+   * Every change to the project's rules or recorded refusals reaches this workspace's clients:
+   * a rule made in another tab, a refusal met by a running command. Gathered over a moment, as a
+   * command can be refused many things at once.
+   */
+  private watchRules(store: SandboxRulesStore, events: NonNullable<WorkspaceOptions["grantEvents"]>): void {
+    this.unwatchRules = store.onChange(() => {
+      if (this.stopped || this.rulesAnnounce !== undefined) return;
+      this.rulesAnnounce = setTimeout(() => {
+        this.rulesAnnounce = undefined;
+        if (this.stopped) return;
+        void this.sandboxRules().then((state) => state && events.announce(this, { type: "sandbox_rules", state }), () => {});
+      }, 150);
+    });
+  }
+
+  /** What may be granted, and what the sandbox already gives: the rules are checked against it. */
+  private grantContext(): GrantContext {
+    const sandbox = this.options.settings.sandbox;
+    return {
+      root: sandbox?.root ?? this.root,
+      allowWrite: sandbox?.allowWrite ?? false,
+      ...(sandbox?.writableRoot ? { writableRoot: sandbox.writableRoot } : {}),
+      ...this.options.limits.neverReadable,
+      wslc: sandbox?.bashImage !== undefined,
+    };
+  }
+
+  /** The project's rules and recorded refusals, for the interface. Undefined: the project keeps none. */
+  async sandboxRules(): Promise<SandboxRulesState | undefined> {
+    const store = this.options.rulesStore;
+    return store ? rulesState(store, this.options.settings.sandbox, this.grantContext()) : undefined;
+  }
+
+  /** The user makes a rule from a recorded refusal, in the interface. */
+  async makeSandboxRule(key: string, decision: "allow" | "refuse"): Promise<{ ok: true } | { ok: false; message: string }> {
+    const store = this.options.rulesStore;
+    if (!store) return { ok: false, message: "This project keeps no rules." };
+    return ruleFromRefusal(store, this.options.settings.sandbox, this.grantContext(), key, decision);
+  }
+
+  /** The user revokes a rule: false when there was none with this id. */
+  async revokeSandboxRule(id: string): Promise<boolean> {
+    return (await this.options.rulesStore?.revoke(id)) ?? false;
+  }
+
   /**
    * A session switch, fork or prompt edit is in flight here.
    *
@@ -351,16 +405,21 @@ export class Workspace {
     const root = await fs.realpath(options.settings.cwd);
     // Built before the toolset that asks it, and bound to the workspace once there is one.
     let self: Workspace | undefined;
+    // The project's rules live beside its sessions, under the agent directory.
+    const agentDir = options.limits.neverReadable?.agentDir;
+    const rulesStore = options.rulesStore ?? (agentDir ? rulesStoreFor(agentDir, root) : undefined);
     const grants =
       options.grants ??
       new SandboxGrantBroker({
         announce: (message) => self && options.grantEvents?.announce(self, message),
         hasClients: () => (self ? (options.grantEvents?.hasClients(self) ?? false) : false),
         onPendingChanged: () => self && options.grantEvents?.onPendingChanged?.(self),
+        ...(rulesStore ? { makeRule: (grant: Grant, decision: "allow" | "refuse") => makeRulesFromGrant(rulesStore, grant, decision) } : {}),
       });
-    const withSkillRoots = { ...options, skillReadRoots: options.skillReadRoots ?? { dirs: [] }, grants };
+    const withSkillRoots = { ...options, skillReadRoots: options.skillReadRoots ?? { dirs: [] }, grants, ...(rulesStore ? { rulesStore } : {}) };
     const resources = await buildResources(withSkillRoots);
     self = new Workspace(root, undefined, resources, withSkillRoots, sideIndex);
+    if (rulesStore && options.grantEvents) self.watchRules(rulesStore, options.grantEvents);
     return self;
   }
 
@@ -511,6 +570,8 @@ export class Workspace {
     if (this.stopped) return;
     this.stopped = true;
     this.grants.endSession();
+    this.unwatchRules?.();
+    if (this.rulesAnnounce !== undefined) clearTimeout(this.rulesAnnounce);
     if (this.repoRescan !== undefined) clearTimeout(this.repoRescan);
     this.repoRescan = undefined;
     this.fileWatcher?.close();
@@ -609,6 +670,8 @@ async function buildResources(options: WorkspaceOptions): Promise<WorkspaceResou
           options.skillReadRoots ? () => options.skillReadRoots!.dirs : undefined,
           limits.neverReadable,
           options.grants,
+          // The project's rules, kept beside its sessions under the agent directory.
+          options.rulesStore,
         )),
         ...options.unconfinedTools,
       ])
