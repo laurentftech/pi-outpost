@@ -38,5 +38,13 @@
 ## 4. Verify
 
 - [ ] 4.1 Each runner in its own job or machine: landstrip, MXC Linux, MXC macOS, Seatbelt, MXC Windows. Done by hand: MXC macOS and Seatbelt (Apple M1), MXC Linux (Docker). Left: landstrip, MXC Windows after these changes, and CI.
+
+  **Handover for Windows 11, written from macOS (nothing below has run on Windows since `771e2cb9`):**
+  1. `git pull`, Node.js ≥ 24.21 or ≥ 26.8, `npx -y npm@12.2.2 ci`. Then `npm run typecheck` and the server's suite (`npm test --workspace server`).
+  2. **What changed on Windows' path, to check first**: `loadMxcSdk` (`server/src/mxcSdk.ts`) now imports `@microsoft/mxc-sdk/v1/dev` beside `v1` — macOS needs its `spawnJson`; Windows does not use it, but a failed import refuses `"mxc"` everywhere. `confinedBash.ts`'s launch was reshaped around it (`stable()`, `mxcJson`), `checkMxcRunner` branches on Linux before loading the SDK, and `placeMxcExecutor` / `placeMxcNative` now take Linux into account.
+  3. **The real suites**, with `MXC_EXEC` and `MXC_SHELL` set as before: `confinedDiagnosisMxc`, `confinedPowerShellMxc`, `confinedNetworkMxc`, `terminalSandboxMxc`, `sandboxRunnerBash`. Two assertions changed for CodeQL (a host "not mentioned" is now whole words against an anchored pattern): `confinedDiagnosisMxc.test.ts` near "a command can neither read nor write the store of rules", and `confinedBash.test.ts`.
+  4. **The standalone executable**: rerun `scripts/probes/mxc-sdk-exe.mts`. Its bundle must now carry `v1/dev` too (a literal import, like `v1`); if `"mxc"` is refused with "MXC's SDK cannot load here", that is why. A suite test for `AnExecutableConfinesThroughTheSdk` is still not written — the one row `npm run check:scenarios` refuses.
+  5. **CI on `aaec9973`**: `mxc-linux`, `mxc-macos` and CodeQL pass; `browser` passed the MXC specs and failed two others (`drawio-conversation.spec.ts:298`, `mcp-poster-elements.spec.ts:223`, files this change does not touch — rerun asked, not confirmed as flaky). `check (ubuntu)` fails on `check:scenarios` alone, and `check (windows)` is cancelled with it: Windows' unit suite has not reported on this branch.
+  6. **In the running app**: a command that reads beside the root fails once, its output offers `diagnose`; the diagnosis names the directory; the lock's panel says refusals are recorded on demand, lists it, and an always-allow made there opens it to the next command.
 - [x] 4.2 The running app, with a break-it pass: a rule revoked mid-command, a rule on a directory deleted since, two clients answering at once.
 - [ ] 4.3 `scenario-coverage.md`, `npm run check:scenarios`, `openspec validate durable-sandbox-rules --strict`, docs.
