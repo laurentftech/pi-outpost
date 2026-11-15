@@ -15,7 +15,7 @@ npm run dev
 ```
 
 That starts Vite on `http://localhost:5173` and the agent server on
-`http://127.0.0.1:3141`. Vite proxies `/ws`, `/branding`, `/health` and `/files` to the
+`http://127.0.0.1:3142`. Vite proxies `/ws`, `/branding`, `/health` and `/files` to the
 server. Set `PI_OUTPOST_PORT` when the development server listens on another port.
 
 The root command deliberately supplies

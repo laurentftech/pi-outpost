@@ -27,7 +27,7 @@ npm run dev
 ```
 
 - Web UI: http://localhost:5173 (Vite dev server, proxies `/ws`, `/branding`, `/health`)
-- Agent server: ws://127.0.0.1:3141/ws
+- Agent server: ws://127.0.0.1:3142/ws
 
 `npm run dev` passes the repository's committed
 [`pi-outpost.config.dev.json`](../pi-outpost.config.dev.json) — the same code path and the
