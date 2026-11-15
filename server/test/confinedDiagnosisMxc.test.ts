@@ -51,9 +51,20 @@ describe("a diagnosis under MXC, run in process through its SDK", { skip }, () =
   function operations(told: Refusal[]) {
     return confinedBashOperations({ runner: RUNNER!, shell: POWERSHELL, root, writableRoot: path.join(root, "out"), allowWrite: true, agentDir, onRefusal: (refusal) => told.push(refusal) });
   }
+  /**
+   * A command, or its diagnosis — after the command failed in the same shell, as an agent asks for
+   * one: a diagnosis is run only for a command whose last run offered it. What the failed run told
+   * is not the diagnosis': `told` holds the diagnosis' alone.
+   */
   async function run(kind: "exec" | "diagnose", command: string, told: Refusal[] = []) {
     const ops = operations(told);
     let output = "";
+    if (kind === "diagnose") {
+      let first = "";
+      await ops.exec(command, root, { onData: (data) => void (first += data.toString()) });
+      assert.match(first, /diagnose: true/, `the command must fail with the offer first: ${first}`);
+      told.length = 0;
+    }
     const runIt = kind === "exec" ? ops.exec.bind(ops) : ops.diagnose!.bind(ops);
     const { exitCode } = await runIt(command, root, { onData: (data) => void (output += data.toString()) });
     return { output, exitCode, told };
@@ -100,8 +111,10 @@ describe("a diagnosis under MXC, run in process through its SDK", { skip }, () =
       `try { $r += 'net:' + (Invoke-WebRequest https://example.com -UseBasicParsing -TimeoutSec 10).StatusCode } catch { $r += 'net-refused' }`,
       `Set-Content ${quoted(seen)} ($r -join ',')`,
       `'VISIBLE-MARKER'`,
+      `exit 1`,
     ].join("; ");
     const { output } = await run("diagnose", command);
+    assert.match(output, /\[pi-outpost\] diagnosis:/, "a diagnosis ran");
     assert.doesNotMatch(output, /VISIBLE-MARKER|other-secret|sk-agent-secret/, "the rerun's output is not shown");
     assert.equal((await readFile(seen, "utf8")).trim(), "read-refused,keys-refused,write-refused,net-refused");
     assert.equal(existsSync(path.join(other, "w.txt")), false);
@@ -127,13 +140,47 @@ describe("a diagnosis under MXC, run in process through its SDK", { skip }, () =
     const command = [
       `try { Get-Content ${quoted(store.file)} -ErrorAction Stop } catch { 'read-refused' }`,
       `try { Set-Content ${quoted(store.file)} '{}' -ErrorAction Stop; 'wrote' } catch { 'write-refused' }`,
+      // A failure, so the diagnosis below is one.
+      `exit 1`,
     ].join("; ");
     const { output } = await run("exec", command);
     assert.match(output, /read-refused/);
     assert.match(output, /write-refused/);
     assert.ok(!output.split(/[^\w.-]+/).some((word) => /^rule\.example\.com\.?$/.test(word)), "the rules file is not read");
-    await run("diagnose", command);
+    const diagnosed = await run("diagnose", command);
+    assert.match(diagnosed.output, /\[pi-outpost\] diagnosis:/, "a diagnosis ran");
     assert.equal(await readFile(store.file, "utf8"), before, "unchanged");
+  });
+
+  // openlore: scenario=ADiagnosisBeforeAnyFailureRunsTheCommand spec=sandbox-durable-rules
+  test("diagnose asked before the command failed here runs it as usual, shows its output, and says it was ignored", async () => {
+    const told: Refusal[] = [];
+    const ops = operations(told);
+    let output = "";
+    const command = `'VISIBLE-MARKER'; Get-Content ${quoted(path.join(other, "secret.txt"))}`;
+    const { exitCode } = await ops.diagnose!(command, root, { onData: (data) => void (output += data.toString()) });
+    assert.notEqual(exitCode, 0);
+    assert.match(output, /VISIBLE-MARKER/, "the output is shown");
+    assert.doesNotMatch(output, /other-secret/, "still confined");
+    assert.doesNotMatch(output, /\[pi-outpost\] diagnosis:/, "no diagnosis ran");
+    assert.match(output, /diagnose was ignored: this command has not failed here yet[^\n]*\n?\s*$/);
+    // That run failed with the offer: the same command is now diagnosed.
+    let second = "";
+    await ops.diagnose!(command, root, { onData: (data) => void (second += data.toString()) });
+    assert.doesNotMatch(second, /VISIBLE-MARKER/, "a diagnosis hides the output");
+    assert.match(second, new RegExp(`diagnosis: the sandbox refused reading ${other.replace(/[\\.$^]/g, "\\$&")}\\.`, "i"));
+    // A success takes the offer back.
+    const flag = path.join(root, "out", "flag.txt");
+    const flaky = `if (Test-Path ${quoted(flag)}) { 'now-fine' } else { exit 1 }`;
+    let failed = "";
+    await ops.exec(flaky, root, { onData: (data) => void (failed += data.toString()) });
+    assert.match(failed, /diagnose: true/, "it failed with the offer");
+    await writeFile(flag, "x");
+    await ops.exec(flaky, root, { onData: () => {} });
+    let third = "";
+    await ops.diagnose!(flaky, root, { onData: (data) => void (third += data.toString()) });
+    assert.match(third, /now-fine/, "run as usual, not diagnosed");
+    assert.match(third, /diagnose was ignored/);
   });
 
   // openlore: scenario=AnAllowedDirectoryIsReadableInANewSession spec=sandbox-durable-rules

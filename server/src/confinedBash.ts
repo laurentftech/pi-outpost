@@ -132,6 +132,9 @@ export interface ConfinedBashOperations extends BashOperations {
   diagnose?(command: string, cwd: string, options: ExecOptions): ReturnType<BashOperations["exec"]>;
 }
 
+/** How many failed commands keep their offer of a diagnosis, the oldest forgotten first. */
+const MAX_OFFERED = 64;
+
 /** The shell tool's option that asks for a diagnosis. */
 export const DIAGNOSE_OPTION = "diagnose";
 
@@ -141,6 +144,18 @@ export function diagnosisOfferNote(): string {
     `[pi-outpost] This sandbox does not say on its own what it refused. If this failure looks like a refused path, ` +
     `run the same command again with ${DIAGNOSE_OPTION}: true — it runs once more under a narrower sandbox, without network, ` +
     `and returns only what the sandbox refused. Its effects happen again: never diagnose a command that must not run twice.`
+  );
+}
+
+/**
+ * What ends a command run with `diagnose` before it failed: it ran as usual. A diagnosis takes the
+ * network away and hides the output, so one asked at once leaves the agent nothing to judge by,
+ * and the user no question about a host.
+ */
+export function diagnosisIgnoredNote(): string {
+  return (
+    `[pi-outpost] ${DIAGNOSE_OPTION} was ignored: this command has not failed here yet, so it ran as usual, output and network included. ` +
+    `Ask for a diagnosis only after it fails and its output offers one.`
   );
 }
 
@@ -354,6 +369,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
   // MXC on Windows reports what it refused only when asked, at a cost of a second per command:
   // a diagnosis, on the agent's request, after a failure (`mxcDiagnosticConfig`).
   const diagnosable = kind === "mxc" && windows && !wslc && !isPosixMxc(options.runner);
+  /** The commands whose last run failed with the offer of a diagnosis: the only ones diagnosed. */
+  const offered = new Set<string>();
   // macOS: whether MXC's SDK refused the document that asks for Seatbelt's report (`mxcMacCaptureRequest`).
   let captureRefused = false;
   /**
@@ -624,7 +641,16 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         // Not when the proxy already named a refused host — that is what failed, and a diagnosis
         // runs without network: it would contradict "do not retry".
         const hostRefused = refused.size > 0 || [...answers.values()].some((answer) => !isApproved(answer));
-        if (diagnosable && !diagnose && !hostRefused && exitCode !== undefined && exitCode !== 0) onData(Buffer.from(`\n${diagnosisOfferNote()}\n`));
+        if (diagnosable && !diagnose && !hostRefused && exitCode !== undefined && exitCode !== 0) {
+          onData(Buffer.from(`\n${diagnosisOfferNote()}\n`));
+          offered.delete(command);
+          offered.add(command);
+          // Bounded: the oldest offer goes first.
+          if (offered.size > MAX_OFFERED) offered.delete(offered.values().next().value!);
+        } else if (!diagnose) {
+          // Its last run did not fail with the offer: no diagnosis for it until one does.
+          offered.delete(command);
+        }
       }
     } finally {
       if (reportDir !== undefined) await rm(reportDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
@@ -657,6 +683,12 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     ...(diagnosable
       ? {
           diagnose: async (command: string, cwd: string, execOptions: ExecOptions) => {
+            // Asked before the command failed here: run it as usual, and say why.
+            if (!offered.has(command)) {
+              const result = await launchCommand(command, cwd, execOptions, EMPTY_GRANT);
+              execOptions.onData(Buffer.from(`\n${diagnosisIgnoredNote()}\n`));
+              return result;
+            }
             const noise = await shellNoise();
             let found: Refusal[] | undefined;
             const result = await launchCommand(command, cwd, execOptions, EMPTY_GRANT, (report) => void (found = report));

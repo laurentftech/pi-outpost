@@ -54,6 +54,15 @@ When the agent runs a command with `diagnose` under MXC on Windows, the command 
 - **WHEN** the agent runs, with `diagnose`, a command that reads a file beside the root and connects to a host
 - **THEN** both are refused in the rerun as in the first run, and the rerun's output is not shown
 
+### Requirement: ADiagnosisFollowsAFailure
+
+A diagnosis SHALL be run only for a command whose last run in the same shell failed with the note offering one. Otherwise `diagnose` SHALL be ignored: the command SHALL run as without it — network, proxy and its questions included — and its output SHALL end with a note saying the option was ignored and why.
+
+#### Scenario: ADiagnosisBeforeAnyFailureRunsTheCommand
+- **GIVEN** a confined shell under MXC on Windows
+- **WHEN** the agent runs with `diagnose` a command that has not failed in this shell
+- **THEN** the command runs as without `diagnose`, its output is shown, and it ends with a note saying `diagnose` was ignored
+
 ### Requirement: ADiagnosisReportsOnlyTheRefusal
 
 A diagnosis's file refusals, filtered of the root's ancestors, of the root itself and of the system's own files, SHALL be recorded and named in the note. The report SHALL be written where the command cannot reach and read from there, never from a path the command's output names; it SHALL be deleted, and its announcement SHALL NOT appear in the output.

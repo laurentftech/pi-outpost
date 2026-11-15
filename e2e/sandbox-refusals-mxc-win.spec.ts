@@ -29,7 +29,8 @@ const escape = (text: string) => text.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 const OFFER_ENDS = /run the same command again with diagnose: true[^\n]*\n(?:\s*Command exited with code \d+)?\s*$/;
 const quoted =(p: string) => `'${p.replaceAll("'", "''")}'`;
 
-async function start() {
+/** By default, each turn runs the command reading beside the root, then the same with `diagnose`. */
+async function start(steps?: (beside: string) => Array<{ tool: string; args: Record<string, unknown> }>) {
   const root = await realpath(await makeWorkspace({ "inside.txt": "inside" }));
   const beside = `${root}-beside`;
   await mkdir(beside, { recursive: true });
@@ -41,14 +42,16 @@ async function start() {
   const command = `Get-Content inside.txt; Get-Content ${quoted(path.join(beside, "notes.txt"))}`;
   const server = await startServer(
     root,
-    { sandbox: { root, allowWrite: true, allowBash: true, bashRunner: "mxc", bashShell: POWERSHELL }, extensionPaths: [provider], allowedModels: [model] },
+    { sandbox: { root, allowWrite: true, allowBash: true, bashRunner: "mxc", bashShell: POWERSHELL, allowedHosts: [] }, extensionPaths: [provider], allowedModels: [model] },
     {
       env: {
         BASH_CALL_LOG: log,
-        BASH_CALL_STEPS: JSON.stringify([
-          { tool: "powershell", args: { command } },
-          { tool: "powershell", args: { command, diagnose: true } },
-        ]),
+        BASH_CALL_STEPS: JSON.stringify(
+          steps?.(beside) ?? [
+            { tool: "powershell", args: { command } },
+            { tool: "powershell", args: { command, diagnose: true } },
+          ],
+        ),
       },
     },
   );
@@ -65,13 +68,20 @@ async function start() {
     client,
     /** One turn: the command, then its diagnosis; what the agent read of each comes back. */
     async turn(): Promise<{ run: string; diagnosis: string }> {
-      await rm(log, { force: true });
-      client.send({ type: "prompt", text: "Go." });
+      const [run, diagnosis] = await this.results(2);
+      return { run, diagnosis };
+    },
+    /** One turn of `count` steps; what the agent read of each, in order. */
+    async results(count: number, send = true): Promise<string[]> {
+      if (send) {
+        await rm(log, { force: true });
+        client.send({ type: "prompt", text: "Go." });
+      }
       for (let i = 0; i < 1200; i++) {
         const text = await readFile(log, "utf8").catch(() => undefined);
         if (text) {
           const results = (JSON.parse(text) as Array<{ content: Array<{ text?: string }> }>).map((r) => r.content.map((c) => c.text ?? "").join(""));
-          if (results.length >= 2) return { run: results[0], diagnosis: results[1] };
+          if (results.length >= count) return results;
         }
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
@@ -131,6 +141,31 @@ test("under MXC on Windows: a refused read offers a diagnosis, the diagnosis nam
     expect(third.run).not.toContain("beside-notes");
     expect(third.run).toMatch(OFFER_ENDS);
     expect(third.diagnosis).toMatch(new RegExp(`diagnosis: the sandbox refused reading ${escape(app.beside)}\\.`, "i"));
+  } finally {
+    await app.stop();
+  }
+});
+
+// openlore: scenario=ADiagnosisBeforeAnyFailureRunsTheCommand spec=sandbox-durable-rules
+test("under MXC on Windows: diagnose asked at once is ignored — the command connects through the proxy, the user is asked about the host, and the output is shown", async ({ page }) => {
+  const command = "(Invoke-WebRequest https://example.com -UseBasicParsing -TimeoutSec 30).StatusCode";
+  const app = await start(() => [{ tool: "powershell", args: { command, diagnose: true } }]);
+  try {
+    await page.goto(app.server.base);
+    await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
+    await rm(path.join(app.root, "results.json"), { force: true });
+    app.client.send({ type: "prompt", text: "Go." });
+    // The question a diagnosis, without network, could never have raised.
+    const { request } = (await app.client.waitFor("sandbox_grant_request", 90_000)) as unknown as { request: { id: string; grant: { hosts: string[] } } };
+    expect(request.grant.hosts).toEqual(["example.com"]);
+    const panel = page.getByRole("region", { name: "A running command is connecting to example.com" });
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveAttribute("data-request-id", request.id);
+    await panel.getByRole("button", { name: "Allow for this session", exact: true }).click();
+    const [result] = await app.results(1, false);
+    expect(result).toMatch(/^\s*200\b/m);
+    expect(result).not.toMatch(/\[pi-outpost\] diagnosis:/);
+    expect(result).toMatch(/diagnose was ignored: this command has not failed here yet[^\n]*\n(?:\s*Command exited with code \d+)?\s*$/);
   } finally {
     await app.stop();
   }

@@ -597,7 +597,9 @@ So a command runs without it; when one fails, its output ends offering a diagnos
 run the same command again with `diagnose: true`. That second run is narrower than the first, never
 wider: no drive root, the folders beside the root left to the default deny, the agent directory and the
 configuration still denied, no network, no grant, no rule. Its output is not shown — only the
-directories the sandbox refused it, and the agent asks for those. The command runs twice, effects
+directories the sandbox refused it, and the agent asks for those. A diagnosis is run only for a command
+that has just failed that way: `diagnose` on a command that has not is ignored, and the command runs as
+usual — output shown, network and host questions included — ending with a note saying so. The command runs twice, effects
 included; the agent is told never to diagnose a command that must not run twice. The first diagnosis
 also measures what the shell itself is refused starting up (PowerShell reads the default profile), and
 leaves that out of every report.
