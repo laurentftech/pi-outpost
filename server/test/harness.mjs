@@ -149,7 +149,9 @@ async function startServerOn(root, config, options, port) {
   // from the start (stripDependencySourceMaps.mjs); the filter in stop() does the rest.
   const coverageImports = serverCoverageSink() ? [`--import=${pathToFileURL(path.join(SERVER_DIR, "test", "stripDependencySourceMaps.mjs")).href}`] : [];
   const argv = options.entry ? [options.entry] : [TSX_LOADER, ...coverageImports, ENTRY];
-  const child = spawn(process.execPath, argv, {
+  // `options.executable` runs a standalone executable instead, with the same configuration and
+  // environment: what a user who downloaded it runs.
+  const child = spawn(options.executable ?? process.execPath, options.executable ? [] : argv, {
     cwd: SERVER_DIR,
     env,
     stdio: ["ignore", "pipe", "pipe"],
