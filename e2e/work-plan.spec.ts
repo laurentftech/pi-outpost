@@ -102,3 +102,70 @@ test("narrow viewport automatically compacts the Work Plan and keeps the convers
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(page.getByRole("complementary", { name: "Work Plan" })).toBeVisible();
 });
+
+test("the strip over a look at the conversation is dismissed with its files, and the Work Plan lies below it", async ({ page }) => {
+  await page.goto(process.env.PI_E2E_PLANS_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await prompt(page, "Create a plan for this release");
+  const panel = page.getByRole("complementary", { name: "Work Plan" });
+  await expect(panel).toBeVisible();
+  await panel.getByRole("treeitem", { name: /Publish release/ }).click();
+  await panel.getByRole("button", { name: "Release notes" }).click();
+  await expect(page.getByRole("button", { name: "Close file viewer" })).toBeVisible();
+
+  // Folded while the file covers the conversation: the chip sits below the file's toolbar,
+  // never over its edit or close, at any width.
+  const above = async (bar: import("@playwright/test").Locator, chip: import("@playwright/test").Locator) => {
+    const [b, c] = [(await bar.boundingBox())!, (await chip.boundingBox())!];
+    return c.y >= b.y + b.height || c.x >= b.x + b.width || c.x + c.width <= b.x;
+  };
+  // Folded from a look at the conversation (the file covers the open panel), then back.
+  await page.getByRole("button", { name: "conversation ↗" }).click();
+  await panel.getByRole("button", { name: "Close Work Plan" }).click();
+  await page.getByRole("button", { name: /^← back to / }).click();
+  const chipOverFile = page.getByRole("button", { name: "Open Work Plan" });
+  await expect(chipOverFile).toBeVisible();
+  for (const width of [1280, 700, 400]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const control of [page.getByRole("button", { name: "✎ edit" }), page.getByRole("button", { name: "Close file viewer" })]) {
+      await expect(control).toBeVisible();
+      expect(await above(control, chipOverFile), `chip over a file control at ${width}px`).toBe(true);
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.getByRole("button", { name: "conversation ↗" }).click();
+  await chipOverFile.click();
+
+  const back = page.getByRole("button", { name: /^← back to / });
+  const forget = page.getByRole("button", { name: "Close the file and stay in the conversation" });
+  await expect(back).toBeVisible();
+  await expect(forget).toBeVisible();
+
+  // The plan's panel, and its chip once folded, lie over the conversation — below the
+  // strip, at every width, whichever way the strip's controls wrap.
+  const strip = forget.locator("xpath=..");
+  const below = async (over: import("@playwright/test").Locator) => {
+    const [top, bottom] = [(await over.boundingBox())!, (await strip.boundingBox())!];
+    return top.y >= bottom.y + bottom.height - 1;
+  };
+  await expect(panel).toBeVisible();
+  expect(await below(panel)).toBe(true);
+  await panel.getByRole("button", { name: "Close Work Plan" }).click();
+  const chip = page.getByRole("button", { name: "Open Work Plan" });
+  await expect(chip).toBeVisible();
+  for (const width of [1280, 700, 400]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(forget).toBeVisible();
+    await expect(chip).toBeVisible();
+    expect(await below(chip), `chip over the strip at ${width}px`).toBe(true);
+  }
+
+  // A real double click, which lands on whatever is on top at that point: the second
+  // click must not open the plan whose chip may now stand where the ✕ was.
+  await forget.dblclick();
+  await expect(back).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Close file viewer" })).toHaveCount(0);
+  await expect(chip).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: /message pi/i })).toBeVisible();
+});

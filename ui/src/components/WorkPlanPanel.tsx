@@ -19,6 +19,12 @@ interface WorkPlanPanelProps {
   requestedTaskId?: string | null;
   /** Called once the request above has been applied, so it is not replayed. */
   onTaskRequestHandled?(): void;
+  /**
+   * Where the folded chip sits from the top of what it is placed against. The application
+   * sets it just below whichever bar is above — a file's toolbar or the strip over a look
+   * at the conversation — so the chip covers none of their controls.
+   */
+  chipTop?: string;
 }
 
 function workspacePath(resource: WorkPlanResource): string | null {
@@ -32,7 +38,7 @@ function workspacePath(resource: WorkPlanResource): string | null {
   return candidate;
 }
 
-export function WorkPlanPanel({ plan, open, onToggle, onOpenWorkspace, requestedTaskId, onTaskRequestHandled }: WorkPlanPanelProps) {
+export function WorkPlanPanel({ plan, open, onToggle, onOpenWorkspace, requestedTaskId, onTaskRequestHandled, chipTop = "0.75rem" }: WorkPlanPanelProps) {
   const previewId = useId();
   const [previewVisible, setPreviewVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -98,8 +104,14 @@ export function WorkPlanPanel({ plan, open, onToggle, onOpenWorkspace, requested
     });
 
   if (!open) return (
-    <div className="absolute right-3 top-3 z-20" onMouseEnter={() => setPreviewVisible(true)} onMouseLeave={() => setPreviewVisible(false)} onFocusCapture={() => setPreviewVisible(true)} onBlurCapture={() => setPreviewVisible(false)}>
-      <button type="button" onClick={() => { setPreviewVisible(false); onToggle(); }} className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900" aria-label="Open Work Plan" aria-describedby={previewId}>Plan {done}/{plan.tasks.length}</button>
+    <div className="absolute right-3 z-20" style={{ top: chipTop }} onMouseEnter={() => setPreviewVisible(true)} onMouseLeave={() => setPreviewVisible(false)} onFocusCapture={() => setPreviewVisible(true)} onBlurCapture={() => setPreviewVisible(false)}>
+      <button type="button" onClick={(event) => {
+        // The second click of a double click is not a request: it is a click meant for
+        // whatever stood here a moment ago — the ✕ of a strip that just went away.
+        if (event.detail > 1) return;
+        setPreviewVisible(false);
+        onToggle();
+      }} className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900" aria-label="Open Work Plan" aria-describedby={previewId}>Plan {done}/{plan.tasks.length}</button>
       <div id={previewId} role="tooltip" className={`absolute right-0 top-full w-72 pt-2 ${previewVisible ? "block" : "hidden"}`}>
         <div className="rounded-md border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"><ul className="space-y-1">
           {previewTasks.map(({ task, depth }) => <li key={task.id} className="flex min-w-0 items-start gap-1.5 text-xs" style={{ paddingLeft: `${depth * 0.75}rem` }}>
