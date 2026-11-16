@@ -870,6 +870,76 @@ describe("the prompt bubble, before the server has echoed it", () => {
     );
     expect(result.current.state.pendingPrompt).toBeNull();
   });
+
+  describe("for an edited prompt", () => {
+    const rewound = (items: unknown[] = []) => ({
+      type: "session_replaced",
+      sessionId: "sess_1",
+      branding: {},
+      model: "",
+      thinkingLevel: "off",
+      models: [],
+      commands: [],
+      isStreaming: false,
+      items,
+      contextUsage: null,
+      gitAvailable: false,
+    });
+    const exchange = [
+      { kind: "user", text: "first" },
+      { kind: "assistant", text: "answer" },
+    ];
+
+    it("stays on screen across the rewind, until the server echoes it", async () => {
+      // `edit_prompt` rewinds, broadcasts the rewound conversation, and only then sends the
+      // new text — echoed once the agent accepts it, seconds later. The snapshot emptied the
+      // conversation from the edited message on, and the message was nowhere meanwhile.
+      const result = await connected(exchange);
+      act(() => result.current.editPrompt("e1", "first, reworded"));
+      expect(result.current.state.pendingPrompt?.text).toBe("first, reworded");
+      expect(JSON.parse(mockWs!.sent[mockWs!.sent.length - 1])).toEqual({ type: "edit_prompt", entryId: "e1", text: "first, reworded" });
+
+      act(() => mockWs!.receive(rewound()));
+      expect(result.current.state.items).toEqual([]);
+      expect(result.current.state.pendingPrompt).toEqual({ text: "first, reworded" });
+
+      act(() => mockWs!.receive({ type: "user", text: "first, reworded" }));
+      expect(result.current.state.pendingPrompt).toBeNull();
+      expect(result.current.state.items).toEqual([{ kind: "user", text: "first, reworded" }]);
+    });
+
+    it("keeps its pictures across the rewind", async () => {
+      const images = [{ data: "aGk=", mimeType: "image/png" }];
+      const result = await connected(exchange);
+      act(() => result.current.editPrompt("e1", "look again", images));
+      act(() => mockWs!.receive(rewound()));
+      expect(result.current.state.pendingPrompt).toEqual({ text: "look again", images });
+    });
+
+    it("waits across one snapshot only: the next one is the authority again", async () => {
+      const result = await connected(exchange);
+      act(() => result.current.editPrompt("e1", "first, reworded"));
+      act(() => mockWs!.receive(rewound()));
+      act(() => mockWs!.receive(rewound()));
+      expect(result.current.state.pendingPrompt).toBeNull();
+    });
+
+    it("goes when the edit is refused, with the conversation left as it was", async () => {
+      const result = await connected(exchange);
+      act(() => result.current.editPrompt("e1", "first, reworded"));
+      act(() => mockWs!.receive({ type: "error", message: "Cannot edit a message while the agent is running" }));
+      expect(result.current.state.pendingPrompt).toBeNull();
+      expect(result.current.state.items).toEqual(exchange);
+    });
+
+    it("goes when an extension vetoes the rewind", async () => {
+      const result = await connected(exchange);
+      act(() => result.current.editPrompt("e1", "first, reworded"));
+      act(() => mockWs!.receive({ type: "error", message: "Edit cancelled — the conversation was not rewound" }));
+      expect(result.current.state.pendingPrompt).toBeNull();
+      expect(result.current.state.items).toEqual(exchange);
+    });
+  });
 });
 
 describe("Work Plan synchronization", () => {

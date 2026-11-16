@@ -407,7 +407,7 @@ export interface AgentState {
    * would take the previous message's id — and editing it would rewind the wrong
    * turn.
    */
-  pendingPrompt: { text: string; images?: WireImage[] } | null;
+  pendingPrompt: { text: string; images?: WireImage[]; rewinding?: true } | null;
   workPlan: WorkPlan | null;
   /**
    * What the server established about structured-exchange documents written straight
@@ -678,7 +678,7 @@ type Action =
   | { type: "login_started"; flowId: string; provider: string; method: "oauth" | "api_key" }
   | { type: "login_answered" }
   | { type: "login_dismissed" }
-  | { type: "prompt_sent"; text: string; images?: WireImage[] }
+  | { type: "prompt_sent"; text: string; images?: WireImage[]; rewinding?: true }
   | { type: "pending_prompt_cancelled"; restoreText: boolean }
   | { type: "composer_prefilled"; text: string; notice?: string }
   | { type: "dismiss_notification"; id: string }
@@ -1044,7 +1044,14 @@ function reduce(state: AgentState, action: Action): AgentState {
     // An extension command is handled, not added to the conversation, and the server echoes
     // nothing for it: a placeholder would stand there until some unrelated event cleared it.
     if (namesExtensionCommand(action.text, state.commands)) return state;
-    return { ...state, pendingPrompt: { text: action.text, ...(action.images?.length ? { images: action.images } : {}) } };
+    return {
+      ...state,
+      pendingPrompt: {
+        text: action.text,
+        ...(action.images?.length ? { images: action.images } : {}),
+        ...(action.rewinding ? { rewinding: true as const } : {}),
+      },
+    };
   }
   // The server answers the abort with an error that clears the placeholder; its text goes
   // back to the composer first, unless the user has typed something else since.
@@ -1299,6 +1306,13 @@ function reduce(state: AgentState, action: Action): AgentState {
       // composer draft is the one exception and lives outside this reducer.
       return {
         ...applySnapshot(state, message),
+        // An edited prompt is sent in one operation: the conversation is rewound, and this
+        // snapshot says so, before the agent has accepted the new text. The snapshot cannot
+        // hold a prompt that is only sent after it, so the bubble waits for its echo across
+        // it — once: the next snapshot is the authority again.
+        ...(message.type === "session_replaced" && state.pendingPrompt?.rewinding
+          ? { pendingPrompt: { text: state.pendingPrompt.text, ...(state.pendingPrompt.images ? { images: state.pendingPrompt.images } : {}) } }
+          : {}),
         openFile: null,
         gitDiff: null,
         gitBaseline: null,
@@ -3032,8 +3046,13 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     /** Send every queued prompt now; a running turn is stopped first. */
     sendQueueNow: () => sendMessage({ type: "send_queue_now" }),
     /** Re-send a past user message with edited text — the answer branches off, the original stays in the tree. */
-    editPrompt: (entryId: string, text: string, images?: WireImage[]) =>
-      sendMessage({ type: "edit_prompt", entryId, text, ...(images?.length ? { images } : {}) }),
+    editPrompt: (entryId: string, text: string, images?: WireImage[]) => {
+      // Shown immediately, like a prompt from the composer — and for longer: the rewind
+      // empties the conversation from the edited message on, well before the agent has
+      // accepted the new text. Without it the message vanished for those seconds.
+      dispatch({ type: "prompt_sent", text, ...(images?.length ? { images } : {}), rewinding: true });
+      sendMessage({ type: "edit_prompt", entryId, text, ...(images?.length ? { images } : {}) });
+    },
     compact: () => sendMessage({ type: "compact" }),
     /** Ask for the items before the ones this client holds, without touching the transcript. */
     fetchOlderItems,
