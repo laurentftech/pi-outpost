@@ -303,7 +303,10 @@ describe("a browser root nobody ever added, inside a larger repository", () => {
     writeFileSync(path.join(root, ".gitignore"), "*.log\n");
   });
 
-  after(() => rmSync(top, { recursive: true, force: true }));
+  // The listing of the large directory is cut short by killing git once the bound is
+  // reached, and the answer does not wait for that process to be gone: on Windows it can
+  // still hold the directory it ran in, and the removal is refused (EPERM) until it has.
+  after(() => rmSync(top, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
 
   test("says where the root sits in its repository, and nothing for a root that is the toplevel", async () => {
     const inside = await gitStatus([ancestorRepo(root, top)]);
