@@ -957,7 +957,9 @@ export function FileViewer({
   return (
     <div ref={rootRef} className="absolute inset-0 z-20 flex flex-col bg-white dark:bg-zinc-950">
       {/* Wraps rather than overflows: on a phone the actions would push the page sideways. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+      {/* Every control of the toolbar is at least 24 CSS pixels high — the target size the
+          rest of the viewer's controls keep — whichever component draws it. */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800 [&_button]:min-h-6">
         {/* Three modes rather than two, and only for a document with a rendering to
             sit beside: revising a model by hand means reading the picture and
             changing the text in one motion, which a toggle makes a round trip. */}
@@ -1104,7 +1106,7 @@ export function FileViewer({
           onClick={requestClose}
           title="Close (Esc)"
           aria-label="Close file viewer"
-          className="shrink-0 px-1 text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-600 dark:hover:text-zinc-300"
+          className="flex min-w-6 shrink-0 items-center justify-center px-1 text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-600 dark:hover:text-zinc-300"
         >
           ✕
         </button>

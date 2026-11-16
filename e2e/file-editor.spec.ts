@@ -272,3 +272,32 @@ test("at 390px the Files search control does not cover a row action", async ({ p
     actionBox!.y + actionBox!.height <= searchBox!.y;
   expect(separated).toBe(true);
 });
+
+test("every control of the file toolbar is a 24px target, reading and editing", async ({ page }) => {
+  const directory = path.join(process.env.PI_E2E_PRIMARY_PROJECT!, "editor");
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, "targets.md"), "# Targets\n\nSome text.\n");
+  await page.goto(process.env.PI_E2E_SERVER_URL!);
+  await expect(page.getByTitle("connected")).toBeVisible();
+  await page.getByTitle("Show files").click();
+  await page.getByText("editor", { exact: true }).click();
+  await page.getByText("targets.md", { exact: true }).dblclick();
+
+  const toolbar = page.getByRole("button", { name: "Close file viewer" }).locator("xpath=..");
+  const tooSmall = async () => {
+    const boxes = await toolbar.locator("button").evaluateAll((buttons) =>
+      buttons
+        .filter((b) => (b as HTMLElement).offsetParent !== null)
+        .map((b) => ({ name: b.getAttribute("aria-label") ?? b.textContent?.trim(), ...b.getBoundingClientRect().toJSON() })),
+    );
+    expect(boxes.length).toBeGreaterThan(3);
+    return boxes.filter((b) => b.height < 24 || (b.name === "Close file viewer" && b.width < 24)).map((b) => `${b.name} ${b.width}x${b.height}`);
+  };
+  // Reading: modes, copy, export, edit and close.
+  await expect(page.getByRole("button", { name: "✎ edit" })).toBeVisible();
+  expect(await tooSmall()).toEqual([]);
+  // Editing: the toolbar's own controls change, and keep the size.
+  await page.getByRole("button", { name: "✎ edit" }).click();
+  await expect(page.getByTestId("file-editor").locator(".cm-content")).toBeFocused();
+  expect(await tooSmall()).toEqual([]);
+});
