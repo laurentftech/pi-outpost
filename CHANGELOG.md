@@ -7,6 +7,45 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.63.0] - 2026-11-16
+
+### Added
+
+- **Durable sandbox rules from recorded refusals.** What the agent's confined shell was
+  refused (paths, network hosts, MXC denials) is recorded per project, and a command's
+  output now names what the sandbox refused it. From those records, or from a grant
+  dialog, you can make rules that always allow or always refuse; they are kept under the
+  agent directory, consulted before any question, never made by the agent, and off under
+  `sandbox.grants` `"never"`. On Windows, the shell tool's `diagnose` reruns a failed
+  command under a narrower sandbox to report what was refused.
+  ([#504](https://github.com/laurentftech/pi-outpost/pull/504))
+- **Split the file viewer and the conversation.** Read a file beside the conversation
+  instead of replacing it. ([#493](https://github.com/laurentftech/pi-outpost/pull/493))
+- **Large untracked directories no longer slow the Git view.** A directory with more
+  than 2,000 untracked files appears as one entry badged `N+` in the tree, and Git status
+  is sent as changes rather than in full each time.
+  ([#496](https://github.com/laurentftech/pi-outpost/pull/496))
+- **A seccomp profile for MXC on Linux in Docker**, replacing `seccomp=unconfined`: it
+  keeps Docker's default profile and allows six more calls, with no extra capability.
+  ([#501](https://github.com/laurentftech/pi-outpost/pull/501))
+
+### Changed
+
+- **MXC runs in process through its SDK** (`@microsoft/mxc-sdk` 1.1.0) for the agent's
+  shell, the terminal on Linux and macOS, and the sandbox self-check; Microsoft's optional
+  telemetry is asked off. Node.js 24.21 or 26.8 is now the minimum.
+  ([#500](https://github.com/laurentftech/pi-outpost/pull/500), [#504](https://github.com/laurentftech/pi-outpost/pull/504))
+
+### Fixed
+
+- **Return to the latest message completes** when the browser cuts the smooth scroll short
+  while a diagram finishes rendering, and a gesture of yours during the return wins over
+  the page's growth. ([#498](https://github.com/laurentftech/pi-outpost/pull/498), [#499](https://github.com/laurentftech/pi-outpost/pull/499))
+- **draw.io references in Markdown render without flicker.**
+  ([#492](https://github.com/laurentftech/pi-outpost/pull/492))
+- **The sandbox self-check no longer reports a leak** for every runner in the standalone
+  executable. ([#504](https://github.com/laurentftech/pi-outpost/pull/504))
+
 ## [0.62.3] - 2026-11-12
 
 ### Fixed
