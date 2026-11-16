@@ -194,6 +194,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     moveFiles,
     restoreDeleted,
     closeTab: closeTabInAgent,
+    closeFilePreview,
     searchFiles,
     clearFileSearch,
     fetchGitDiff,
@@ -1155,6 +1156,19 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     if (editor) setTimeout(() => focusEditor(editor), 0);
   }
 
+  /**
+   * Dismiss the strip from that look: every open file is closed and the conversation
+   * stays. Closing only the one shown would bring its neighbour tab up over the
+   * conversation the reader chose to stay in.
+   */
+  function closeFilesFromPeek() {
+    if (saving) return;
+    if (Object.values(dirtyTabs).some(Boolean) && !window.confirm("Discard unsaved changes?")) return;
+    editorBeforePeek.current = null;
+    setDirtyTabs({});
+    closeFilePreview();
+  }
+
   /** From that look straight to the file beside the conversation, editor focus included. */
   function besideFromPeek() {
     setViewerLayout("beside");
@@ -1501,28 +1515,48 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
           {viewerOpen && activeTab && conversationPeek && !viewerBeside && (
             // In the flow, above the transcript: a floating pill would cover what the
             // user came to read.
-            <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
-              <button
-                type="button"
-                onMouseDown={keepFocus}
-                onClick={backToFile}
-                className="min-h-6 rounded border border-zinc-300 bg-white px-3 py-1 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
-              >
-                ← back to {activeTab.split(/[\\/]/).pop()}
-              </button>
-              {viewerCanBeside && (
+            <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+              {/* As wide as the ✕ opposite, so the controls centre on the strip. */}
+              <span aria-hidden className="w-6 shrink-0" />
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-2">
                 <button
                   type="button"
                   onMouseDown={keepFocus}
-                  onClick={besideFromPeek}
-                  title="Show the file beside the conversation"
-                  className="min-h-6 rounded border border-zinc-300 bg-white px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  onClick={backToFile}
+                  className="min-h-6 shrink-0 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
-                  ◫ beside chat
+                  ← back to {activeTab.split(/[\\/]/).pop()}
                 </button>
-              )}
+                {viewerCanBeside && (
+                  <button
+                    type="button"
+                    onMouseDown={keepFocus}
+                    onClick={besideFromPeek}
+                    title="Show the file beside the conversation"
+                    className="min-h-6 shrink-0 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    ◫ beside chat
+                  </button>
+                )}
+              </div>
+              {/* On the right, where the viewer's own ✕ is. */}
+              <button
+                type="button"
+                onMouseDown={keepFocus}
+                onClick={closeFilesFromPeek}
+                aria-label={tabs.length > 1 ? `Close the ${tabs.length} open files and stay in the conversation` : "Close the file and stay in the conversation"}
+                title={tabs.length > 1 ? `Close the ${tabs.length} open files` : "Close the file"}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-sm text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+              >
+                ✕
+              </button>
             </div>
           )}
+          {/* What lies over the conversation — the Work Plan and its folded chip, the
+              drawers, the commit views — is placed against this, below the strip, so
+              none of it covers the strip's controls. Positioned without a z-index: no
+              stacking context of its own, as the cell has none. */}
+          <div className="relative flex min-h-0 flex-1 flex-col">
           {state.workPlan && (
             <WorkPlanPanel
               plan={state.workPlan}
@@ -1534,6 +1568,11 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               }}
               requestedTaskId={requestedTaskId}
               onTaskRequestHandled={clearRequestedTask}
+              // Just below the bar above, and at the same place whether that bar is the
+              // strip (the area below starts under it) or a file's toolbar over the
+              // conversation (the area starts with the cell): the chip never moves when
+              // the strip goes, so a second click on the strip's ✕ cannot land on it.
+              chipTop={viewerOpen && conversationPeek && !viewerBeside ? "0.5rem" : viewerOpen && !viewerBeside ? "3rem" : undefined}
             />
           )}
           {outcomeOpen && (
@@ -1800,6 +1839,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               Latest
             </button>
           )}
+          </div>
           </div>
           </div>
 

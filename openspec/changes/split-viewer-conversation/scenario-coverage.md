@@ -60,6 +60,9 @@
 | `file / PeekingKeepsTheDraft` | covered | `ui/src/App.test.tsx` — PeekingKeepsTheDraft: a look at the latest of the conversation and back to the same editor, focus included |
 | `file / TypingWhileLookingGoesToTheComposer` | covered | `ui/src/App.test.tsx` — a look at the conversation puts the next keystrokes in the composer |
 | `file / FromALookStraightBeside` | covered | `ui/src/App.test.tsx` — goes from a look at the conversation straight to the file beside it, back in the editor |
+| `file / DismissingTheBarForgetsTheFiles` | covered | `ui/src/App.test.tsx` — DismissingTheBarForgetsTheFiles (one file, and several tabs): `closeFilePreview` called once, `closeTab` and `readFile` never, no bar after; `e2e/work-plan.spec.ts` — TheFoldedPlanCoversNoBarControl: in the running app the bar and the viewer are gone and the composer is shown after a real double click |
+| `file / DismissingOverUnsavedEditsAsks` | covered | `ui/src/App.test.tsx` — DismissingOverUnsavedEditsAsks: `confirm` asked "Discard unsaved changes?", declined: `closeFilePreview` not called, "back to" still shown |
+| `file / TheFoldedPlanCoversNoBarControl` | covered | `e2e/work-plan.spec.ts` — TheFoldedPlanCoversNoBarControl: the chip's box lies below or beside "✎ edit" and "Close file viewer" at 1280, 700 and 400 px, below the bar at the same widths, and a real double click on the bar's dismiss leaves the plan closed; `ui/src/components/WorkPlanPanel.test.tsx` — the chip ignores a click with `detail` 2 and takes 1 and 0 |
 | `file / SwitchAndKeepTyping` | covered | `ui/src/App.test.tsx` — FollowTheAgentWhileWriting and TypingIsNotInterruptedByStreaming |
 | `file / AQuestionWhileAway` | covered | `ui/src/App.test.tsx` — AQuestionWhileAway and TheMarkGoesWhenTheUserIsBack |
 | `file / AReplyFinishedWhileAway` | covered | `ui/src/App.test.tsx` — AReplyFinishedWhileAway |

@@ -82,6 +82,21 @@ describe("WorkPlanPanel", () => {
     expect(onToggle).toHaveBeenCalledOnce();
   });
 
+  it("the folded chip takes a click and a key, and ignores the second click of a double click", () => {
+    const onToggle = vi.fn();
+    render(<WorkPlanPanel plan={plan} open={false} onToggle={onToggle} onOpenWorkspace={() => {}} />);
+    const control = screen.getByRole("button", { name: "Open Work Plan" });
+
+    // What a double click on the strip's ✕ sends to the chip that rose under it.
+    fireEvent.click(control, { detail: 2 });
+    expect(onToggle).not.toHaveBeenCalled();
+
+    fireEvent.click(control, { detail: 1 });
+    // Enter or Space on a focused button: a click with no count.
+    fireEvent.click(control, { detail: 0 });
+    expect(onToggle).toHaveBeenCalledTimes(2);
+  });
+
   it("selects a task requested by Outcome and reports one that disappeared", async () => {
     const handled = vi.fn();
     const { rerender } = render(<WorkPlanPanel plan={plan} open onToggle={() => {}} onOpenWorkspace={() => {}} requestedTaskId="build" onTaskRequestHandled={handled} />);
