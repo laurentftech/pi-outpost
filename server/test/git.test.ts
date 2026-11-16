@@ -305,6 +305,13 @@ describe("a browser root nobody ever added, inside a larger repository", () => {
 
   after(() => rmSync(top, { recursive: true, force: true }));
 
+  test("says where the root sits in its repository, and nothing for a root that is the toplevel", async () => {
+    const inside = await gitStatus([ancestorRepo(root, top)]);
+    assert.equal(inside.repos[0]?.rootPrefix, "loose");
+    const atTop = await gitStatus([{ toplevel: top, cwd: top, id: "" }]);
+    assert.equal("rootPrefix" in (atTop.repos[0] ?? {}), false);
+  });
+
   test("is split into its children, with the large one as one entry", async () => {
     const status = await gitStatus([ancestorRepo(root, top)]);
     const files = status.files.map((f) => [f.path, f.status, f.atLeast]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));

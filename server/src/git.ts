@@ -507,7 +507,15 @@ export async function gitStatusFor(repo: GitRepo): Promise<GitStatusResult> {
   // entry; each is then listed below up to a bound, so the files of a new directory
   // keep their own badges while a stray cache of 20,000 files stays one entry.
   const out = await runGit(repo.cwd, ["status", "--porcelain=v2", "--branch", "--untracked-files=normal", "--", "."]);
-  const repoStatus: GitRepoStatus = { repo: repo.id, branch: "", ahead: 0, behind: 0 };
+  const rootPrefix = path.relative(repo.toplevel, repo.cwd).split(path.sep).join("/");
+  const repoStatus: GitRepoStatus = {
+    repo: repo.id,
+    // Only the ancestor case: at or under the root, git runs in the toplevel itself.
+    ...(rootPrefix !== "" && !rootPrefix.startsWith("..") ? { rootPrefix } : {}),
+    branch: "",
+    ahead: 0,
+    behind: 0,
+  };
   const result: GitStatusResult = { repos: [repoStatus], files: [], missing: [], failures: [] };
 
   // status paths are relative to the directory git ran in; the `-- .` pathspec already

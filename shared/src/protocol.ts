@@ -603,6 +603,12 @@ export interface GitFileStatus {
 export interface GitRepoStatus {
   /** Path from the browser root to the repository (posix); "" for the root itself or an ancestor. */
   repo: string;
+  /**
+   * Path from the repository's toplevel down to the browser root (posix), present only for a
+   * repository that is an ancestor of the root. Git names files from its toplevel wherever it
+   * runs, so this is what turns a path read in git's own output into one the workspace opens.
+   */
+  rootPrefix?: string;
   branch: string;
   ahead: number;
   behind: number;

@@ -4,6 +4,13 @@ import type { ChatItem } from "@pi-outpost/shared";
 export type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 
 /**
+ * What a path is counted from. Absent, it is the workspace root. `"repository"` is a path
+ * read in git's own output, which names files from the repository's toplevel: the
+ * application, which knows where the workspace sits in that repository, translates it.
+ */
+export type PathOrigin = "repository";
+
+/**
  * The closed set of things a presentation may ask the application to do.
  * A presentation names an action; it never constructs a wire message, never
  * invokes a tool, and never submits a prompt — that escalation path is closed
@@ -15,8 +22,8 @@ export type ToolAction =
    * into a verification: the bytes are hashed where they are read and refused if
    * they are not the ones the document was approved against.
    */
-  | { kind: "openFile"; path: string; sha256?: string }
-  | { kind: "openFileHistory"; path: string }
+  | { kind: "openFile"; path: string; sha256?: string; from?: PathOrigin }
+  | { kind: "openFileHistory"; path: string; from?: PathOrigin }
   | { kind: "openWorktreeDiff"; path: string }
   | { kind: "searchWorkspace"; query: string };
 
