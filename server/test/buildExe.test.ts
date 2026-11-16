@@ -422,6 +422,30 @@ describe("placeMxcNative", () => {
     }
   });
 
+  // The release workflow builds the executable at the repository root with --force: the
+  // node_modules beside it is the one koffi is installed in, so a part is its own destination.
+  test("a part already where it belongs is left in place, even with --force", async () => {
+    const base = await mkdtemp(path.join(tmpdir(), "mxc-native-self-"));
+    try {
+      const koffi = path.join(base, "node_modules", "koffi");
+      const koffiNative = path.join(base, "node_modules", "@koromix", "koffi-win32-x64");
+      await mkdir(koffi, { recursive: true });
+      await mkdir(koffiNative, { recursive: true });
+      await writeFile(path.join(koffi, "package.json"), '{"name":"koffi"}');
+      await writeFile(path.join(koffiNative, "package.json"), '{"name":"@koromix/koffi-win32-x64"}');
+      const ffiDir = path.join(base, "sdk");
+      await mkdir(ffiDir);
+      await writeFile(path.join(ffiDir, "mxc_ffi.dll"), "ffi");
+      const sources = { ffi: path.join(ffiDir, "mxc_ffi.dll"), koffi, koffiNative };
+      const placed = placeMxcNative(path.join(base, "pi-outpost.exe"), { platform: "win32", arch: "x64", sources, force: true, log: () => {} });
+      assert.deepEqual(placed.map((p) => path.relative(base, p)), ["mxc_ffi.dll", path.join("node_modules", "koffi"), path.join("node_modules", "@koromix", "koffi-win32-x64")]);
+      assert.equal(await readFile(path.join(koffi, "package.json"), "utf8"), '{"name":"koffi"}', "koffi is still installed");
+      assert.equal(await readFile(path.join(koffiNative, "package.json"), "utf8"), '{"name":"@koromix/koffi-win32-x64"}', "its platform package too");
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
   // openlore: scenario=AnExecutableWithoutTheSdkSaysSo spec=standalone-executable
   test("a part not installed is said, and nothing is placed", () => {
     const lines: string[] = [];

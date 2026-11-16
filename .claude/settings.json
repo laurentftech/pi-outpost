@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh api repos/laurentftech/pi-outpost/git/*)"
+      "Bash(gh api repos/laurentftech/pi-outpost/git/*)",
+      "Bash(git:*)",
+      "Bash(rg:*)",
+      "Bash(node --import tsx/esm --test:*)",
+      "Bash(npm ci:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx -y npm@12.2.2 install --package-lock-only)"
     ]
   }
 }
