@@ -163,6 +163,22 @@ describe("CodeSearchView", () => {
     expect(dispatch).toHaveBeenCalledWith({ kind: "openFile", path: "src/b.ts" });
   });
 
+  it("opens a hit under the directory the search was asked for", () => {
+    const dispatch = vi.fn();
+    render(<CodeSearchView item={tool({ toolName: "grep", args: { pattern: "x", path: "./server/src/" }, output: "tools/a.ts:3:x" })} dispatch={dispatch} />);
+
+    fireEvent.click(screen.getByText("tools/a.ts"));
+    expect(dispatch).toHaveBeenCalledWith({ kind: "openFile", path: "server/src/tools/a.ts" });
+  });
+
+  it("opens the file itself when the search was asked for one file", () => {
+    const dispatch = vi.fn();
+    render(<CodeSearchView item={tool({ toolName: "grep", args: { pattern: "x", path: "docs/development.md" }, output: "development.md:412:x" })} dispatch={dispatch} />);
+
+    fireEvent.click(screen.getByText("development.md"));
+    expect(dispatch).toHaveBeenCalledWith({ kind: "openFile", path: "docs/development.md" });
+  });
+
   it("falls back to the raw output when nothing parses as a hit", () => {
     const { container } = render(
       <CodeSearchView item={tool({ toolName: "grep", output: "No matches found" })} dispatch={vi.fn()} />,

@@ -44,6 +44,22 @@ export function parseSearchHits(output: string): SearchFileGroup[] {
   return groups;
 }
 
+/**
+ * Where a hit's file is from the project, given the `path` the search was asked for.
+ *
+ * The grep tool prints paths relative to the directory it searched, and only the file's
+ * name when it searched one file — so the printed path alone opens the wrong file, or none,
+ * whenever the search was not at the project root.
+ */
+export function hitFilePath(searchPath: unknown, hitPath: string): string {
+  if (typeof searchPath !== "string") return hitPath;
+  const base = searchPath.replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/\/+$/, "");
+  if (base === "" || base === ".") return hitPath;
+  // One file searched: the tool printed its name, and the search path is the file itself.
+  if (!hitPath.includes("/") && (base === hitPath || base.endsWith(`/${hitPath}`))) return base;
+  return `${base}/${hitPath}`;
+}
+
 export function countHits(groups: SearchFileGroup[]): number {
   return groups.reduce((total, group) => total + group.hits.length, 0);
 }

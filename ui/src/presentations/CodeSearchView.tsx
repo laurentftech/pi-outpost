@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { countHits, parseSearchHits } from "./parseSearchHits";
+import { countHits, hitFilePath, parseSearchHits } from "./parseSearchHits";
 import { RawBody } from "./builtin";
 import type { PresentationProps, ToolItem } from "./types";
 
@@ -9,6 +9,7 @@ const HITS_PER_FILE = 5;
 export function CodeSearchView({ item, dispatch }: PresentationProps) {
   const groups = parseSearchHits(item.output ?? "");
   const [showAll, setShowAll] = useState(false);
+  const searchPath = (item.args as { path?: unknown } | null | undefined)?.path;
 
   // Not a hit list — an error, a "no matches" note, or a format we do not read.
   if (groups.length === 0) return <RawBody item={item} />;
@@ -25,7 +26,7 @@ export function CodeSearchView({ item, dispatch }: PresentationProps) {
         <div key={group.path} className="flex flex-col">
           <button
             type="button"
-            onClick={() => dispatch({ kind: "openFile", path: group.path })}
+            onClick={() => dispatch({ kind: "openFile", path: hitFilePath(searchPath, group.path) })}
             className="flex items-center gap-2 truncate text-left font-mono text-xs text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
           >
             <span className="truncate">{group.path}</span>
