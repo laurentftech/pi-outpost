@@ -428,6 +428,40 @@ async function firstSegmentHandleOnScreen(frame: Locator, wireIndex: number): Pr
   return { x: box.x + at.x, y: box.y + at.y };
 }
 
+/**
+ * Clicks the handle of a wire's first segment, and returns once draw.io can take the
+ * Delete that follows.
+ *
+ * Three things the bare click took on trust, each of which leaves Delete removing nothing,
+ * or something else: that a handle is drawn where the wire's path says (the full-size view
+ * may still be settling), that the click left the wire where it was, and that the keyboard
+ * is in the graph inside the frame — `expect(frame).toBeFocused()` only says the parent
+ * gave the frame focus, which the click that selected the wire had already done.
+ */
+async function clickFirstSegmentHandle(page: Page, frame: Locator, wireIndex: number): Promise<void> {
+  const inner = await frameOf(frame);
+  await expect(async () => {
+    const want = await firstSegmentHandleOnScreen(frame, wireIndex);
+    const box = (await frame.boundingBox())!;
+    const drawn = await inner.evaluate(() =>
+      [...document.querySelectorAll("svg image")].map((image) => {
+        const r = image.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      }),
+    );
+    const handle = drawn.map((at) => ({ x: box.x + at.x, y: box.y + at.y })).find((at) => Math.hypot(at.x - want.x, at.y - want.y) <= 6);
+    expect(handle, "a handle is drawn in the middle of the wire's first segment").toBeDefined();
+    await page.mouse.click(handle!.x, handle!.y);
+    const still = await firstSegmentHandleOnScreen(frame, wireIndex);
+    expect(Math.hypot(still.x - want.x, still.y - want.y), "the click moved nothing").toBeLessThan(2);
+    await expect(frame).toBeFocused();
+    expect(
+      await inner.evaluate(() => document.hasFocus() && document.activeElement?.getAttribute("tabindex") === "-1"),
+      "the keyboard is in the graph, inside the frame",
+    ).toBe(true);
+  }).toPass({ timeout: 10_000 });
+}
+
 // openlore: scenario=TheBendsOfWiresAreRemoved spec=drawio-diagrams
 test("TheBendsOfWiresAreRemoved: remove bends clears every wire's waypoints, one undo puts them back, and the save writes them gone", async ({ page }) => {
   await writeFile(FILE(), bentDiagram());
@@ -464,9 +498,7 @@ test("ABendIsRemovedByClickAndDelete: in touch-up, a bend clicked then Delete re
   await touchUp(overlay, frame);
   await selectWire(page, frame, 0);
   // The first segment runs from Alpha to the first waypoint: Delete takes that waypoint out
-  const handle = await firstSegmentHandleOnScreen(frame, 0);
-  await page.mouse.click(handle.x, handle.y);
-  await expect(frame).toBeFocused();
+  await clickFirstSegmentHandle(page, frame, 0);
   await page.keyboard.press("Delete");
   // A second press does not go on to delete the wire still selected
   await page.keyboard.press("Delete");
@@ -492,9 +524,7 @@ test("a bend of a wire inside a container is removed by click and Delete too: it
   await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
   await touchUp(overlay, frame);
   await selectWire(page, frame, 0);
-  const handle = await firstSegmentHandleOnScreen(frame, 0);
-  await page.mouse.click(handle.x, handle.y);
-  await expect(frame).toBeFocused();
+  await clickFirstSegmentHandle(page, frame, 0);
   await page.keyboard.press("Delete");
   await expect(overlay.getByTestId("drawio-touchup-status")).toHaveText("● unsaved");
   await overlay.getByRole("button", { name: "✓ save" }).click();
