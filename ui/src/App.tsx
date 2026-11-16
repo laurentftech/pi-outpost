@@ -1523,7 +1523,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   type="button"
                   onMouseDown={keepFocus}
                   onClick={backToFile}
-                  className="shrink-0 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  className="min-h-6 shrink-0 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
                   ← back to {activeTab.split(/[\\/]/).pop()}
                 </button>
@@ -1533,7 +1533,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                     onMouseDown={keepFocus}
                     onClick={besideFromPeek}
                     title="Show the file beside the conversation"
-                    className="shrink-0 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    className="min-h-6 shrink-0 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
                   >
                     ◫ beside chat
                   </button>

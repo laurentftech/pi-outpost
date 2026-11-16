@@ -2594,7 +2594,7 @@ describe("App — file viewer beside the conversation", () => {
     expect(editorSelection().from).toBe(14);
   });
 
-  it("dismisses the strip from a look at the conversation: the file is closed without going back to it", () => {
+  it("DismissingTheBarForgetsTheFiles: the file is closed from a look at the conversation without going back to it", () => {
     const { api } = mount();
     fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
 
@@ -2604,7 +2604,7 @@ describe("App — file viewer beside the conversation", () => {
     expect(api.readFile).not.toHaveBeenCalled();
   });
 
-  it("asks before dismissing the strip over unsaved edits, and keeps the file when declined", () => {
+  it("DismissingOverUnsavedEditsAsks: declined, the file and its edits stay, and so does the bar", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const { api } = mount();
     editWithCaret();
@@ -2618,7 +2618,7 @@ describe("App — file viewer beside the conversation", () => {
     confirm.mockRestore();
   });
 
-  it("with several tabs open, dismissing the strip closes them all and says how many", () => {
+  it("DismissingTheBarForgetsTheFiles: with several tabs open, all close at once and none is shown in their place", () => {
     const loaded = (path: string) => ({ status: "loaded", path, content: `content of ${path}\n`, size: 20, mtimeMs: 2 });
     const tabsState = (paths: string[], shown: string | null) => ({
       openTabs: paths,

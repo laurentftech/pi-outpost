@@ -103,7 +103,7 @@ test("narrow viewport automatically compacts the Work Plan and keeps the convers
   await expect(page.getByRole("complementary", { name: "Work Plan" })).toBeVisible();
 });
 
-test("the strip over a look at the conversation is dismissed with its files, and the Work Plan lies below it", async ({ page }) => {
+test("TheFoldedPlanCoversNoBarControl: the bar over a look at the conversation is dismissed with its files, and the Work Plan lies below the bars", async ({ page }) => {
   await page.goto(process.env.PI_E2E_PLANS_URL!);
   await expect(page.getByTitle("connected")).toBeVisible();
   await prompt(page, "Create a plan for this release");
