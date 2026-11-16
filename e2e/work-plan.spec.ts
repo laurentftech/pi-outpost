@@ -58,6 +58,10 @@ test("agent-owned Work Plan survives reload, switches with sessions, and isolate
 
   await page.getByRole("button", { name: "tree" }).click();
   await page.getByRole("button", { name: /fork/i }).last().click();
+  // The fork has landed once its message is back in the composer. The plan's heading says
+  // nothing: the source session shows the same one, so a prompt sent on it alone can reach
+  // the agent before the fork, whose copy of the source plan then overwrites the reopening.
+  await expect(page.getByRole("textbox", { name: /message pi/i })).toHaveValue("Ship the release");
   await expect(page.getByRole("heading", { name: "Release plan" })).toBeVisible();
 
   await prompt(page, "Reopen the task only in this fork");
