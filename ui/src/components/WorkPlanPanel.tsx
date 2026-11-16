@@ -112,7 +112,7 @@ export function WorkPlanPanel({ plan, open, onToggle, onOpenWorkspace, requested
         setPreviewVisible(false);
         onToggle();
       }} className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs shadow-sm dark:border-zinc-700 dark:bg-zinc-900" aria-label="Open Work Plan" aria-describedby={previewId}>Plan {done}/{plan.tasks.length}</button>
-      <div id={previewId} role="tooltip" className={`absolute right-0 top-full w-72 pt-2 ${previewVisible ? "block" : "hidden"}`}>
+      <div id={previewId} role="tooltip" className={`absolute right-0 top-full w-max max-w-72 pt-2 ${previewVisible ? "block" : "hidden"}`}>
         <div className="rounded-md border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"><ul className="space-y-1">
           {previewTasks.map(({ task, depth }) => <li key={task.id} className="flex min-w-0 items-start gap-1.5 text-xs" style={{ paddingLeft: `${depth * 0.75}rem` }}>
             <span aria-label={STATUS[task.status].label} className={`shrink-0 font-semibold ${STATUS[task.status].className}`}>{task.status === "done" ? "☑" : "☐"}</span>

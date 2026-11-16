@@ -1517,13 +1517,13 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             // user came to read.
             <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
               {/* As wide as the ✕ opposite, so the controls centre on the strip. */}
-              <span aria-hidden className="w-7 shrink-0" />
+              <span aria-hidden className="w-6 shrink-0" />
               <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-2">
                 <button
                   type="button"
                   onMouseDown={keepFocus}
                   onClick={backToFile}
-                  className="min-h-6 rounded border border-zinc-300 bg-white px-3 py-1 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  className="shrink-0 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
                   ← back to {activeTab.split(/[\\/]/).pop()}
                 </button>
@@ -1533,7 +1533,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                     onMouseDown={keepFocus}
                     onClick={besideFromPeek}
                     title="Show the file beside the conversation"
-                    className="min-h-6 rounded border border-zinc-300 bg-white px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    className="shrink-0 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800"
                   >
                     ◫ beside chat
                   </button>
@@ -1546,7 +1546,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 onClick={closeFilesFromPeek}
                 aria-label={tabs.length > 1 ? `Close the ${tabs.length} open files and stay in the conversation` : "Close the file and stay in the conversation"}
                 title={tabs.length > 1 ? `Close the ${tabs.length} open files` : "Close the file"}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-sm text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-sm text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
               >
                 ✕
               </button>
