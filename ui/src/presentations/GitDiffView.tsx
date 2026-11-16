@@ -14,6 +14,19 @@ export function gitDiffCommand(item: ToolItem): string | null {
   return command;
 }
 
+/**
+ * How to name a diffed file for the application. Git writes paths from the repository's
+ * toplevel, which is not the workspace root when the workspace is a directory inside the
+ * repository; under `--relative` it writes them from the directory the command ran in — the
+ * workspace root — or from the directory the option names.
+ */
+export function diffFileTarget(command: string, path: string): { path: string; from?: "repository" } {
+  const relative = /(?:^|\s)--relative(?:=(\S+))?(?=\s|$)/.exec(command);
+  if (relative === null) return { path, from: "repository" };
+  const base = (relative[1] ?? "").replace(/^["']|["']$/g, "").replace(/^(\.\/)+/, "").replace(/\/+$/, "");
+  return { path: base === "" || base === "." ? path : `${base}/${path}` };
+}
+
 const FILES_SHOWN = 6;
 
 function ActionButton({ onClick, children }: { onClick: () => void; children: string }) {
@@ -31,6 +44,7 @@ function ActionButton({ onClick, children }: { onClick: () => void; children: st
 export function GitDiffView({ item, dispatch }: PresentationProps) {
   const files = parseUnifiedDiff(item.output ?? "");
   const [showAll, setShowAll] = useState(false);
+  const command = gitDiffCommand(item) ?? "";
 
   // Nothing recognizable as a diff: the command matched but the output did not.
   if (files.length === 0) return <RawBody item={item} />;
@@ -48,8 +62,8 @@ export function GitDiffView({ item, dispatch }: PresentationProps) {
               <span className="text-red-600 dark:text-red-400">−{file.removed}</span>
             </span>
             <span className="ml-auto flex shrink-0 items-center">
-              <ActionButton onClick={() => dispatch({ kind: "openFile", path: file.path })}>open</ActionButton>
-              <ActionButton onClick={() => dispatch({ kind: "openFileHistory", path: file.path })}>history</ActionButton>
+              <ActionButton onClick={() => dispatch({ kind: "openFile", ...diffFileTarget(command, file.path) })}>open</ActionButton>
+              <ActionButton onClick={() => dispatch({ kind: "openFileHistory", ...diffFileTarget(command, file.path) })}>history</ActionButton>
             </span>
           </div>
           <DiffBlock lines={file.lines} />

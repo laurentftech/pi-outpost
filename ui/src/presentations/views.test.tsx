@@ -98,8 +98,22 @@ describe("GitDiffView", () => {
     fireEvent.click(screen.getAllByText("open")[0]);
     fireEvent.click(screen.getAllByText("history")[0]);
 
-    expect(dispatch).toHaveBeenNthCalledWith(1, { kind: "openFile", path: "src/a.ts" });
-    expect(dispatch).toHaveBeenNthCalledWith(2, { kind: "openFileHistory", path: "src/a.ts" });
+    // Git names files from the repository's toplevel: the path says so, and the
+    // application, which knows where the workspace sits in it, translates.
+    expect(dispatch).toHaveBeenNthCalledWith(1, { kind: "openFile", path: "src/a.ts", from: "repository" });
+    expect(dispatch).toHaveBeenNthCalledWith(2, { kind: "openFileHistory", path: "src/a.ts", from: "repository" });
+  });
+
+  it("under --relative, names paths from where the command ran, or from the directory named", () => {
+    const dispatch = vi.fn();
+    const { unmount } = render(<GitDiffView item={tool({ args: { command: "git diff --relative HEAD~1" }, output: DIFF })} dispatch={dispatch} />);
+    fireEvent.click(screen.getAllByText("open")[0]);
+    expect(dispatch).toHaveBeenLastCalledWith({ kind: "openFile", path: "src/a.ts" });
+    unmount();
+
+    render(<GitDiffView item={tool({ args: { command: "git diff --relative=./packages/ui/" }, output: DIFF })} dispatch={dispatch} />);
+    fireEvent.click(screen.getAllByText("history")[0]);
+    expect(dispatch).toHaveBeenLastCalledWith({ kind: "openFileHistory", path: "packages/ui/src/a.ts" });
   });
 
   it("falls back to the raw output when the command matched but the output is not a diff", () => {

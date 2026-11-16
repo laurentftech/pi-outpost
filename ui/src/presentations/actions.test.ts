@@ -11,6 +11,45 @@ function targets() {
   };
 }
 
+describe("a path read in git's output", () => {
+  it("is opened where the workspace has it when the workspace is a directory of the repository", () => {
+    const t = { ...targets(), repositoryRootPrefix: () => "packages/app" };
+    const dispatch = createActionDispatch(t);
+
+    dispatch({ kind: "openFile", path: "packages/app/src/a.ts", from: "repository" });
+    dispatch({ kind: "openFileHistory", path: "packages/app/src/b.ts", from: "repository" });
+
+    expect(t.readFile).toHaveBeenCalledWith("src/a.ts", undefined);
+    expect(t.fetchGitFileHistory).toHaveBeenCalledWith("src/b.ts");
+  });
+
+  it("opens nothing for a file the repository holds outside the workspace", () => {
+    const t = { ...targets(), repositoryRootPrefix: () => "packages/app" };
+    const dispatch = createActionDispatch(t);
+
+    dispatch({ kind: "openFile", path: "packages/application/src/a.ts", from: "repository" });
+    dispatch({ kind: "openFileHistory", path: "README.md", from: "repository" });
+
+    expect(t.readFile).not.toHaveBeenCalled();
+    expect(t.fetchGitFileHistory).not.toHaveBeenCalled();
+  });
+
+  it("is the workspace's own path when the workspace root is the repository's", () => {
+    const t = targets();
+    createActionDispatch(t)({ kind: "openFile", path: "src/a.ts", from: "repository" });
+    createActionDispatch({ ...t, repositoryRootPrefix: () => undefined })({ kind: "openFileHistory", path: "src/b.ts", from: "repository" });
+
+    expect(t.readFile).toHaveBeenCalledWith("src/a.ts", undefined);
+    expect(t.fetchGitFileHistory).toHaveBeenCalledWith("src/b.ts");
+  });
+
+  it("leaves a workspace path alone whatever the repository's prefix", () => {
+    const t = { ...targets(), repositoryRootPrefix: () => "packages/app" };
+    createActionDispatch(t)({ kind: "openFile", path: "src/a.ts" });
+    expect(t.readFile).toHaveBeenCalledWith("src/a.ts", undefined);
+  });
+});
+
 describe("createActionDispatch", () => {
   it("maps each named action onto one application action", () => {
     const t = targets();

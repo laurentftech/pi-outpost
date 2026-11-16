@@ -937,6 +937,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   // What a tool presentation is allowed to ask for. The names are a closed set
   // and each one lands on an action this app already exposes: a card can open a
   // file or its history, never send a message of its own making.
+  const gitReposRef = useRef(state.gitStatus?.repos ?? []);
+  gitReposRef.current = state.gitStatus?.repos ?? [];
   const toolActions = useMemo(
     () =>
       createActionDispatch({
@@ -952,6 +954,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
           readFile(path);
         },
         searchFiles: (query) => searchFiles(query),
+        // The repository holding the workspace root is the one a command run there speaks for.
+        repositoryRootPrefix: () => gitReposRef.current.find((repo) => repo.repo === "")?.rootPrefix,
       }),
     [readFile, fetchGitFileHistory, searchFiles],
   );
