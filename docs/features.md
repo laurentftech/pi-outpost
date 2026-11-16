@@ -125,7 +125,9 @@
 - A file viewer can cover the conversation or sit beside it when the window has room. Switching
   layouts keeps the same editor and its unsaved draft; at narrow widths it returns to the overlay.
   When covering the conversation, its status strip shows whether the agent is replying, needs you,
-  or has finished, and lets you reveal the conversation while keeping the file open.
+  or has finished, and lets you reveal the conversation while keeping the file open. The bar
+  above the revealed conversation goes back to the file, puts it beside the conversation, or,
+  with its ✕, closes every open file and stays in the conversation.
 - Within the file viewer, **Split view** shows a Markdown, HTML, draw.io or structured document
   beside its editor, following what you type rather than what was last saved
 - Posters: a `.poster.html` file — a poster, a worksheet or a slide the agent writes in HTML,

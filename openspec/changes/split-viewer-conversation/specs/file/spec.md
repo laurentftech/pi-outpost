@@ -197,7 +197,7 @@ While the viewer overlays the chat pane, the frontend SHALL show on the viewer, 
 
 ### Requirement: ALookAtTheConversation
 
-Revealing the conversation from the overlay SHALL scroll it to the latest message and put focus in the composer, unless a question or grant stands in for it. A bar in the flow above the transcript, not over it, SHALL offer a way back to the file — restoring the editor's focus, caret and selection when it had focus — and, when there is room, a way to put the file beside the conversation directly.
+Revealing the conversation from the overlay SHALL scroll it to the latest message and put focus in the composer, unless a question or grant stands in for it. A bar in the flow above the transcript, not over it, SHALL offer a way back to the file — restoring the editor's focus, caret and selection when it had focus — and, when there is room, a way to put the file beside the conversation directly. The bar SHALL also offer a way to dismiss it, at its right end where the viewer's own close is, that closes every open file and keeps the conversation, asking first when any of them has unsaved edits. What lies over the conversation — the Work Plan and its folded chip, the drawers — SHALL lie below the bar, and the folded chip SHALL lie below a file's toolbar when the file covers the conversation, covering none of their controls.
 
 #### Scenario: PeekingKeepsTheDraft
 - **GIVEN** a file open in the overlay with unsaved edits and the editor focused
@@ -213,6 +213,21 @@ Revealing the conversation from the overlay SHALL scroll it to the latest messag
 - **GIVEN** the conversation revealed from the overlay on a wide window
 - **WHEN** the user chooses "beside chat" in the bar above it
 - **THEN** the file is shown beside the conversation with its editor focused, caret where it was
+
+#### Scenario: DismissingTheBarForgetsTheFiles
+- **GIVEN** one or more files open in the overlay and the conversation revealed
+- **WHEN** the user dismisses the bar above it
+- **THEN** every open file is closed, no other file is shown in its place, and the conversation stays on screen
+
+#### Scenario: DismissingOverUnsavedEditsAsks
+- **GIVEN** a file with unsaved edits and the conversation revealed
+- **WHEN** the user dismisses the bar and declines the confirmation
+- **THEN** the file stays open with its edits, and the bar stays
+
+#### Scenario: TheFoldedPlanCoversNoBarControl
+- **GIVEN** a session with a folded Work Plan and a file open over the conversation
+- **WHEN** the file's toolbar or the bar above the revealed conversation is shown, at any width
+- **THEN** the plan's chip lies below it, over none of its controls, and a double click on the bar's dismiss does not open the plan
 
 ### Requirement: ViewerControlsKeepTheEditorFocused
 

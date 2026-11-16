@@ -2594,6 +2594,51 @@ describe("App — file viewer beside the conversation", () => {
     expect(editorSelection().from).toBe(14);
   });
 
+  it("DismissingTheBarForgetsTheFiles: the file is closed from a look at the conversation without going back to it", () => {
+    const { api } = mount();
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close the file and stay in the conversation" }));
+
+    expect(api.closeFilePreview).toHaveBeenCalledTimes(1);
+    expect(api.readFile).not.toHaveBeenCalled();
+  });
+
+  it("DismissingOverUnsavedEditsAsks: declined, the file and its edits stay, and so does the bar", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { api } = mount();
+    editWithCaret();
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close the file and stay in the conversation" }));
+
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved changes?");
+    expect(api.closeFilePreview).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "← back to draft.md" })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("DismissingTheBarForgetsTheFiles: with several tabs open, all close at once and none is shown in their place", () => {
+    const loaded = (path: string) => ({ status: "loaded", path, content: `content of ${path}\n`, size: 20, mtimeMs: 2 });
+    const tabsState = (paths: string[], shown: string | null) => ({
+      openTabs: paths,
+      tabFiles: Object.fromEntries(paths.map((path) => [path, loaded(path)])),
+      openFile: shown === null ? null : loaded(shown),
+    });
+    const { api, rerenderWith } = mount(tabsState(["a.md", "b.md"], "b.md"));
+    fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close the 2 open files and stay in the conversation" }));
+    expect(api.closeFilePreview).toHaveBeenCalledTimes(1);
+    // One close for all of them: no tab is closed alone, which would show its neighbour.
+    expect(api.closeTab).not.toHaveBeenCalled();
+
+    // useAgent drops every tab; no strip, no viewer, and nothing read back.
+    const after = rerenderWith(tabsState([], null));
+    expect(screen.queryByRole("button", { name: /^← back to / })).toBeNull();
+    expect(after.readFile).not.toHaveBeenCalled();
+  });
+
   it("a look at the conversation puts the next keystrokes in the composer", async () => {
     mount();
     editWithCaret();
