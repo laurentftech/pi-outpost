@@ -306,6 +306,9 @@ test("a new wire drawn from a shape's edge, and a shape deleted with the keyboar
   // First Bravo, selected and deleted from the keyboard — its wire goes with it, as in draw.io
   const bravo = await centreOf(page, frame, "Bravo");
   await page.mouse.click(bravo.x - 45, bravo.y + 18);
+  // The key goes where focus is: until the click has moved it into the frame, a slow
+  // runner delivers Delete to the page and draw.io never sees it.
+  await expect(frame).toBeFocused();
   await page.keyboard.press("Delete");
   await expect.poll(async () => labels(inner)).not.toContain("Bravo");
 
