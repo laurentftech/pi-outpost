@@ -411,12 +411,34 @@ div.mxRubberband { position: absolute; overflow: hidden; border: 1px solid #29b6
     // After a bend goes, Delete waits for the next click: a second press, or a held key, would
     // otherwise delete the wire still selected under it
     var bendJustRemoved = false;
+    // The handle's picture with its fill turned orange; the picture as it is when it is not
+    // an SVG this can read.
+    var orangeHandle = function (src) {
+      var marker = ";base64,";
+      var at = src.indexOf(marker);
+      if (src.indexOf("data:image/svg+xml") !== 0 || at < 0) return src;
+      try {
+        var svg = atob(src.slice(at + marker.length));
+        var painted = svg.split('fill="#29b6f2"').join('fill="#f97316"');
+        return painted === svg ? src : src.slice(0, at + marker.length) + btoa(painted);
+      } catch (error) {
+        return src;
+      }
+    };
     var showChosen = function (on) {
       if (chosen === null) return;
       var handler = graph.selectionCellsHandler.getHandler(chosen.cell);
       var shape = handler && handler.bends ? handler.bends[chosen.index] : null;
       if (!shape) return;
-      shape.fill = on ? "#f97316" : mxConstants.HANDLE_FILLCOLOR;
+      // draw.io draws a handle as a picture — a small SVG with its colour inside — so a
+      // fill colour set on the shape shows nothing: the picture itself is swapped for the
+      // same one in orange, and back.
+      if (typeof shape.image === "string") {
+        if (shape.plainImage === undefined) shape.plainImage = shape.image;
+        shape.image = on ? orangeHandle(shape.plainImage) : shape.plainImage;
+      } else {
+        shape.fill = on ? "#f97316" : mxConstants.HANDLE_FILLCOLOR;
+      }
       shape.redraw();
     };
     var forget = function () { showChosen(false); chosen = null; };

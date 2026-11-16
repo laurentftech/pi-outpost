@@ -578,3 +578,42 @@ test("NewWiresFollowThePage: on a page of straight wires, a wire drawn from Char
   expect(added).toContain("edgeStyle=none");
   expect(added).not.toContain("orthogonalEdgeStyle");
 });
+
+test("the bend Delete will take is shown: its handle turns orange when clicked, and back when another thing is clicked", async ({ page }) => {
+  await writeFile(FILE(), bentDiagram());
+  const block = await openReply(page);
+  await block.getByRole("button", { name: "Show diagram at full size" }).click();
+  const overlay = page.getByTestId("drawio-enlarged");
+  const frame = overlay.getByTitle(`${SERVICES_DIAGRAM_PATH}, full size`);
+  await expect.poll(async () => labels(await frameOf(frame))).toContain("Charlie");
+  const inner = await touchUp(overlay, frame);
+  await selectWire(page, frame, 0);
+  // The handles are pictures: what one looks like is inside its SVG, where its fill is read
+  const orangeHandles = () =>
+    inner.evaluate(() =>
+      [...document.querySelectorAll("svg image")]
+        .map((image) => {
+          const src = image.getAttribute("xlink:href") ?? image.getAttribute("href") ?? "";
+          const svg = src.includes(";base64,") ? atob(src.slice(src.indexOf(";base64,") + 8)) : "";
+          const r = image.getBoundingClientRect();
+          return { orange: svg.includes('fill="#f97316"'), x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        })
+        .filter((handle) => handle.orange),
+    );
+  expect(await orangeHandles()).toEqual([]);
+
+  const handle = await firstSegmentHandleOnScreen(frame, 0);
+  await expect(async () => {
+    await page.mouse.click(handle.x, handle.y);
+    expect(await orangeHandles()).toHaveLength(1);
+  }).toPass({ timeout: 10_000 });
+  // The orange one is the one clicked, not a neighbour
+  const box = (await frame.boundingBox())!;
+  const [chosen] = await orangeHandles();
+  expect(Math.hypot(box.x + chosen!.x - handle.x, box.y + chosen!.y - handle.y)).toBeLessThan(8);
+
+  // A click elsewhere on the wire forgets the bend: nothing is marked any more
+  const wires = await wireMidpoints(frame);
+  await page.mouse.click(wires[1]!.x, wires[1]!.y);
+  await expect.poll(orangeHandles).toEqual([]);
+});
