@@ -312,6 +312,12 @@ export function placeMxcNative(
   }
   const placed: string[] = [];
   for (const [source, destination] of parts as Array<[string, string]>) {
+    // Built beside the repository's own node_modules (as the release workflow does), a part is
+    // already its destination: removing it first, even under --force, deletes what is copied.
+    if (path.resolve(source).toLowerCase() === path.resolve(destination).toLowerCase()) {
+      placed.push(destination);
+      continue;
+    }
     if (fs.existsSync(destination) && options.force !== true) {
       options.log(`[build-exe] kept the ${path.relative(beside, destination)} already beside it — pass --force to replace it`);
     } else {
