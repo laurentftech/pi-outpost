@@ -226,6 +226,24 @@ describe("Header", () => {
         expect(screen.getByText("OmniRoute ✓")).toBeInTheDocument();
         expect(screen.queryByRole("list", { name: "Extension statuses" })).toBeNull();
       });
+
+      // openlore: scenario=FoldedStatusesStayOpenWhileTheyUpdate spec=components
+      it("FoldedStatusesStayOpenWhileTheyUpdate: an open list survives a status ticking, being set and being cleared", () => {
+        const { rerenderWith } = setup({ statuses: { omni: "OmniRoute ✓", timer: "0:01" } });
+        fireEvent.click(screen.getByRole("button", { name: /2 statuses/ }));
+        const list = () => screen.getByRole("list", { name: "Extension statuses" });
+
+        rerenderWith({ statuses: { omni: "OmniRoute ✓", timer: "0:02" } });
+        expect(within(list()).getByText("0:02")).toBeInTheDocument();
+
+        rerenderWith({ statuses: { omni: "OmniRoute ✓", timer: "0:03", jobs: "2 jobs" } });
+        expect(within(list()).getByText("2 jobs")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /3 statuses/ })).toHaveAttribute("aria-expanded", "true");
+
+        rerenderWith({ statuses: { omni: "OmniRoute ✓", timer: "0:04", jobs: "" } });
+        expect(within(list()).queryByText("2 jobs")).toBeNull();
+        expect(within(list()).getByText("0:04")).toBeInTheDocument();
+      });
     });
 
     it("ChooseSystemTheme: offers Light, Dark and System with the current preference marked", () => {
