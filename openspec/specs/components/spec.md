@@ -724,6 +724,11 @@ they do not fit the bar, and SHALL return inline once the bar has room for them 
 - **WHEN** the bar grows well past the width at which the statuses folded
 - **THEN** they return inline, and a list left open does not reappear at the next fold
 
+#### Scenario: FoldedStatusesStayOpenWhileTheyUpdate
+- **GIVEN** the statuses are folded and their list is open
+- **WHEN** an extension changes a status's text, or sets or clears a status
+- **THEN** the list stays open and shows the statuses as they now are
+
 ### Requirement: FileTree row actions menu
 
 Each file and folder row SHALL carry one actions menu, opened by a `⋯` control or by the row's context menu. Besides it the row SHALL carry only the git badge and the `@` reference toggle. The `⋯` and an unreferenced `@` SHALL follow the hover/touch convention. Items SHALL be labelled, each with its action's symbol, and grouped in a fixed order; an item the row cannot take SHALL be left out rather than disabled.

@@ -476,18 +476,25 @@ function ExtensionStatuses({ statuses, bar }: { statuses: Record<string, string>
   const entries = Object.entries(statuses)
     .filter(([, text]) => stripAnsi(text).trim() !== "");
   const signature = entries.map(([key, text]) => `${key}\u0000${text}`).join("\u0001");
+  const keys = entries.map(([key]) => key).join("\u0001");
   const [folded, setFolded] = useState(false);
   const foldedAt = useRef<number | null>(null);
   const inline = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const openRef = useRef(open);
+  openRef.current = open;
   const menu = useClickOutside(() => setOpen(false));
 
-  // Other statuses may fit where these did not: try them inline again.
+  // Other statuses may fit where these did not: try them inline again. Only when the
+  // set of statuses changes, not their text — an extension may update a counter or a
+  // timer every second, and each update must not unfold, refold and close the list
+  // the user just opened. Nor while that list is open: it shows the new set as it is.
   useLayoutEffect(() => {
+    if (openRef.current && keys !== "") return;
     foldedAt.current = null;
     setFolded(false);
     setOpen(false);
-  }, [signature]);
+  }, [keys]);
 
   useLayoutEffect(() => {
     const header = bar;
