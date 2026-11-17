@@ -7,6 +7,32 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.63.1] - 2026-11-17
+
+### Changed
+
+- **Dismiss the bar above a conversation you looked at from a file.** Its ✕, at the right
+  end where the file viewer's own is, closes every open file and stays in the conversation,
+  asking first over unsaved edits. Its buttons now match the file toolbar's size.
+  ([#508](https://github.com/laurentftech/pi-outpost/pull/508))
+- **The file toolbar's controls are easier to hit:** each is at least 24 pixels high.
+  ([#509](https://github.com/laurentftech/pi-outpost/pull/509))
+- **In a draw.io touch-up, the bend Delete will remove is shown in orange** once you click
+  its handle. ([#511](https://github.com/laurentftech/pi-outpost/pull/511))
+
+### Fixed
+
+- **A search hit opens the right file** when the search ran in a folder or on a single file,
+  instead of a path counted from the project root. ([#507](https://github.com/laurentftech/pi-outpost/pull/507))
+- **A file named in a `git diff` or `git show` opens where the project has it** when the
+  project is a folder inside its repository; a file outside the project opens nothing.
+  ([#507](https://github.com/laurentftech/pi-outpost/pull/507))
+- **The folded Work Plan no longer covers the file toolbar's edit and close buttons**, and a
+  double click on a ✕ no longer opens the plan by accident. Its preview fits its tasks.
+  ([#508](https://github.com/laurentftech/pi-outpost/pull/508))
+- **An edited prompt stays on screen** while the conversation rewinds, instead of vanishing
+  until the agent accepts it. ([#512](https://github.com/laurentftech/pi-outpost/pull/512))
+
 ## [0.63.0] - 2026-11-16
 
 ### Added
