@@ -7,8 +7,8 @@
 
 ## 2. Extract file browsing and search handlers
 
-- [ ] 2.1 Add the file-browser handler module and typed context; move directory listing, file read/write, arrangement, create/rename/delete/move/upload/copy/batch/restore helpers in bounded edits; verify `npm run typecheck --workspace server` passes.
-- [ ] 2.2 Move file/content search and cancellation, update all lifecycle callers of `abortContentSearch`, and route file messages from the dispatcher; verify from `server/` with `node --import tsx/esm --test --test-timeout=300000 test/fileBrowser.test.ts test/fileBrowserFailures.test.ts test/file-lifecycle.test.mjs test/file-upload.test.mjs test/files-raw.test.mjs` and then `npm test --workspace server`.
+- [x] 2.1 Add the file-browser handler module and typed context; move directory listing, file read/write, arrangement, create/rename/delete/move/upload/copy/batch/restore helpers in bounded edits; verify `npm run typecheck --workspace server` passes.
+- [x] 2.2 Move file/content search and cancellation, update all lifecycle callers of `abortContentSearch`, and route file messages from the dispatcher; verify from `server/` with `node --import tsx/esm --test --test-timeout=300000 test/fileBrowser.test.ts test/fileBrowserFailures.test.ts test/file-lifecycle.test.mjs test/file-upload.test.mjs test/files-raw.test.mjs` and then `npm test --workspace server`.
 
 ## 3. Extract Pi package handlers
 
