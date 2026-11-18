@@ -2,8 +2,8 @@
 
 ## 1. Extract Git message handlers
 
-- [ ] 1.1 Add the Git handler module and a narrow typed context using existing workspace/Git services; verify `npm run typecheck --workspace server` passes.
-- [ ] 1.2 Move Git status, diff, log, file-history, file-diff, and show handling plus their dispatcher cases in bounded edits; keep `get_outcome` in `index.ts`; verify from `server/` with `node --import tsx/esm --test --test-timeout=300000 test/git.test.ts test/git-file-history.test.mjs test/git-repos.test.ts test/git-failure-message.test.ts` and then `npm test --workspace server`.
+- [x] 1.1 Add the Git handler module and a narrow typed context using existing workspace/Git services; verify `npm run typecheck --workspace server` passes.
+- [x] 1.2 Move Git status, diff, log, file-history, file-diff, and show handling plus their dispatcher cases in bounded edits; keep `get_outcome` in `index.ts`; verify from `server/` with `node --import tsx/esm --test --test-timeout=300000 test/git.test.ts test/git-file-history.test.mjs test/git-repos.test.ts test/git-failure-message.test.ts` and then `npm test --workspace server`.
 
 ## 2. Extract file browsing and search handlers
 
