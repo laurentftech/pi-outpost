@@ -1,5 +1,6 @@
 import type { StructuredConformance } from "@pi-outpost/shared";
 import { Fragment, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
+import { useFlash } from "../hooks/useFlash";
 import type { DocumentExport } from "./documentExport";
 import { copyText } from "./copyText";
 import { EnlargedView } from "../components/EnlargedView";
@@ -1306,7 +1307,7 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
   const [showExport, setShowExport] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [showEnvelope, setShowEnvelope] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
+  const [copied, setCopied] = useFlash<string>(2500);
   const diagramRef = useRef<HTMLDivElement>(null);
   const enlargedRef = useRef<HTMLDivElement>(null);
   const { fileIo } = useDrawioFiles();
@@ -1577,7 +1578,6 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
     link.click();
     URL.revokeObjectURL(url);
     setCopied("SVG downloaded");
-    window.setTimeout(() => setCopied(null), 2500);
   }
 
   /** For anywhere that does take SVG markup directly — an editor, a wiki, a repo. */
@@ -1585,7 +1585,6 @@ export function StructuredExchangeDocument({ envelope, source, rawOutput, dispat
     const markup = serializeDiagram();
     if (markup === undefined) return;
     setCopied((await copyText(markup)) ? "SVG markup copied" : "could not copy");
-    window.setTimeout(() => setCopied(null), 2500);
   }
 
   return (

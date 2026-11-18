@@ -12,6 +12,7 @@
  * is never in the document: a plan reopened next month shows next month's today.
  */
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type Ref } from "react";
+import { useFlash } from "../hooks/useFlash";
 import type { DocumentExport } from "./documentExport";
 import type { StructuredTimelineData, StructuredTimelineItem, StructuredTimelineScale, StructuredTimelineTask } from "@pi-outpost/shared/structured-exchange";
 import { sharedDeclaredColours, type Tint } from "@pi-outpost/shared/structured-exchange/palette";
@@ -316,7 +317,7 @@ export function TimelineView({
   };
 
 
-  const [copied, setCopied] = useState<string | null>(null);
+  const [copied, setCopied] = useFlash<string>(2500);
   /** The figure as a file would hold it: these display options, a dated line, nothing selected. */
   const figureMarkup = () =>
     serializeFigure(
@@ -345,12 +346,10 @@ export function TimelineView({
       URL.revokeObjectURL(url);
       setCopied("SVG downloaded");
     }
-    window.setTimeout(() => setCopied(null), 2500);
   };
   useImperativeHandle(exportRef, () => ({ svg: () => void downloadFigure() }));
   const copyFigure = async () => {
     setCopied((await copyText(figureMarkup())) ? "SVG markup copied" : "could not copy");
-    window.setTimeout(() => setCopied(null), 2500);
   };
 
   /**

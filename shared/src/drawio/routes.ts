@@ -4,7 +4,7 @@
  * draw.io works it out from the shapes, the wire's style and its waypoints when drawing. To
  * tell whether a wire crosses a box, the check needs that same route, not a guess at it.
  *
- * This is a port of draw.io's routing at the vendored release (v32.6.9; its routing is unchanged since v32.5.5): mxGraph's
+ * This is a port of draw.io's routing at the vendored release (v32.7.4; its routing is unchanged since v32.5.5): mxGraph's
  * mxGraphView (fixed and floating terminal points, label position), mxEdgeStyle
  * (OrthConnector, SegmentConnector) and mxPerimeter (rectangle, ellipse, rhombus), with
  * draw.io's own overrides from js/grapheditor/Graph.js (the elbow connectors, centerPerimeter,
