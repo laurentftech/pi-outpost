@@ -1,0 +1,16 @@
+{
+  "name": "free-layout",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "dependencies": {
+    "@twemoji/svg": "^15.0.0",
+    "lucide-static": "^0.460.0",
+    "pptxgenjs": "^3.12.0"
+  }
+}
