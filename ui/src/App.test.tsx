@@ -2594,6 +2594,24 @@ describe("App — file viewer beside the conversation", () => {
     expect(editorSelection().from).toBe(14);
   });
 
+  it("opening the file already shown, from the Files tree during a look at the conversation, shows it again", () => {
+    const { api } = mount({ fileTree: { "": [{ name: "notes", type: "directory" }], notes: [{ name: "draft.md", type: "file" }] } });
+    // The viewer's own toolbar: shown with the file, hidden during the look.
+    const toolbarButton = screen.getByRole("button", { name: "conversation ↗" });
+    fireEvent.click(toolbarButton);
+    expect(toolbarButton).not.toBeVisible();
+    fireEvent.click(sidebarToggle());
+    fireEvent.click(screen.getByText("notes").closest("button")!);
+
+    // Same path as the shown file: nothing changes in useAgent's state, so only the
+    // open itself can end the look.
+    fireEvent.doubleClick(screen.getByRole("button", { name: "draft.md" }));
+
+    expect(api.readFile).toHaveBeenCalledWith("notes/draft.md");
+    expect(toolbarButton).toBeVisible();
+    expect(screen.queryByRole("button", { name: "← back to draft.md" })).toBeNull();
+  });
+
   it("DismissingTheBarForgetsTheFiles: the file is closed from a look at the conversation without going back to it", () => {
     const { api } = mount();
     fireEvent.click(screen.getByRole("button", { name: "conversation ↗" }));

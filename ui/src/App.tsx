@@ -400,6 +400,15 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   };
   const openFilePath = state.openFile?.path;
   useEffect(() => setConversationPeek(false), [openFilePath, viewerLayout]);
+  /**
+   * Open a file because the user asked for it: shown, even when it is the file already
+   * open under a look at the conversation — the path does not change then, so the
+   * effect above would leave the user on the conversation.
+   */
+  const openInViewer: typeof readFile = (...args) => {
+    setConversationPeek(false);
+    readFile(...args);
+  };
   // The editor focus came from when the user went straight from it to the composer.
   const editorToReturnTo = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -945,14 +954,14 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
       createActionDispatch({
         readFile: (path, sha256) => {
           setDiffOnOpen(false);
-          readFile(path, sha256);
+          openInViewer(path, sha256);
         },
         fetchGitFileHistory: (path) => fetchGitFileHistory(path),
         // Same route the tree's diff badge takes: open the viewer already on the
         // uncommitted diff, which is what fetches it.
         fetchGitDiff: (path) => {
           setDiffOnOpen(true);
-          readFile(path);
+          openInViewer(path);
         },
         searchFiles: (query) => searchFiles(query),
         // The repository holding the workspace root is the one a command run there speaks for.
@@ -1434,13 +1443,13 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               closeSidebarIfDrawer();
               setDiffOnOpen(false);
               setTreeSelection(path);
-              readFile(path);
+              openInViewer(path);
             }}
             onSelectDiff={(path) => {
               closeSidebarIfDrawer();
               setDiffOnOpen(true);
               setTreeSelection(path);
-              readFile(path);
+              openInViewer(path);
             }}
             onToggleAttachPath={toggleAttachPath}
             onCreateFile={(path) => {
@@ -1467,7 +1476,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               closeSidebarIfDrawer();
               setDiffOnOpen(false);
               setTreeSelection(hit.path);
-              readFile(hit.path, undefined, hit.kind === "line" ? { query, line: hit.line } : { query, page: hit.page });
+              openInViewer(hit.path, undefined, hit.kind === "line" ? { query, line: hit.line } : { query, page: hit.page });
             }}
           />
         )}
@@ -1564,7 +1573,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
               onToggle={toggleWorkPlan}
               onOpenWorkspace={(path) => {
                 setDiffOnOpen(false);
-                readFile(path);
+                openInViewer(path);
               }}
               requestedTaskId={requestedTaskId}
               onTaskRequestHandled={clearRequestedTask}
@@ -1588,10 +1597,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   setWorkPlanOpen(true);
                 } else if (target.kind === "workspace-file") {
                   setDiffOnOpen(false);
-                  readFile(target.path);
+                  openInViewer(target.path);
                 } else if (target.kind === "workspace-diff") {
                   setDiffOnOpen(true);
-                  readFile(target.path);
+                  openInViewer(target.path);
                 }
               }}
             />
@@ -1717,7 +1726,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                     workspace={rawWorkspace}
                     onOpenFile={(path) => {
                       setDiffOnOpen(false);
-                      readFile(path);
+                      openInViewer(path);
                     }}
                   />,
                 );
