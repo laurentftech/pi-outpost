@@ -7,6 +7,24 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.63.2] - 2026-11-18
+
+### Changed
+
+- **pi 1.5.2.** A session whose working directory no longer exists can be forked instead of
+  failing to open (Continue, Fork or Cancel), and `/import` no longer leaves a duplicate copy
+  of such a session. ([#515](https://github.com/laurentftech/pi-outpost/pull/515))
+- **The draw.io viewer is updated to 32.7.4.** ([#515](https://github.com/laurentftech/pi-outpost/pull/515))
+
+### Fixed
+
+- **The folded statuses' list stays open** while extensions update them: a counter or a timer
+  rewritten several times a second no longer closes it as soon as it opens.
+  ([#514](https://github.com/laurentftech/pi-outpost/pull/514))
+- **Closing a timeline or a structured document right after copying or saving its figure**
+  no longer leaves its "copied" notice to fire into a view that is gone.
+  ([#515](https://github.com/laurentftech/pi-outpost/pull/515))
+
 ## [0.63.1] - 2026-11-17
 
 ### Changed
