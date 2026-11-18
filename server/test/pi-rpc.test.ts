@@ -50,7 +50,7 @@ function settings(overrides: Partial<AgentRuntimeConfig> = {}): AgentRuntimeConf
      * about switching sessions, which is not what that test is about.
      *
      * Every test that actually asserts a timeout sets its own short ceiling
-     * (`commandTimeoutMs: 40`), so none of them depends on these numbers.
+     * (`SHORT_COMMAND_TIMEOUT_MS`), so none of them depends on these numbers.
      */
     startupTimeoutMs: 20_000,
     commandTimeoutMs: 10_000,
@@ -65,6 +65,16 @@ interface RunningFake {
   launchLog: string;
   commandLog: string;
 }
+
+/**
+ * The ceiling for tests that assert a command timeout. It applies to every command
+ * of the runtime under test, including the catalog and conversation reads of its
+ * startup (only `get_state` uses the startup timeout), so it must still cover a
+ * spawned fake answering on a loaded runner: 40 ms did not, on Windows CI, where
+ * `get_entries` missed it before the test began. Short enough that a stalled
+ * command still fails in well under a second.
+ */
+const SHORT_COMMAND_TIMEOUT_MS = 400;
 
 async function startFake(config: Record<string, unknown> = {}, overrides: Partial<AgentRuntimeConfig> = {}): Promise<RunningFake> {
   const root = await mkdtemp(path.join(tmpdir(), "pi-outpost-rpc-"));
@@ -748,7 +758,7 @@ describe("strict RPC records and core interaction", () => {
       commands_: {
         prompt: { before: [{ type: "extension_ui_request", id: "dialog-7", method: "input", title: "Name?" }] },
       },
-    }, { commandTimeoutMs: 40 });
+    }, { commandTimeoutMs: SHORT_COMMAND_TIMEOUT_MS });
     const request = waitForEvent(runtime, (event) => event.type === "extension_ui_request");
     const prompt = runtime.prompt("ask me");
     assert.deepEqual(await request, {
@@ -757,7 +767,7 @@ describe("strict RPC records and core interaction", () => {
     });
 
     const answered = waitForEvent(runtime, (event) => event.type === "error" && event.message.includes("answered:dialog-7:Laurent"));
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 2 * SHORT_COMMAND_TIMEOUT_MS));
     assert.equal(runtime.ok, true, "a prompt blocked on browser input must not time out");
     runtime.answerExtensionUI({ type: "extension_ui_response", id: "dialog-7", value: "Laurent" });
     await answered;
@@ -843,13 +853,13 @@ describe("RpcProcessFailureIsContained", () => {
   });
 
   test("bounds a command that never answers and makes the timeout terminal", async () => {
-    const { runtime } = await startFake({ stallCommand: "prompt" }, { commandTimeoutMs: 40 });
+    const { runtime } = await startFake({ stallCommand: "prompt" }, { commandTimeoutMs: SHORT_COMMAND_TIMEOUT_MS });
     const failed = waitForEvent(runtime, (event) => event.type === "runtime_failed");
     const started = Date.now();
     await assert.rejects(runtime.prompt("stalled"), /timed out/);
-    assert.ok(Date.now() - started < 1_000);
+    assert.ok(Date.now() - started < 5_000);
     const event = await failed;
-    assert.match(event.type === "runtime_failed" ? event.message : "", /did not answer the prompt command within 40 ms/);
+    assert.match(event.type === "runtime_failed" ? event.message : "", new RegExp(`did not answer the prompt command within ${SHORT_COMMAND_TIMEOUT_MS} ms`));
     assert.equal(runtime.ok, false);
   });
 
@@ -859,7 +869,7 @@ describe("RpcProcessFailureIsContained", () => {
    * command while pi kept running tools against the workspace, unsupervised.
    */
   test("kills the child when the runtime fails, rather than leaving it running", async () => {
-    const { runtime, launchLog } = await startFake({ stallCommand: "prompt", ignoreSigterm: false }, { commandTimeoutMs: 40 });
+    const { runtime, launchLog } = await startFake({ stallCommand: "prompt", ignoreSigterm: false }, { commandTimeoutMs: SHORT_COMMAND_TIMEOUT_MS });
     const failed = waitForEvent(runtime, (event) => event.type === "runtime_failed");
     await assert.rejects(runtime.prompt("stalled"), /timed out/);
     await failed;
