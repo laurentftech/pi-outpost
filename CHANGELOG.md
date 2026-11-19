@@ -7,6 +7,18 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.63.3] - 2026-11-19
+
+### Changed
+
+- **The Docker images are built on the latest Node 24 base image.** ([#521](https://github.com/laurentftech/pi-outpost/pull/521))
+
+### Fixed
+
+- **Opening the file already shown, while looking at the conversation, shows it again.**
+  Double-clicking it in Files, a search hit, a link in the conversation, the Work Plan or
+  Outcome used to leave you on the conversation. ([#517](https://github.com/laurentftech/pi-outpost/pull/517))
+
 ## [0.63.2] - 2026-11-18
 
 ### Changed
