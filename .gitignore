@@ -73,3 +73,11 @@ RELEASE_NOTES.md
 # otherwise land in every git status the file browser reads.
 /.cargo/
 /spikes/*/target/
+
+# A tool run with HOME pointed at the repository writes its home files here
+# (xcodebuild caches, the OpenSpec CLI config). Never project content.
+/Library/
+/.config/
+
+# Kept local on purpose: a probe with its own lockfile (pptxgenjs), not part of the repo
+/scripts/probes/free-layout/
