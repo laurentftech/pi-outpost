@@ -149,6 +149,22 @@ describe("confinedBashOperations", () => {
     assert.ok(!policy.allowRead.map(slashed).includes(slashed(ruled)), "a revoked rule is gone from the next launch");
   });
 
+  // openlore: scenario=ConfiguredToolDirectoriesAreReadable spec=sandbox-runner-bash
+  test("sandbox.readOnlyPaths reach every launch, read only, beside the rules", async () => {
+    const slashed = (p: string) => p.replaceAll("\\", "/");
+    const tools = path.join(base, "tools");
+    const ruled = path.join(base, "ruled-too");
+    const ops = operations({
+      readOnlyGrant: async () => ({ hosts: [], directories: [{ path: tools, access: "read" }] }),
+      ruleGrant: async () => ({ hosts: [], directories: [{ path: ruled, access: "read" }] }),
+    });
+    await exec("0", { ops });
+    const policy = (await lastRecord()).policy.filesystem;
+    assert.ok(policy.allowRead.map(slashed).includes(slashed(tools)), "the configured directory is readable");
+    assert.ok(!policy.allowWrite.map(slashed).includes(slashed(tools)), "read only");
+    assert.ok(policy.allowRead.map(slashed).includes(slashed(ruled)), "the rules still apply beside it");
+  });
+
   test("a session's grants reach every launch, read when each one starts", async () => {
     const slashed = (paths: string[]) => paths.map((p) => p.replaceAll("\\", "/"));
     const beside = path.join(base, "session-beside");

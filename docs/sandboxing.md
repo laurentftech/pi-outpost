@@ -99,10 +99,10 @@ Under a runner, a command (or a terminal) may:
 
 | | |
 | --- | --- |
-| Read | The sandbox root, the system directories, the tools on the `PATH`, a private temporary directory. |
+| Read | The sandbox root, the system directories, the tools on the `PATH`, a private temporary directory, and the directories you list in `sandbox.readOnlyPaths` ([below](#tools-installed-for-you-sandboxreadonlypaths)). |
 | Write | The writable zone and the private temporary directory. Nothing with `allowWrite: false`. |
 | Never | The agent directory (`auth.json`, the keys) and the configuration file. |
-| Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's cache in the temporary directory, the shell's history there too (`HISTFILE`, and `ZDOTDIR` for zsh) so none is left in your project, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity — with the global ignore and attributes files it names in `core.excludesFile` and `core.attributesFile`, read-only too); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory. None of the server's other variables, so no provider key. |
+| Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's, uv's and pip's caches in the temporary directory (`npm_config_cache`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`: never your own cache made writable, where a package left by a command would later run unconfined), the shell's history there too (`HISTFILE`, and `ZDOTDIR` for zsh) so none is left in your project, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity — with the global ignore and attributes files it names in `core.excludesFile` and `core.attributesFile`, read-only too); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory. None of the server's other variables, so no provider key. |
 | Signal | No process outside the sandbox. |
 
 Output, exit status, timeout and cancellation behave as for an unconfined `bash`. Commands the model
@@ -346,7 +346,16 @@ MXC for no clipboard and no input injection. Limits:
   drive's root the sandbox root: nothing would be left to deny.
 - Every folder on the shell's `PATH` is readable, so a tool installed for you runs — Python in
   `AppDataLocalPrograms`, `uv`. A `PATH` entry that is or holds your home directory, or holds the
-  agent directory or the configuration, is left out. The Python launcher `py.exe` still finds no
+  agent directory or the configuration, is left out. Where a `PATH` folder only holds launchers, the
+  installation they start is readable too, read only: Git for Windows installed for you (`Git\cmd`
+  starts `Git\mingw64\bin\git.exe`), scoop's shims (the program each `.shim` names), WinGet's
+  `Links` and a folder that is itself a link (nvm-windows) — each followed one step, to a program that
+  is there. The project's `.venv` too: its `python.exe` loads the interpreter `pyvenv.cfg` names in
+  `home` (under `%APPDATA%\uv\…` for a Python uv installed), readable when that folder holds
+  `python.exe` and `Lib` — the agent writes `pyvenv.cfg`, so it cannot name any other folder that way.
+  The same guard applies to each: never your home directory or above it, the agent directory or the
+  configuration. Anything else a tool needs — the Pythons uv keeps when no `.venv` names one, a
+  program elsewhere — goes in [`sandbox.readOnlyPaths`](#tools-installed-for-you-sandboxreadonlypaths). The Python launcher `py.exe` still finds no
   interpreter (it reads the registry); `python` runs.
 - A folder readable but not writable can be neither listed nor entered: leave the whole root writable
   (no narrower `writableRoot`) where git runs.
@@ -535,7 +544,9 @@ Ran with the user's grant for this command: read-write C:\work\beside.
 Some targets are refused before you are asked, whatever you would answer: the agent directory (the
 provider keys) and the configuration file, or a directory holding either; a `.pi` directory or anything
 inside one; a drive's root and your home directory itself; and, as hosts, IP addresses and `localhost`
-and the names under it. No grant lets a command start a program outside the sandbox — your browser, a
+and the names under it. A program installed outside the sandbox runs once its folder is granted —
+"access denied" starting one is a refused path like any other, and the agent asks for that folder, read
+only. What no grant lets a command do is leave the sandbox — start your browser, a
 desktop application (`Start-Process` on a URL, `start`, `open`): it is not a connection, so nobody is
 asked, and it stays refused.
 
@@ -603,6 +614,29 @@ usual — output shown, network and host questions included — ending with a no
 included; the agent is told never to diagnose a command that must not run twice. The first diagnosis
 also measures what the shell itself is refused starting up (PowerShell reads the default profile), and
 leaves that out of every report.
+
+### Tools installed for you: `sandbox.readOnlyPaths`
+
+A rule is the project's. A tool installed for your account is the machine's: list its directories
+once, and every command of the agent's confined shell can read them, in every project.
+
+```json
+{ "sandbox": { "readOnlyPaths": ["C:\\Users\\me\\AppData\\Roaming\\uv\\data\\python"] } }
+```
+
+Read only, always. A relative path is the configuration file's folder's. Each is checked at every
+launch as a grant is: the agent directory, the configuration, a `.pi` directory, a drive's root and
+your home directory itself are never given — such an entry, or one that no longer exists, is skipped
+and said once in the server's log. Settings do not edit it and keep it. A diagnosis keeps these
+directories too, so it names only what the configuration does not give. Not with `sandbox.bashImage`:
+a WSLC container's mounts are fixed when it starts. The agent's shell only: the terminal panel takes
+the installations behind its `PATH`, not this list.
+
+Name the folder a tool needs, not the one holding everything: a tool's directory often holds its
+credentials too — `.cargo\credentials.toml`, `.m2\settings.xml`, `gradle.properties`, `NuGet.Config`.
+uv's `data\python` holds interpreters only; uv's `data` beside it holds its tools' environments too.
+A directory is not enough for a tool that finds its home through `USERPROFILE`, which points to the
+command's temporary directory (rustup's `.rustup`, cargo's `.cargo`): those stay out of reach.
 
 ### Rules: always allow, always refuse
 
