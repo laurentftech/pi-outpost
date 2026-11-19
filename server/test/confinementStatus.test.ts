@@ -4,9 +4,10 @@
  * shell, and which policy a terminal's runner takes. The canary itself is `confinementCanary.test.ts`'s.
  */
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, test } from "node:test";
+import { after, describe, test } from "node:test";
 import type { ConfinementVerdict } from "@pi-outpost/shared";
 import type { SandboxConfig } from "../src/config.ts";
 import {
@@ -125,8 +126,11 @@ describe("shellVerdict", () => {
 });
 
 describe("buildTerminalConfinement", () => {
-  const root = path.join(tmpdir(), "terminal-confinement-root");
-  const terminal = { tmp: path.join(tmpdir(), "terminal-tmp"), shell: "/bin/sh", shellArgs: [], cwd: root, env: { PATH: "/usr/bin:/bin" } };
+  // Paths inside a directory of this test's own, never fixed names in the shared temporary directory.
+  const base = mkdtempSync(path.join(tmpdir(), "terminal-confinement-"));
+  after(() => rmSync(base, { recursive: true, force: true }));
+  const root = path.join(base, "root");
+  const terminal = { tmp: path.join(base, "tmp"), shell: "/bin/sh", shellArgs: [], cwd: root, env: { PATH: "/usr/bin:/bin" } };
 
   test("each runner takes its own kind of policy", () => {
     const kinds = [
@@ -145,8 +149,8 @@ describe("buildTerminalConfinement", () => {
   });
 
   test("a landstrip terminal writes its writable zone and its own temporary directory, and never reads the agent directory or the configuration", () => {
-    const agentDir = path.join(tmpdir(), "terminal-confinement-agent");
-    const configFile = path.join(tmpdir(), "terminal-confinement-config.json");
+    const agentDir = path.join(base, "agent");
+    const configFile = path.join(base, "config.json");
     const writableRoot = path.join(root, "work");
     const policy = buildTerminalConfinement({ runner: "/usr/local/bin/landstrip", root, writableRoot, allowWrite: true, agentDir, configFile }).policy(terminal);
     assert.ok("filesystem" in policy);
