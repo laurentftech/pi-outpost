@@ -85,6 +85,16 @@ async function insert(view: FrameLocator, what: string) {
   await view.locator(`[data-insert="${what}"]`).click();
 }
 
+/**
+ * Inserts a text box and waits until its placeholder is selected, ready to be typed over: the
+ * editor selects it on the next tick, and keys sent before that land in front of "Text".
+ */
+async function insertTextBox(page: Page, view: FrameLocator) {
+  await insert(view, "text");
+  const frame = await canvasFrame(page);
+  await expect.poll(() => frame.evaluate(() => document.getSelection()?.toString() ?? "")).toBe("Text");
+}
+
 /** Drags from the middle of `target`, or from `from` within it, by (dx, dy) screen pixels, the button held all the way. */
 async function drag(page: Page, target: { boundingBox(): Promise<Box | null> }, dx: number, dy: number, from?: { x: number; y: number }) {
   const box = (await target.boundingBox())!;
@@ -223,7 +233,7 @@ test("APictureIsInsertedOnThePage and InsertPictureFillsTheSelectedSlot: centred
 test("ATextBoxIsAdded and ATextBoxIsMovedAndResized: typed over at the centre in the poster's font, moved, narrowed so it rewraps, and saved", async ({ page }) => {
   const id = await createPoster("Text box", MENU);
   const { view, canvas } = await show(page, id);
-  await insert(view, "text");
+  await insertTextBox(page, view);
   await page.keyboard.type("Bon appétit à toutes et à tous !");
   const box = canvas.locator(".poster-text");
   await expect(box).toHaveText("Bon appétit à toutes et à tous !");
@@ -407,7 +417,7 @@ test("APlacedPictureStillMovesAfterReopening: a picture, a shape and a text box 
   const { view } = await show(page, id);
   await choose(page, () => insert(view, "picture"), await pictureFile("sun.png", 600, 600, "png"));
   await insert(view, "shape:star");
-  await insert(view, "text");
+  await insertTextBox(page, view);
   await page.keyboard.type("Hello");
   await save(view);
   const again = await browser.newPage();

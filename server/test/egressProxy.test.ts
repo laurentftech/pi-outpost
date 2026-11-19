@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createServer, request, type Server } from "node:http";
 import { connect } from "node:net";
 import { after, before, describe, test } from "node:test";
-import { hostAllowed, isAllowedHostPattern, startEgressProxy, type EgressProxy } from "../src/egressProxy.ts";
+import { hostAllowed, isAllowedHostPattern, sharedEgressProxy, startEgressProxy, type EgressProxy } from "../src/egressProxy.ts";
 
 /** Sends a CONNECT for `target` and returns the proxy's status line and what came back through the tunnel. */
 function tunnel(proxyPort: number, target: string, payload: string): Promise<{ status: string; body: string }> {
@@ -276,5 +276,159 @@ describe("a proxy that asks about an unlisted host", () => {
     } finally {
       await proxy.close();
     }
+  });
+});
+
+describe("the proxy's edges", () => {
+  let upstream: Server;
+  let upstreamPort: number;
+  /** A port nothing listens on: one a server held, then gave back. */
+  let closedPort: number;
+  /** What the upstream was asked for, as `METHOD path`: recorded, never echoed back. */
+  const received: string[] = [];
+  before(async () => {
+    upstream = createServer((req, res) => {
+      received.push(`${req.method} ${req.url}`);
+      res.end("from-upstream");
+    });
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    upstreamPort = (upstream.address() as { port: number }).port;
+    const gone = createServer();
+    await new Promise<void>((resolve) => gone.listen(0, "127.0.0.1", resolve));
+    closedPort = (gone.address() as { port: number }).port;
+    await new Promise((resolve) => gone.close(resolve));
+  });
+  after(async () => {
+    await new Promise((resolve) => upstream.close(resolve));
+  });
+
+  /** A proxy for one test, closed after it. */
+  async function withProxy(options: Parameters<typeof startEgressProxy>[0], run: (port: number) => Promise<void>) {
+    const proxy = await startEgressProxy({ onRefused: () => {}, ...options });
+    try {
+      await run(Number(new URL(proxy.url).port));
+    } finally {
+      await proxy.close();
+    }
+  }
+
+  /** A raw request line through the proxy, and the status line it answers. */
+  function statusOf(port: number, requestText: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const socket = connect(port, "127.0.0.1", () => socket.write(requestText));
+      let data = "";
+      socket.on("data", (chunk) => (data += chunk.toString()));
+      socket.on("error", reject);
+      socket.on("close", () => resolve(data.split("\r\n")[0]));
+    });
+  }
+
+  test("a CONNECT target that is not host:port, or whose port is out of range, is refused by what was asked", async () => {
+    await withProxy({ allowedHosts: ["127.0.0.1"] }, async (port) => {
+      assert.equal(await statusOf(port, "CONNECT 127.0.0.1 HTTP/1.1\r\nHost: x\r\n\r\n"), "HTTP/1.1 403 127.0.0.1 is not in sandbox.allowedHosts");
+      assert.equal(await statusOf(port, "CONNECT 127.0.0.1:70000 HTTP/1.1\r\nHost: x\r\n\r\n"), "HTTP/1.1 403 127.0.0.1:70000 is not in sandbox.allowedHosts");
+    });
+  });
+
+  test("a plain request that is not absolute http — a path, or https — is refused even to a listed host", async () => {
+    await withProxy({ allowedHosts: ["127.0.0.1"] }, async (port) => {
+      assert.equal(await statusOf(port, "GET /index.html HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"), "HTTP/1.1 403 /index.html is not in sandbox.allowedHosts");
+      assert.equal(
+        await statusOf(port, `GET https://127.0.0.1:${upstreamPort}/ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`),
+        "HTTP/1.1 403 127.0.0.1 is not in sandbox.allowedHosts",
+      );
+    });
+  });
+
+  test("a listed host that cannot be reached answers 502 with the host, over a tunnel or plain HTTP", async () => {
+    const relayed: string[] = [];
+    await withProxy({ allowedHosts: ["127.0.0.1"], onRelayed: (target) => relayed.push(target) }, async (port) => {
+      const { status } = await tunnel(port, `127.0.0.1:${closedPort}`, "");
+      assert.match(status, /^HTTP\/1\.1 502 127\.0\.0\.1 could not be reached: /);
+      assert.equal(
+        await statusOf(port, `GET http://127.0.0.1:${closedPort}/ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`),
+        "HTTP/1.1 502 127.0.0.1 could not be reached",
+      );
+    });
+    assert.deepEqual(relayed, [], "nothing was relayed");
+  });
+
+  test("the bytes sent with the CONNECT itself reach the host", async () => {
+    await withProxy({ allowedHosts: ["127.0.0.1"] }, async (port) => {
+      const answer = await new Promise<string>((resolve, reject) => {
+        const target = `127.0.0.1:${upstreamPort}`;
+        // One write: the request rides in the same packet as the CONNECT, so the proxy gets it as `head`.
+        const socket = connect(port, "127.0.0.1", () =>
+          socket.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n\r\nGET /early HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`),
+        );
+        let data = "";
+        socket.on("data", (chunk) => (data += chunk.toString()));
+        socket.on("error", reject);
+        socket.on("close", () => resolve(data));
+      });
+      assert.match(answer, /^HTTP\/1\.1 200 Connection Established/);
+      assert.match(answer, /from-upstream/);
+      assert.ok(received.includes("GET /early"), received.join("\n"));
+    });
+  });
+
+  test("a question that fails refuses the host, saying it could not be asked about", async () => {
+    await withProxy(
+      {
+        allowedHosts: [],
+        ask: async () => {
+          throw new Error("no browser is open");
+        },
+      },
+      async (port) => {
+        const { status } = await tunnel(port, `127.0.0.1:${upstreamPort}`, "");
+        assert.equal(status, "HTTP/1.1 403 127.0.0.1 could not be asked about: no browser is open");
+      },
+    );
+  });
+
+  test("a command killed while the user was asked is not connected once they allow it", async () => {
+    let release!: (answer: { allowed: true }) => void;
+    let asked = 0;
+    const relayed: string[] = [];
+    await withProxy(
+      {
+        allowedHosts: [],
+        onRelayed: (target) => relayed.push(target),
+        ask: () => {
+          asked++;
+          return new Promise((resolve) => (release = resolve));
+        },
+      },
+      async (port) => {
+        const socket = connect(port, "127.0.0.1", () => socket.write(`CONNECT 127.0.0.1:${upstreamPort} HTTP/1.1\r\nHost: x\r\n\r\n`));
+        for (let i = 0; i < 100 && asked === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+        assert.equal(asked, 1);
+        await new Promise<void>((resolve) => {
+          socket.on("close", () => resolve());
+          // A reset, as a killed command's connection ends.
+          socket.resetAndDestroy();
+        });
+        // Let the proxy see the hang-up before the answer comes.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        release({ allowed: true });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.deepEqual(relayed, [], "a connection was opened for a command that had gone");
+      },
+    );
+  });
+});
+
+describe("sharedEgressProxy", () => {
+  test("one proxy per list, whatever its order or repetitions; another list, another proxy", async () => {
+    const first = sharedEgressProxy(["b.example", "a.example"]);
+    const again = sharedEgressProxy(["a.example", "b.example", "a.example"]);
+    const other = sharedEgressProxy(["c.example"]);
+    assert.equal(first, again);
+    assert.notEqual(first, other);
+    const [one, two] = await Promise.all([first, other]);
+    assert.notEqual(one.url, two.url);
+    // The shared ones live for the server's life; this test's are closed so the process can end promptly.
+    await Promise.all([one.close(), two.close()]);
   });
 });

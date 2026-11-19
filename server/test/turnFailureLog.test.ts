@@ -17,6 +17,9 @@ import {
   noteCompaction,
   noteToolOutcome,
   noteTurnOutcome,
+  PROVIDER_STACK_ENV,
+  PROVIDER_STACK_HINT,
+  providerStackProbeArmed,
   recordTurnFailure,
   serializedBytes,
 } from "../src/turnFailureLog.ts";
@@ -95,6 +98,11 @@ describe("serializedBytes", () => {
     cyclic.self = cyclic;
     assert.equal(serializedBytes(cyclic), null);
     assert.equal(serializedBytes(deepChain(200_000)), null);
+  });
+
+  it("returns null for what JSON cannot write at all", () => {
+    assert.equal(serializedBytes(undefined), null);
+    assert.equal(serializedBytes(() => {}), null);
   });
 });
 
@@ -228,5 +236,166 @@ describe("recordTurnFailure", () => {
       assert.equal(records.length, 2);
       assert.deepEqual(records.map((one) => one.source), ["assistant", "compaction"]);
     });
+  });
+});
+
+describe("providerStackProbeArmed", () => {
+  it("is off unless the variable says otherwise, whatever its case or spacing", () => {
+    assert.equal(providerStackProbeArmed({}), false);
+    for (const off of ["", "0", "false", " No ", "OFF"]) assert.equal(providerStackProbeArmed({ [PROVIDER_STACK_ENV]: off }), false, off);
+    for (const on of ["1", "true", "yes"]) assert.equal(providerStackProbeArmed({ [PROVIDER_STACK_ENV]: on }), true, on);
+  });
+});
+
+describe("recordTurnFailure: what it measures and says", () => {
+  /** What the census wrote to stderr while `run` ran, and the records in the agent directory. */
+  const captured = (run: (dir: string) => void): { said: string[]; records: Record<string, unknown>[]; dir: string } => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "turn-failure-said-"));
+    const said: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => said.push(args.map(String).join(" "));
+    try {
+      run(dir);
+    } finally {
+      console.error = original;
+    }
+    const file = path.join(dir, "turn-failures.jsonl");
+    const records = fs.existsSync(file)
+      ? fs
+          .readFileSync(file, "utf8")
+          .split(/\r?\n/)
+          .filter((line) => line !== "")
+          .map((line) => JSON.parse(line) as Record<string, unknown>)
+      : [];
+    return { said, records, dir };
+  };
+  const cleanup = (dir: string) => fs.rmSync(dir, { recursive: true, force: true });
+
+  it("names each entry by its message's role, else its type, else unknown; and the heaviest, unserializable ones last", () => {
+    const cyclic: Record<string, unknown> = { type: "custom" };
+    cyclic.self = cyclic;
+    const { records, dir } = captured((dir) =>
+      recordTurnFailure(dir, {
+        source: "runtime",
+        message: "Maximum call stack size exceeded",
+        entries: [{ message: { role: "user", content: "x".repeat(10) } }, { type: "compaction", summary: "y".repeat(100) }, null, cyclic],
+        contextUsage: { tokens: 1200 },
+      }),
+    );
+    cleanup(dir);
+    const context = records[0]!.context as { largest: { index: number; role: string; bytes: number | null }[] };
+    assert.deepEqual(
+      context.largest.map((one) => [one.index, one.role]),
+      [
+        [1, "compaction"],
+        [0, "user"],
+        [2, "unknown"],
+        [3, "custom"],
+      ],
+    );
+    assert.equal(context.largest[3]!.bytes, null);
+    assert.deepEqual(records[0]!.contextUsage, { tokens: 1200 });
+  });
+
+  it("reduces the turn to its blocks' types, tool names and sizes, whatever the message holds", () => {
+    const { records, dir } = captured((dir) => {
+      recordTurnFailure(dir, {
+        source: "assistant",
+        message: "Maximum call stack size exceeded",
+        assistantMessage: { content: [{ type: "text", text: "hello" }, { type: "toolCall", name: "bash", arguments: { command: "ls" } }, null] },
+      });
+      recordTurnFailure(dir, { source: "assistant", message: "Maximum call stack size exceeded", assistantMessage: null });
+      recordTurnFailure(dir, { source: "assistant", message: "Maximum call stack size exceeded", assistantMessage: { content: "not blocks" } });
+    });
+    cleanup(dir);
+    const blocks = (records[0]!.turn as { blocks: Record<string, unknown>[] }).blocks;
+    assert.deepEqual(
+      blocks.map((block) => [block.type, block.toolName]),
+      [
+        ["text", undefined],
+        ["toolCall", "bash"],
+        [undefined, undefined],
+      ],
+    );
+    assert.ok(!("text" in blocks[0]!), "no message text is kept");
+    assert.deepEqual((records[1]!.turn as { blocks: unknown[] }).blocks, []);
+    assert.deepEqual((records[2]!.turn as { blocks: unknown[] }).blocks, []);
+  });
+
+  it("keeps only the most recent outcomes, oldest first", () => {
+    const { records, dir } = captured((dir) => {
+      noteTurnOutcome(null);
+      for (let i = 0; i < 40; i++) noteToolOutcome(`tool-${i}`, false, i);
+      recordTurnFailure(dir, { source: "assistant", message: "Maximum call stack size exceeded" });
+    });
+    cleanup(dir);
+    const recent = records[0]!.recent as { toolName: string }[];
+    assert.equal(recent.length, 32);
+    assert.equal(recent[0]!.toolName, "tool-8");
+    assert.equal(recent.at(-1)!.toolName, "tool-39");
+  });
+
+  it("the headline counts the self-references, and the hint is given only while no stack is coming", () => {
+    const cycle = () => {
+      const one: Record<string, unknown> = {};
+      one.self = one;
+      return one;
+    };
+    const previous = process.env[PROVIDER_STACK_ENV];
+    try {
+      delete process.env[PROVIDER_STACK_ENV];
+      const unarmed = captured((dir) => recordTurnFailure(dir, { source: "compaction", message: "Maximum call stack size exceeded", entries: [cycle()] }));
+      cleanup(unarmed.dir);
+      assert.match(unarmed.said[0]!, /^\[pi-outpost\] turn failed with stack exhaustion \(compaction\) context=1 entries maxDepth=\d+ SELF-REFERENCE in 1 entry$/);
+      assert.ok(unarmed.said.includes(PROVIDER_STACK_HINT));
+
+      process.env[PROVIDER_STACK_ENV] = "1";
+      const armed = captured((dir) => recordTurnFailure(dir, { source: "runtime", message: "Maximum call stack size exceeded", entries: [cycle(), {}, cycle()] }));
+      cleanup(armed.dir);
+      assert.match(armed.said[0]!, / SELF-REFERENCE in 2 entries$/);
+      assert.ok(!armed.said.includes(PROVIDER_STACK_HINT));
+
+      const bare = captured((dir) => recordTurnFailure(dir, { source: "runtime_failed", message: "Maximum call stack size exceeded" }));
+      cleanup(bare.dir);
+      assert.equal(bare.said[0], "[pi-outpost] turn failed with stack exhaustion (runtime_failed)");
+    } finally {
+      if (previous === undefined) delete process.env[PROVIDER_STACK_ENV];
+      else process.env[PROVIDER_STACK_ENV] = previous;
+    }
+  });
+
+  it("a log grown past its limit is rolled aside, and the new record starts a fresh one", () => {
+    const { records, dir } = captured((dir) => {
+      fs.writeFileSync(path.join(dir, "turn-failures.jsonl"), `${"x".repeat(4 * 1024 * 1024)}\n`);
+      recordTurnFailure(dir, { source: "assistant", message: "Maximum call stack size exceeded" });
+    });
+    try {
+      assert.equal(records.length, 1, "the new file holds the new record alone");
+      assert.equal(fs.statSync(path.join(dir, "turn-failures.jsonl.1")).size, 4 * 1024 * 1024 + 1);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it("a census that cannot be written goes to stderr instead of being lost", () => {
+    const { said, dir } = captured((dir) => {
+      // A file where the agent directory should be: nothing can be created inside it.
+      const blocked = path.join(dir, "not-a-directory");
+      fs.writeFileSync(blocked, "");
+      recordTurnFailure(blocked, { source: "assistant", message: "Maximum call stack size exceeded" });
+    });
+    cleanup(dir);
+    assert.ok(said.some((line) => line.startsWith("[pi-outpost] could not write ")), said.join("\n"));
+    const dumped = said.map((line) => (line.startsWith("{") ? (JSON.parse(line) as Record<string, unknown>) : undefined)).find(Boolean);
+    assert.equal(dumped?.message, "Maximum call stack size exceeded");
+  });
+
+  it("a census that cannot even be serialized fails quietly, without throwing into its caller", () => {
+    const { said, records, dir } = captured((dir) => {
+      assert.doesNotThrow(() => recordTurnFailure(dir, { source: "assistant", message: "Maximum call stack size exceeded", contextUsage: { tokens: 1n } }));
+    });
+    cleanup(dir);
+    assert.deepEqual(records, []);
+    assert.ok(said.some((line) => /^\[pi-outpost\] turn-failure census failed: .*BigInt/.test(line)), said.join("\n"));
   });
 });

@@ -154,7 +154,8 @@ and before every reply it posts, because a worker stopped with `terminate()` get
 event. A worker of an unmeasured process is left alone, as its process is. Other production
 workspaces remain outside these scopes and are named as such.
 
-`trial-focus.mjs` measures a few test files on any platform while tests are being written,
+`trial-focus.mjs` measures a few test files on any platform while tests are being written
+(`--lines` lists what stays uncovered, `--branches` adds the branches not taken),
 and with `--baseline` a downloaded CI `coverage-final.json` says how many statements that
 report left uncovered the tests now reach.
 
