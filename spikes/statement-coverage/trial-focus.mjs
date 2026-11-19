@@ -1,6 +1,7 @@
 // Focused statement measurement while writing tests: run some server or office test files
 // under the trial hook, then print each target file's statements and, with --lines, the
-// source lines still uncovered. Any platform; the full trial (trial-run.mjs) stays Linux-only.
+// source lines still uncovered. With --branches, also each file's branches and, with --lines,
+// the lines whose branches are not all taken. Any platform; the full trial (trial-run.mjs) stays Linux-only.
 //
 //   node spikes/statement-coverage/trial-focus.mjs [--lines] --files server/src/fileBrowser.ts \
 //     -- server/test/fileBrowser.test.ts server/test/fileBrowserFailures.test.ts
@@ -22,6 +23,7 @@ const split = args.indexOf('--');
 const options = split === -1 ? args : args.slice(0, split);
 const tests = split === -1 ? [] : args.slice(split + 1);
 const lines = options.includes('--lines');
+const branches = options.includes('--branches');
 const value = (name) => { const i = options.indexOf(name); return i === -1 ? undefined : options[i + 1]; };
 const targets = (value('--files') ?? '').split(',').filter(Boolean).map((f) => path.resolve(root, f));
 const report = value('--report');
@@ -63,6 +65,10 @@ for (const target of targets) {
   const coverage = map.fileCoverageFor(file);
   const { covered, total } = coverage.toSummary().statements;
   console.log(`${path.relative(root, target)}: ${covered}/${total} statements (${total - covered} uncovered)`);
+  if (branches) {
+    const taken = coverage.toSummary().branches;
+    console.log(`${' '.repeat(path.relative(root, target).length)}  ${taken.covered}/${taken.total} branches (${taken.total - taken.covered} not taken)`);
+  }
   const before = baseline && findIn(baseline, target);
   if (before) {
     const was = baseline.fileCoverageFor(before).toJSON();
@@ -84,5 +90,18 @@ for (const target of targets) {
   }
   for (const line of [...missed.keys()].sort((a, b) => a - b)) {
     console.log(`${String(line).padStart(6)} ${String(missed.get(line)).padStart(2)}  ${source[line - 1].trim().slice(0, 140)}`);
+  }
+  if (!branches) continue;
+  // A branch point's paths: those never taken, by the line the point starts on.
+  const untaken = new Map();
+  for (const [id, counts] of Object.entries(data.b)) {
+    const never = counts.filter((n) => n === 0).length;
+    if (never === 0) continue;
+    const line = data.branchMap[id].loc.start.line;
+    untaken.set(line, (untaken.get(line) ?? 0) + never);
+  }
+  if (untaken.size > 0) console.log('  branches not taken:');
+  for (const line of [...untaken.keys()].sort((a, b) => a - b)) {
+    console.log(`${String(line).padStart(6)} ${String(untaken.get(line)).padStart(2)}b ${source[line - 1].trim().slice(0, 140)}`);
   }
 }

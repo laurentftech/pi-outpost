@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, test } from "node:test";
-import { createDocument } from "@pi-outpost/office/docxBuild.ts";
+import { createDocument, MAX_MARKDOWN_CHARS } from "@pi-outpost/office/docxBuild.ts";
 import { readWordPackage, WordTemplateError } from "@pi-outpost/office/docxTemplate.ts";
 import { updateDocument, REVISION_AUTHOR, type DocxEdit } from "@pi-outpost/office/docxUpdate.ts";
 import { bodyLayout, headingLevelOf, paragraphText } from "@pi-outpost/office/wordml.ts";
@@ -178,5 +178,152 @@ describe("docx_update", () => {
     // The document's own lists keep theirs.
     assert.match(numbering, /<w:num w:numId="2"><w:abstractNumId w:val="1"\/><\/w:num>/);
     assert.notEqual(numIds[0], "2");
+  });
+});
+
+/**
+ * The report with its body replaced by `inner`, its section properties kept unless told not to:
+ * a document holding exactly the shapes a test needs.
+ */
+function withBody(inner: string, { sectPr = true } = {}) {
+  const pkg = report();
+  const layout = bodyLayout(pkg.documentXml);
+  const last = layout.children.at(-1)!;
+  pkg.documentXml = pkg.documentXml.slice(0, layout.innerStart) + inner + (sectPr ? last.xml : "") + pkg.documentXml.slice(layout.innerEnd);
+  return pkg;
+}
+const heading = (text: string, level = 1) => `<w:p><w:pPr><w:pStyle w:val="Titre${level}"/></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const para = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
+
+describe("docx_update: what a tracked deletion marks", () => {
+  /** The section "Cible", deleted with tracking on: its elements as they come out. */
+  async function deleted(inner: string): Promise<string[]> {
+    const pkg = withBody(heading("Avant") + para("garde") + heading("Cible") + inner + heading("Après") + para("garde"));
+    const updated = await updateDocument(pkg, [{ action: "delete", section: "Cible" }], { date: DATE });
+    const after = body(updated.bytes);
+    // Avant, its paragraph, then Cible's heading — deleted, so its text is no longer text.
+    assert.match(after[2]!, /<w:delText>Cible<\/w:delText>/);
+    return after.slice(3, index(after, "Après"));
+  }
+
+  test("every run of every shape of paragraph is marked deleted, and every paragraph mark with it", async () => {
+    const section = await deleted(
+      [
+        // No properties at all: a mark is added, in properties of its own.
+        `<w:p/>`,
+        // Properties without run properties: the mark goes at their end.
+        `<w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:hyperlink r:id="rIdLink"><w:r><w:t>lien</w:t></w:r></w:hyperlink><w:proofErr w:type="spellStart"/></w:p>`,
+        // Empty run properties: opened to take the mark.
+        `<w:p><w:pPr><w:rPr/></w:pPr><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r></w:p>`,
+        // Run properties already there: the mark goes first among them.
+        `<w:p><w:pPr><w:rPr><w:b/></w:rPr></w:pPr><w:fldSimple w:instr="DATE"><w:r><w:t>1er</w:t></w:r></w:fldSimple></w:p>`,
+        // Empty properties.
+        `<w:p><w:pPr/><w:sdt><w:sdtPr/><w:sdtContent><w:r><w:t>contrôle</w:t></w:r></w:sdtContent></w:sdt><w:customXml/></w:p>`,
+        // Properties ending with a section break: the mark goes before it, as the schema orders them.
+        `<w:p><w:pPr><w:jc w:val="left"/><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:pPr><w:r><w:t>fin de section</w:t></w:r></w:p>`,
+      ].join(""),
+    );
+    const [empty, link, field, simple, control, sectionBreak] = section;
+    assert.match(empty!, /^<w:p><w:pPr><w:rPr><w:del [^>]*\/><\/w:rPr><\/w:pPr><\/w:p>$/);
+    assert.match(link!, /<w:pPr><w:jc w:val="left"\/><w:rPr><w:del [^>]*\/><\/w:rPr><\/w:pPr>/);
+    assert.match(link!, /<w:hyperlink r:id="rIdLink"><w:del [^>]*><w:r><w:delText>lien<\/w:delText><\/w:r><\/w:del><\/w:hyperlink>/);
+    assert.match(link!, /<w:proofErr w:type="spellStart"\/>/, "what is not a run is left as it is");
+    assert.match(field!, /<w:pPr><w:rPr><w:del [^>]*\/><\/w:rPr><\/w:pPr>/);
+    assert.match(field!, /<w:delInstrText xml:space="preserve"> PAGE <\/w:delInstrText>/);
+    assert.match(simple!, /<w:pPr><w:rPr><w:del [^>]*\/><w:b\/><\/w:rPr><\/w:pPr>/);
+    assert.match(simple!, /<w:fldSimple w:instr="DATE"><w:del [^>]*><w:r><w:delText>1er<\/w:delText>/);
+    assert.match(control!, /<w:pPr><w:rPr><w:del [^>]*\/><\/w:rPr><\/w:pPr>/);
+    assert.match(control!, /<w:sdtPr\/><w:sdtContent><w:del [^>]*><w:r><w:delText>contrôle<\/w:delText>/);
+    assert.match(control!, /<w:customXml\/>/);
+    assert.match(sectionBreak!, /<w:jc w:val="left"\/><w:rPr><w:del [^>]*\/><\/w:rPr><w:sectPr>/);
+    // Nothing of the section is left as live text.
+    assert.ok(section.every((xml) => !/<w:t>|<w:instrText/.test(xml)), section.join("\n"));
+  });
+
+  test("a table's rows are each marked deleted, whatever properties they had, and so is their text", async () => {
+    const cell = (text: string) => `<w:tc><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:tc>`;
+    const [table] = await deleted(
+      `<w:tbl><w:tblPr/><w:tr><w:trPr><w:cantSplit/></w:trPr>${cell("a")}</w:tr><w:tr><w:trPr/>${cell("b")}</w:tr><w:tr>${cell("c")}<w:tc><w:p/></w:tc></w:tr></w:tbl>`,
+    );
+    const rows = [...table!.matchAll(/<w:tr>[\s\S]*?<\/w:tr>/g)].map((match) => match[0]);
+    assert.equal(rows.length, 3);
+    assert.match(rows[0]!, /^<w:tr><w:trPr><w:cantSplit\/><w:del [^>]*\/><\/w:trPr>/);
+    assert.match(rows[1]!, /^<w:tr><w:trPr><w:del [^>]*\/><\/w:trPr>/);
+    assert.match(rows[2]!, /^<w:tr><w:trPr><w:del [^>]*\/><\/w:trPr><w:tc>/, "a row without properties is given them, once");
+    assert.equal((rows[2]!.match(/<w:trPr>/g) ?? []).length, 1);
+    for (const [row, text] of rows.map((row, i) => [row, "abc"[i]] as const)) assert.match(row, new RegExp(`<w:delText>${text}</w:delText>`));
+    assert.match(table!, /^<w:tbl><w:tblPr\/>/, "the table's own properties stay");
+  });
+
+  test("a block content control's paragraphs are marked; a bookmark between blocks is left as it is", async () => {
+    const [control, bookmark] = await deleted(`<w:sdt><w:sdtPr/><w:sdtContent>${para("dans le contrôle")}</w:sdtContent></w:sdt><w:bookmarkStart w:id="90" w:name="b"/>`);
+    assert.match(control!, /<w:sdtContent><w:p><w:pPr><w:rPr><w:del [^>]*\/><\/w:rPr><\/w:pPr><w:del [^>]*><w:r><w:delText>dans le contrôle<\/w:delText>/);
+    assert.equal(bookmark, `<w:bookmarkStart w:id="90" w:name="b"/>`);
+  });
+
+  test("revision ids follow the highest id already in the document", async () => {
+    const section = await deleted(`<w:p><w:bookmarkStart w:id="700" w:name="x"/>${"<w:r><w:t>t</w:t></w:r>"}</w:p>`);
+    const ids = [...section.join("").matchAll(/<w:del w:id="(\d+)"/g)].map((match) => Number(match[1]));
+    assert.ok(ids.length > 0 && ids.every((id) => id > 700), ids.join(", "));
+  });
+});
+
+describe("docx_update: what is refused before anything is changed", () => {
+  const refused = (pkg: ReturnType<typeof report>, edits: DocxEdit[], message: RegExp) =>
+    assert.rejects(updateDocument(pkg, edits), (error: unknown) => error instanceof WordTemplateError && message.test(error.message));
+
+  test("no edits, too many, or content that is empty or too long", async () => {
+    await refused(report(), [], /^no edits were given$/);
+    const many = Array.from({ length: 51 }, () => ({ action: "append" as const, markdown: "x" }));
+    await refused(report(), many, /^at most 50 edits in one call \(got 51\)$/);
+    await refused(report(), [{ action: "append", markdown: " \n " }], /^edit 1: there is no content to write$/);
+    await refused(report(), [{ action: "delete", section: "Conclusion" }, { action: "replace", section: "Risques", markdown: "x".repeat(MAX_MARKDOWN_CHARS + 1) }], /^edit 2: the content is longer than \d+ characters$/);
+    await refused(report(), [{ action: "rename", section: "Risques" } as unknown as DocxEdit], /^edit 1: unknown action$/);
+  });
+
+  test("an empty path, or a part not under its parent, names where it looked", async () => {
+    await refused(report(), [{ action: "delete", section: " > " }], /^the section path is empty\.\nThe document's headings:/);
+    await refused(report(), [{ action: "delete", section: "Périmètre > Risques" }], /^no section "Risques" under "Périmètre"\./);
+  });
+
+  test("a document without headings says so", async () => {
+    await refused(withBody(para("Rien que du texte.")), [{ action: "delete", section: "Budget" }], /\nThe document has no headings\.$/);
+  });
+
+  test("an empty heading is not a section", async () => {
+    const pkg = withBody(heading("") + para("sous un titre vide") + heading("Plein") + para("x"));
+    await refused(pkg, [{ action: "delete", section: "" }], /^the section path is empty\.\nThe document's headings:\n- Plein$/);
+  });
+
+  test("two edits of the same part, or an insertion inside a deleted section, must be combined", async () => {
+    await refused(
+      report(),
+      [
+        { action: "replace", section: "Périmètre", markdown: "x" },
+        { action: "delete", section: "Périmètre > Inclus" },
+      ],
+      /^edits 1 and 2 touch the same part of the document; combine them into one$/,
+    );
+    await refused(
+      report(),
+      [
+        { action: "delete", section: "Périmètre" },
+        { action: "insert_after", section: "Inclus", markdown: "x" },
+      ],
+      /^edits 1 and 2 touch the same part/,
+    );
+  });
+});
+
+describe("docx_update: appending", () => {
+  test("appended content goes before the final section properties, and to the very end without them", async () => {
+    const withSect = await updateDocument(report(), [{ action: "append", markdown: "Annexe." }], { trackChanges: false });
+    const after = body(withSect.bytes);
+    assert.equal(paragraphText(after.at(-2)!).trim(), "Annexe.");
+    assert.match(after.at(-1)!, /^<w:sectPr\b/);
+    assert.deepEqual(withSect.report, ["1. appended at the end"]);
+
+    const bare = await updateDocument(withBody(heading("Seul") + para("x"), { sectPr: false }), [{ action: "append", markdown: "Annexe." }], { trackChanges: false });
+    assert.equal(paragraphText(body(bare.bytes).at(-1)!).trim(), "Annexe.");
   });
 });
