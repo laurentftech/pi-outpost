@@ -284,8 +284,13 @@ describe("the proxy's edges", () => {
   let upstreamPort: number;
   /** A port nothing listens on: one a server held, then gave back. */
   let closedPort: number;
+  /** What the upstream was asked for, as `METHOD path`: recorded, never echoed back. */
+  const received: string[] = [];
   before(async () => {
-    upstream = createServer((req, res) => res.end(`from-upstream ${req.method} ${req.url}`));
+    upstream = createServer((req, res) => {
+      received.push(`${req.method} ${req.url}`);
+      res.end("from-upstream");
+    });
     await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
     upstreamPort = (upstream.address() as { port: number }).port;
     const gone = createServer();
@@ -362,7 +367,8 @@ describe("the proxy's edges", () => {
         socket.on("close", () => resolve(data));
       });
       assert.match(answer, /^HTTP\/1\.1 200 Connection Established/);
-      assert.match(answer, /from-upstream GET \/early/);
+      assert.match(answer, /from-upstream/);
+      assert.ok(received.includes("GET /early"), received.join("\n"));
     });
   });
 
