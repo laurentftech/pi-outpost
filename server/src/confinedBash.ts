@@ -20,6 +20,7 @@ import type { BashOperations } from "@earendil-works/pi-coding-agent";
 import type { SandboxGrantOutcome } from "@pi-outpost/shared";
 import { startEgressProxy, type EgressProxy, type EgressProxyOptions } from "./egressProxy.ts";
 import { EMPTY_GRANT, forbiddenHost, isApproved, isEmptyGrant, mergeGrants, type Grant } from "./sandboxGrants.ts";
+import { RUN_WITH_GRANT_TOOL } from "./sandboxGrantTool.ts";
 import { linuxMxcExecutor, mxcMissingReason, mxcRunsInProcess } from "./mxcExecutor.ts";
 import { mxcSdk, runThroughSdk, SdkDocumentRefused, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
 import { hostRefusal, landstripRefusal, mxcReportFile, mxcReportRefusals, refusalCollector, refusalKey, seatbeltReportRefusals, type Refusal } from "./sandboxRefusals.ts";
@@ -113,6 +114,11 @@ export interface ConfinedBashOptions {
    */
   ruleGrant?: () => Promise<Grant>;
   /**
+   * `sandbox.readOnlyPaths`, read only, for each launch: part of the sandbox the file describes,
+   * so a diagnosis keeps them too — what it reports is then what the configuration does not give.
+   */
+  readOnlyGrant?: () => Promise<Grant>;
+  /**
    * What the user's rules say of a host a command connects to, asked before anyone is: always
    * refuse answers at once, always allow lets it through. Absent: no rules.
    */
@@ -143,7 +149,9 @@ export function diagnosisOfferNote(): string {
   return (
     `[pi-outpost] This sandbox does not say on its own what it refused. If this failure looks like a refused path, ` +
     `run the same command again with ${DIAGNOSE_OPTION}: true — it runs once more under a narrower sandbox, without network, ` +
-    `and returns only what the sandbox refused. Its effects happen again: never diagnose a command that must not run twice.`
+    `and returns only what the sandbox refused. Its effects happen again: never diagnose a command that must not run twice. ` +
+    `"Access denied" starting a program (a tool installed for the user, the Python a virtual environment points at) is such a path: ` +
+    `the program's folder is refused — the diagnosis names it, and ${RUN_WITH_GRANT_TOOL} can ask the user for it, read only.`
   );
 }
 
@@ -396,7 +404,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     // No grant, of the session or of this command, reaches a diagnosis: it only ever narrows.
     const session = diagnose ? EMPTY_GRANT : (options.grants?.() ?? EMPTY_GRANT);
     const ruled = diagnose ? EMPTY_GRANT : ((await options.ruleGrant?.()) ?? EMPTY_GRANT);
-    const grant = diagnose ? EMPTY_GRANT : mergeGrants(session, ruled, extra);
+    const configured = wslc ? EMPTY_GRANT : ((await options.readOnlyGrant?.()) ?? EMPTY_GRANT);
+    const grant = diagnose ? configured : mergeGrants(session, ruled, extra, configured);
     if (wslc && grant.directories.length > 0) {
       throw new Error("a directory grant cannot reach bash in a WSLC container: its mounts are fixed when it starts");
     }

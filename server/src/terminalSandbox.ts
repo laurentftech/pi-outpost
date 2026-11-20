@@ -23,7 +23,7 @@
  * writes in the shape MXC generates (`seatbeltPolicy`).
  */
 import { execFile, execFileSync } from "node:child_process";
-import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -552,6 +552,8 @@ export interface MxcTerminalInput {
    */
   grantedRead?: string[];
   grantedWrite?: string[];
+  /** How the installations behind the search path are found (`toolInstallations`): the disk, or a test's. */
+  toolReader?: ToolInstallationReader;
 }
 
 /**
@@ -568,6 +570,143 @@ export function readableSearchEntries(searchPath: string | undefined, guard: { h
       !(guard.agentDir && under(guard.agentDir, entry)) &&
       !(guard.configFile && under(guard.configFile, entry)),
   );
+}
+
+/** What `toolInstallations` reads of the disk: the real one, or a test's. Each answers false or undefined rather than throw. */
+export interface ToolInstallationReader {
+  isFile(file: string): boolean;
+  isDirectory(directory: string): boolean;
+  /** A small text file's content (at most 64 KiB read), or undefined. */
+  readText(file: string): string | undefined;
+  /** The names in a directory, or none. */
+  list(directory: string): string[];
+  /** Whether a path is itself a symbolic link or a junction. */
+  isLink(target: string): boolean;
+  /** Where a link leads, or undefined. */
+  resolveLink(target: string): string | undefined;
+}
+
+const diskReader: ToolInstallationReader = {
+  isFile: (file) => {
+    try {
+      return statSync(file).isFile();
+    } catch {
+      return false;
+    }
+  },
+  isDirectory: (directory) => {
+    try {
+      return statSync(directory).isDirectory();
+    } catch {
+      return false;
+    }
+  },
+  readText: (file) => {
+    let descriptor: number | undefined;
+    try {
+      descriptor = openSync(file, "r");
+      const buffer = Buffer.alloc(64 * 1024);
+      const length = readSync(descriptor, buffer, 0, buffer.length, 0);
+      return buffer.subarray(0, length).toString("utf8");
+    } catch {
+      return undefined;
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
+    }
+  },
+  list: (directory) => {
+    try {
+      return readdirSync(directory);
+    } catch {
+      return [];
+    }
+  },
+  isLink: (target) => {
+    try {
+      return lstatSync(target).isSymbolicLink();
+    } catch {
+      return false;
+    }
+  },
+  resolveLink: (target) => {
+    try {
+      return realpathSync(target);
+    } catch {
+      return undefined;
+    }
+  },
+};
+
+/** How many entries of one folder are looked at for launchers: a folder of links, not a system directory. */
+const LAUNCHERS_LOOKED_AT = 400;
+
+/**
+ * The installations a Windows search path only points at, and the project's virtual environment
+ * stands on: each made readable, read only, beside the search path's own folders.
+ *
+ * A folder on `PATH` often holds launchers whose program is elsewhere, so the folder alone runs
+ * nothing: Git for Windows' `cmd\git.exe` starts `mingw64\bin\git.exe`; scoop's `shims\x.exe`
+ * reads `x.shim` for the program's path; WinGet's `Links` and nvm-windows' folder are links. And a
+ * virtual environment's `python.exe` (uv's, venv's) loads the interpreter its `pyvenv.cfg` names in
+ * `home`. Each is followed one step to the installation it names, and taken only if it is one:
+ * Git's own layout, a file the shim names, a link's target, a folder holding `python.exe` and `Lib`.
+ *
+ * `pyvenv.cfg` is in the project, which the agent writes: its `home` is taken only when that folder
+ * is a Python installation, so it cannot name an arbitrary folder into the sandbox. Every folder
+ * taken passes the search path's own guard: never the home directory or a folder above it, nor one
+ * holding — or inside — the agent directory or the configuration, nor a drive's root.
+ */
+export function toolInstallations(
+  input: { root: string; searchPath?: string; home?: string; agentDir?: string; configFile?: string },
+  reader: ToolInstallationReader = diskReader,
+): string[] {
+  const win = path.win32;
+  const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+  const under = (child: string, parent: string) => lower(child) === lower(parent) || lower(child).startsWith(`${lower(parent)}\\`);
+  const allowed = (folder: string) =>
+    win.isAbsolute(folder) &&
+    folder !== win.parse(folder).root &&
+    !(input.home && under(input.home, folder)) &&
+    ![input.agentDir, input.configFile].some((secret) => secret && (under(secret, folder) || under(folder, secret)));
+  const found: string[] = [];
+  const take = (folder: string | undefined) => {
+    if (folder === undefined) return;
+    const clean = folder.replace(/[\\/]+$/, "");
+    if (allowed(clean) && !found.some((known) => lower(known) === lower(clean))) found.push(clean);
+  };
+
+  for (const entry of readableSearchEntries(input.searchPath, input)) {
+    const name = win.basename(entry).toLowerCase();
+    const parent = win.dirname(entry);
+    // Git for Windows: cmd\ and bin\ hold launchers for mingw64\bin\git.exe, which needs usr\bin
+    // beside it; mingw64\bin and usr\bin on PATH are inside the same installation.
+    const parentName = win.basename(parent).toLowerCase();
+    const gitRoot = name === "cmd" ? parent : name === "bin" ? (parentName === "mingw64" || parentName === "usr" ? win.dirname(parent) : parent) : undefined;
+    if (gitRoot !== undefined && reader.isFile(win.join(gitRoot, "mingw64", "bin", "git.exe"))) take(gitRoot);
+    // The folder itself a link (nvm-windows' symlink to the active version): its target.
+    if (reader.isLink(entry)) take(reader.resolveLink(entry));
+    // Only folders of the user's own installs are looked into: links and shims live there, and a
+    // system directory would be thousands of names read on every launch.
+    if (!input.home || !under(entry, input.home)) continue;
+    const names = reader.list(entry).slice(0, LAUNCHERS_LOOKED_AT);
+    for (const file of names) {
+      const full = win.join(entry, file);
+      if (file.toLowerCase().endsWith(".shim")) {
+        // scoop: `path = "C:\…\app.exe"`.
+        const target = /^\s*path\s*=\s*"?([^"\r\n]+?)"?\s*$/im.exec(reader.readText(full) ?? "")?.[1];
+        if (target !== undefined && win.isAbsolute(target) && reader.isFile(target)) take(win.dirname(target));
+      } else if (reader.isLink(full)) {
+        // WinGet's Links: each a link to the program in its package folder.
+        const target = reader.resolveLink(full);
+        if (target !== undefined && reader.isFile(target)) take(win.dirname(target));
+      }
+    }
+  }
+
+  // The project's virtual environment: its launcher loads the interpreter `home` names.
+  const home = /^\s*home\s*=\s*(.+?)\s*$/im.exec(reader.readText(win.join(input.root, ".venv", "pyvenv.cfg")) ?? "")?.[1];
+  if (home !== undefined && reader.isFile(win.join(home, "python.exe")) && reader.isDirectory(win.join(home, "Lib"))) take(home);
+  return found;
 }
 
 /**
@@ -591,7 +730,10 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   const readwritePaths = unique([...writable, ...(input.grantedWrite ?? []), input.tmp]);
   // The search path's folders, and a granted directory beside the root, each a more specific
   // allow inside the denied siblings and profile: `siblings` needs no change.
-  const tools = readableSearchEntries(input.searchPath, { home: input.home, agentDir: input.agentDir, configFile: input.configFile });
+  const tools = [
+    ...readableSearchEntries(input.searchPath, { home: input.home, agentDir: input.agentDir, configFile: input.configFile }),
+    ...toolInstallations(input, input.toolReader),
+  ];
   const readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? [])].filter((p) => !readwritePaths.includes(p)));
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const deniedPaths = unique([...input.siblings, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
@@ -1094,6 +1236,11 @@ export function confinedEnvironment(
   // npm's cache defaults to the user's profile, which is out of reach: a writable one, and
   // a private one, in the temp. It goes with the terminal (or the command).
   env.npm_config_cache = path.join(options.tmp, "npm-cache");
+  // uv's and pip's too: on Windows they find the profile's folders without USERPROFILE, and are
+  // refused there; elsewhere theirs would be under HOME, the project. Never the user's own cache
+  // made writable: a package left in it would later run unconfined, from any project.
+  env.UV_CACHE_DIR = path.join(options.tmp, "uv-cache");
+  env.PIP_CACHE_DIR = path.join(options.tmp, "pip-cache");
   if (!windows) {
     // An interactive shell writes its history into HOME as it exits — the root, so the
     // user's project gained a .bash_history or .zsh_history after every terminal. Sent to

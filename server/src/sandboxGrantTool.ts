@@ -77,7 +77,9 @@ export function createRunWithGrantToolDefinition(options: RunWithGrantOptions): 
       `without an answer nothing runs. Use it only after ${options.shellTool} was refused something the task needs, ` +
       `and ask for exactly that: a path outside the sandbox that was refused. The network is not asked for here: when a command ` +
       `connects to a host the sandbox does not list, the user is asked on the spot, and the command's output ends saying what they answered. ` +
-      `No grant lets a command start a program outside the sandbox — ` +
+      `A program installed outside the sandbox — a tool in the user's profile, the Python a virtual environment points at — runs ` +
+      `once its folder is granted: when starting one fails with "access denied", ask for that folder, read only. ` +
+      `What no grant allows is leaving the sandbox: ` +
       `opening the user's browser or another desktop application (Start-Process on a URL, start, explorer, open) is refused whatever is granted: ` +
       `tell the user to open it themselves. The agent directory, the configuration, .pi directories, the home directory itself, ` +
       `a drive's root, IP addresses and localhost are never granted.`,

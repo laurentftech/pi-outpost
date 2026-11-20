@@ -127,6 +127,11 @@ describe("the notes", () => {
     assert.match(diagnosisOfferNote(), /diagnose: true/);
     assert.match(diagnosisOfferNote(), /effects happen again/);
   });
+
+  // openlore: scenario=AProgramsFolderIsAskedFor spec=sandbox-runner-bash
+  test("the offer says a program refused at start is its folder, to ask for read only", () => {
+    assert.match(diagnosisOfferNote(), /"Access denied" starting a program .* is such a path: the program's folder is refused — the diagnosis names it, and run_with_grant can ask the user for it, read only\.$/);
+  });
 });
 
 describe("where a diagnosis is offered", () => {

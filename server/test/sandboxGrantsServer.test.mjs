@@ -120,6 +120,31 @@ test("NoRunnerNoGrantTool: no tool without a runner, or with sandbox.grants neve
   assert.ok(!unconfined.hello.tools.some((entry) => entry.name === "run_with_grant"), "offered without a runner");
 });
 
+// openlore: scenario=ASettingsApplyKeepsReadOnlyPaths spec=sandbox-runner-bash
+test("sandbox.readOnlyPaths reach the agent's shell, read only, and a Settings apply keeps them", async (t) => {
+  const { root, beside } = await project();
+  // This runner prints what the launch may read and write.
+  await writeFile(path.join(root, "run"), FAKE_RUN.replace(
+    'process.stdout.write("writable="',
+    'process.stdout.write("readable=" + JSON.stringify(policy.filesystem.allowRead) + "\\n");\nprocess.stdout.write("writable="',
+  ));
+  const { results } = await run(t, {
+    root,
+    steps: [{ tool: "bash", args: { command: printWritable } }],
+    sandbox: { readOnlyPaths: [beside] },
+    // A Settings apply rebuilds the sandbox from what the browser sends, which carries no readOnlyPaths.
+    beforePrompt: async (client) => {
+      client.send({ type: "update_config", sandbox: { root, allowWrite: false, allowBash: true } });
+      const applied = await client.waitFor((message) => message.type === "update_config_ack" || message.type === "error", 30_000);
+      assert.equal(applied.type, "update_config_ack", applied.message);
+    },
+  });
+  const text = results[0].text;
+  const readable = JSON.parse(/readable=(\[.*\])/.exec(text)?.[1] ?? "[]").map((entry) => entry.replaceAll("\\", "/"));
+  assert.ok(readable.includes(beside.replaceAll("\\", "/")), `not readable after the apply: ${text}`);
+  assert.ok(!writableIn(text, beside), "read only");
+});
+
 /** A rule the user made before this server started: in the store a previous server left. */
 async function ruleBeforeStart(root, rule) {
   const { SandboxRulesStore } = await import("../src/sandboxRules.ts");

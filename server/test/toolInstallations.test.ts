@@ -1,0 +1,142 @@
+/**
+ * The installations a Windows search path only points at, made readable under MXC
+ * (`toolInstallations` in `terminalSandbox.ts`): Git's launchers, scoop's shims, WinGet's links, a
+ * linked folder, and the Python a virtual environment stands on — and never more than that.
+ *
+ * The disk is a fake here, so this runs everywhere; what MXC does with the folders is the
+ * `…Mxc.test.ts` suites' job.
+ */
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+import { mxcTerminalConfig, toolInstallations, type ToolInstallationReader } from "../src/terminalSandbox.ts";
+
+const HOME = "C:\\Users\\me";
+const ROOT = "L:\\Python\\isai_oper";
+const AGENT_DIR = `${HOME}\\.pi\\agent`;
+const CONFIG = `${HOME}\\pi-outpost.config.json`;
+
+/** A disk of files (with their text), folders and links, compared without case as Windows does. */
+function fakeDisk(layout: { files?: Record<string, string>; folders?: string[]; links?: Record<string, string> }): ToolInstallationReader {
+  const key = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+  const files = new Map(Object.entries(layout.files ?? {}).map(([p, text]) => [key(p), text]));
+  const links = new Map(Object.entries(layout.links ?? {}).map(([p, target]) => [key(p), target]));
+  const folders = new Set((layout.folders ?? []).map(key));
+  const target = (p: string) => links.get(key(p)) ?? p;
+  return {
+    isFile: (p) => files.has(key(target(p))),
+    isDirectory: (p) => folders.has(key(target(p))),
+    readText: (p) => files.get(key(p)),
+    list: (dir) =>
+      [...files.keys(), ...links.keys()]
+        .filter((p) => p.startsWith(`${key(dir)}\\`) && !p.slice(key(dir).length + 1).includes("\\"))
+        .map((p) => p.slice(key(dir).length + 1)),
+    isLink: (p) => links.has(key(p)),
+    resolveLink: (p) => links.get(key(p)),
+  };
+}
+
+const found = (searchPath: string, disk: ToolInstallationReader, root = ROOT) =>
+  toolInstallations({ root, searchPath, home: HOME, agentDir: AGENT_DIR, configFile: CONFIG }, disk);
+
+describe("toolInstallations", () => {
+  // openlore: scenario=AGitInstalledForTheUserRuns spec=sandbox-runner-bash
+  test("AGitInstalledForTheUserRuns: Git's cmd, bin, mingw64\\bin or usr\\bin on PATH opens its installation", () => {
+    const git = `${HOME}\\AppData\\Local\\Programs\\Git`;
+    const disk = fakeDisk({ files: { [`${git}\\mingw64\\bin\\git.exe`]: "" } });
+    for (const entry of ["cmd", "bin", "mingw64\\bin", "usr\\bin"]) {
+      assert.deepEqual(found(`${git}\\${entry}`, disk), [git], entry);
+    }
+    // A cmd folder that is not Git's opens nothing.
+    assert.deepEqual(found(`${HOME}\\AppData\\Local\\Programs\\Other\\cmd`, disk), []);
+  });
+
+  // openlore: scenario=APythonAVirtualEnvironmentStandsOnRuns spec=sandbox-runner-bash
+  test("APythonAVirtualEnvironmentStandsOnRuns: the project's .venv names its interpreter, which is opened", () => {
+    const python = `${HOME}\\AppData\\Roaming\\uv\\data\\python\\cpython-3.12.8-windows-x86_64-none`;
+    const disk = fakeDisk({
+      files: { [`${ROOT}\\.venv\\pyvenv.cfg`]: `home = ${python}\r\nimplementation = CPython\r\nuv = 0.9.1\r\n`, [`${python}\\python.exe`]: "" },
+      folders: [`${python}\\Lib`],
+    });
+    assert.deepEqual(found("", disk), [python]);
+  });
+
+  // openlore: scenario=AForgedVirtualEnvironmentOpensNothing spec=sandbox-runner-bash
+  test("AForgedVirtualEnvironmentOpensNothing: a home that is no Python installation, or that would undo the sandbox, is not taken", () => {
+    const venv = (home: string) => ({ [`${ROOT}\\.venv\\pyvenv.cfg`]: `home = ${home}\n` });
+    // The agent writes the project: a home naming the documents opens nothing.
+    assert.deepEqual(found("", fakeDisk({ files: venv(`${HOME}\\Documents`), folders: [`${HOME}\\Documents`] })), []);
+    // A python.exe without its library is not an installation either.
+    assert.deepEqual(found("", fakeDisk({ files: { ...venv(`${HOME}\\Downloads`), [`${HOME}\\Downloads\\python.exe`]: "" } })), []);
+    // Even a real installation is refused where it would open the profile, the keys or a drive.
+    for (const home of [HOME, "C:\\Users", "C:\\", AGENT_DIR, `${AGENT_DIR}\\py`]) {
+      const disk = fakeDisk({ files: { ...venv(home), [`${home}\\python.exe`]: "" }, folders: [`${home}\\Lib`] });
+      assert.deepEqual(found("", disk), [], home);
+    }
+  });
+
+  // openlore: scenario=ALauncherIsFollowedToItsProgram spec=sandbox-runner-bash
+  test("ALauncherIsFollowedToItsProgram: scoop's shims, WinGet's links and a linked folder lead to the program's folder", () => {
+    const scoop = `${HOME}\\scoop`;
+    const links = `${HOME}\\AppData\\Local\\Microsoft\\WinGet\\Links`;
+    const ripgrep = `${HOME}\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BurntSushi.ripgrep\\ripgrep-14.1.1`;
+    const nvm = "C:\\nvm4w\\nodejs";
+    const disk = fakeDisk({
+      files: {
+        [`${scoop}\\shims\\jq.shim`]: `path = "${scoop}\\apps\\jq\\current\\jq.exe"\r\n`,
+        [`${scoop}\\shims\\jq.exe`]: "",
+        [`${scoop}\\apps\\jq\\current\\jq.exe`]: "",
+        // A shim naming what is not there, or a relative path, leads nowhere.
+        [`${scoop}\\shims\\gone.shim`]: `path = "${scoop}\\apps\\gone\\gone.exe"`,
+        [`${scoop}\\shims\\rel.shim`]: `path = "apps\\rel\\rel.exe"`,
+        [`${ripgrep}\\rg.exe`]: "",
+      },
+      links: { [`${links}\\rg.exe`]: `${ripgrep}\\rg.exe`, [nvm]: "C:\\Users\\me\\AppData\\Local\\nvm\\v22.11.0" },
+    });
+    assert.deepEqual(found(`${scoop}\\shims;${links};${nvm}`, disk), [`${scoop}\\apps\\jq\\current`, ripgrep, "C:\\Users\\me\\AppData\\Local\\nvm\\v22.11.0"]);
+  });
+
+  test("a launcher leading to the profile itself, the keys or a drive's root opens nothing", () => {
+    const shims = `${HOME}\\scoop\\shims`;
+    const disk = fakeDisk({
+      files: {
+        [`${shims}\\a.shim`]: `path = "${HOME}\\a.exe"`,
+        [`${HOME}\\a.exe`]: "",
+        [`${shims}\\b.shim`]: `path = "${AGENT_DIR}\\b.exe"`,
+        [`${AGENT_DIR}\\b.exe`]: "",
+        [`${shims}\\c.shim`]: `path = "C:\\c.exe"`,
+        "C:\\c.exe": "",
+      },
+    });
+    assert.deepEqual(found(shims, disk), []);
+  });
+
+  test("only the user's own folders are listed: a system directory is not read name by name", () => {
+    let listed = 0;
+    const disk = { ...fakeDisk({}), list: () => (listed++, []) };
+    found("C:\\Windows\\System32;C:\\Program Files\\nodejs", disk);
+    assert.equal(listed, 0);
+  });
+
+  test("the folders found are readable in MXC's request, beside the search path's own", () => {
+    const git = `${HOME}\\AppData\\Local\\Programs\\Git`;
+    const config = mxcTerminalConfig({
+      root: ROOT,
+      allowWrite: true,
+      tmp: `${HOME}\\AppData\\Local\\Temp\\t1`,
+      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      shellArgs: [],
+      cwd: ROOT,
+      env: { PATH: `${git}\\cmd` },
+      siblings: [],
+      searchPath: `${git}\\cmd`,
+      home: HOME,
+      agentDir: AGENT_DIR,
+      configFile: CONFIG,
+      toolReader: fakeDisk({ files: { [`${git}\\mingw64\\bin\\git.exe`]: "" } }),
+    });
+    assert.ok(config.filesystem.readonlyPaths.includes(`${git}\\cmd`));
+    assert.ok(config.filesystem.readonlyPaths.includes(git));
+    assert.ok(!config.filesystem.readwritePaths.includes(git), "read only");
+    assert.ok(config.filesystem.deniedPaths.includes(AGENT_DIR));
+  });
+});

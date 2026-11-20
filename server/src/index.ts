@@ -3885,6 +3885,8 @@ async function handleUpdateConfig(
         ...(config.sandbox?.allowedHosts === undefined ? {} : { allowedHosts: config.sandbox.allowedHosts }),
         // Or an apply would let the agent ask for grants the file turned off.
         ...(config.sandbox?.grants === undefined ? {} : { grants: config.sandbox.grants }),
+        // Or an apply would take the user's tool directories away until the next start.
+        ...(config.sandbox?.readOnlyPaths === undefined ? {} : { readOnlyPaths: config.sandbox.readOnlyPaths }),
         readExceptions: [],
       };
     }

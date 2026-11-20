@@ -112,6 +112,14 @@ export interface SandboxConfig {
    */
   grants?: SandboxGrantsMode;
   /**
+   * Directories every command of the agent's confined shell may read, beyond the sandbox: tools
+   * installed for the user that the search path does not lead to. Absolute after load. Checked
+   * at each launch as a grant is — the agent directory, the configuration, `.pi`, a drive's root
+   * and the home directory itself are never given — and read only. Read from the file only;
+   * Settings carry it over.
+   */
+  readOnlyPaths?: string[];
+  /**
    * Extra directories (absolute paths) that read tools (read/ls/grep/find) are
    * allowed to access in addition to `root`. Write tools are NOT affected — these
    * are read-only exceptions. Populated from `skillPaths`, `promptPaths`,
@@ -1086,6 +1094,12 @@ export function loadConfig(
         fail(`"sandbox.allowedHosts" holds ${JSON.stringify(invalid)}: name a host ("registry.npmjs.org") or a suffix ("*.githubusercontent.com")`);
       }
     }
+    const readOnlyPaths = optionalStringArray(sandbox, "readOnlyPaths");
+    if (readOnlyPaths !== undefined) {
+      if (bashImage !== undefined) fail(`"sandbox.readOnlyPaths" cannot reach bash in a WSLC container ("sandbox.bashImage"): its mounts are fixed when it starts`);
+      const empty = readOnlyPaths.find((entry) => entry.trim() === "");
+      if (empty !== undefined) fail(`"sandbox.readOnlyPaths" holds an empty path: name a directory`);
+    }
     const grants = optionalString(sandbox, "grants", "sandbox.grants");
     if (grants !== undefined && !SANDBOX_GRANTS_MODES.includes(grants as SandboxGrantsMode)) {
       fail(`"sandbox.grants" must be one of ${SANDBOX_GRANTS_MODES.join(", ")} (got "${grants}")`);
@@ -1150,6 +1164,7 @@ export function loadConfig(
       ...(bashImage === undefined ? {} : { bashImage }),
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
       ...(grants === undefined ? {} : { grants: grants as SandboxGrantsMode }),
+      ...(readOnlyPaths === undefined ? {} : { readOnlyPaths: readOnlyPaths.map(resolve) }),
       readExceptions: [
         ...(optionalStringArray(raw, "skillPaths") ?? []).map(resolve),
         ...(optionalStringArray(raw, "userSkillPaths") ?? []).map(resolve),

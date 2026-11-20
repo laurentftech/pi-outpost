@@ -169,6 +169,7 @@ describe("the Git host credential store", () => {
 
 describe("confinedEnvironment", () => {
   // openlore: scenario=KeysDoNotReachTheShell spec=terminal
+  // openlore: scenario=ToolCachesStayPrivate spec=sandbox-runner-bash
   test("keys and other server variables stay out; the shell's own basics are set", () => {
     const env = confinedEnvironment(
       { PATH: "/usr/bin", LANG: "fr_FR.UTF-8", LC_ALL: "C", OPENAI_API_KEY: "sk-secret", PI_OUTPOST_TOKEN: "t", HOME: "/home/server" },
@@ -178,6 +179,9 @@ describe("confinedEnvironment", () => {
       PATH: "/usr/bin", LANG: "fr_FR.UTF-8", LC_ALL: "C", TERM: "xterm-256color", SHELL: "/bin/bash", HOME: root, TMPDIR: tmp,
       // npm's cache in the private temp: the profile's is out of reach.
       npm_config_cache: path.join(tmp, "npm-cache"),
+      // uv's and pip's as well: never the user's own cache, which a command could leave a package in.
+      UV_CACHE_DIR: path.join(tmp, "uv-cache"),
+      PIP_CACHE_DIR: path.join(tmp, "pip-cache"),
       // The shell's history too, or it lands in the user's project.
       HISTFILE: path.join(tmp, ".shell_history"),
       ZDOTDIR: tmp,

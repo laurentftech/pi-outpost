@@ -421,6 +421,8 @@ export async function createSandboxedTools(
       ? confinedBashOperations({
           ...bashOptions,
           ...(sandbox.autoRunner ? { gate: () => autoShellRefusal(sandbox, neverReadable) } : {}),
+          // The user's tool directories: part of the sandbox the file describes, grants or not.
+          ...(sandbox.readOnlyPaths?.length ? { readOnlyGrant: () => readOnlyPathsGrant(sandbox.readOnlyPaths!, grantContextFor(bashOptions)) } : {}),
           ...(broker ? { grants: () => broker.sessionGrants() } : {}),
           ...(rules ? { onRefusal: (refusal: Refusal) => void rules.record(refusal).catch(() => console.log("[sandbox] could not record a refusal")) } : {}),
           // A rule is a grant that lasts: where grants are, and only there.
@@ -531,6 +533,33 @@ export async function allowRuleGrant(rules: SandboxRulesStore, context: GrantCon
     if (!exists) continue;
     const check = await checkGrantRequest({ directories: [{ path: rule.target, access: rule.access }] }, context);
     if (check.ok) grants.push(check.grant);
+  }
+  return mergeGrants(EMPTY_GRANT, ...grants);
+}
+
+/** Each `sandbox.readOnlyPaths` entry already said to be skipped, so the log says it once. */
+const skippedReadOnlyPaths = new Set<string>();
+
+/**
+ * `sandbox.readOnlyPaths` as a grant for one launch: read only, each checked as a grant request
+ * is, so a directory that can never be granted is never given — skipped, and said once in the
+ * log — and each still an existing directory, or the runner would refuse to start.
+ */
+export async function readOnlyPathsGrant(paths: readonly string[], context: GrantContext, log: (line: string) => void = console.log): Promise<Grant> {
+  const grants: Grant[] = [];
+  for (const directory of paths) {
+    const exists = await fs.stat(directory).then((stat) => stat.isDirectory(), () => false);
+    const check = exists ? await checkGrantRequest({ directories: [{ path: directory, access: "read" }] }, context) : undefined;
+    if (check?.ok) {
+      grants.push(check.grant);
+      continue;
+    }
+    const why = check === undefined ? "it is not an existing directory" : check.refusals.map((refusal) => refusal.why).join("; ");
+    const key = `${directory}\n${why}`;
+    if (!skippedReadOnlyPaths.has(key)) {
+      skippedReadOnlyPaths.add(key);
+      log(`[sandbox] sandbox.readOnlyPaths: ${directory} is skipped — ${why}`);
+    }
   }
   return mergeGrants(EMPTY_GRANT, ...grants);
 }

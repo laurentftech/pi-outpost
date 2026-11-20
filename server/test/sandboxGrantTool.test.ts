@@ -40,6 +40,14 @@ async function fixture(ask: (request: unknown) => Promise<string> = async () => 
 }
 
 describe("createRunWithGrantToolDefinition", () => {
+  // openlore: scenario=AProgramsFolderIsAskedFor spec=sandbox-runner-bash
+  it("says a program installed outside the sandbox runs once its folder is granted, and that nothing opens the desktop", () => {
+    const definition = createRunWithGrantToolDefinition({ broker: {}, context: () => ({}), shellTool: "bash", run: async () => ({ content: [] }) } as never);
+    assert.match(definition.description, /A program installed outside the sandbox .* runs once its folder is granted: when starting one fails with "access denied", ask for that folder, read only\./);
+    assert.match(definition.description, /What no grant allows is leaving the sandbox: opening the user's browser or another desktop application .* is refused whatever is granted/);
+    assert.doesNotMatch(definition.description, /start a program outside the sandbox/, "the sentence a model read as forbidding every program outside the project");
+  });
+
   it("runs without asking when the sandbox already gives every requested path", async () => {
     const f = await fixture();
     try {
