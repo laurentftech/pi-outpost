@@ -132,6 +132,25 @@ describe("toolchains under MXC's real executor", { skip }, () => {
     assert.match(seen, /^written\s*$/m, seen);
   });
 
+  // openlore: scenario=OnWindowsCmakeFindsItsModules spec=sandbox-runner-bash
+  test("OnWindowsCmakeFindsItsModules: CMake configures and builds, finding its modules beside its bin", { skip: onPath("cmake") && onPath("mingw32-make") ? false : "no cmake and mingw32-make on the search path" }, async () => {
+    await mkdir(path.join(root, "cm"), { recursive: true });
+    await writeFile(path.join(root, "cm", "hello.c"), '#include <stdio.h>\nint main(void){puts("cmake ok");return 0;}\n');
+    await writeFile(path.join(root, "cm", "CMakeLists.txt"), "cmake_minimum_required(VERSION 3.10)\nproject(hello C)\nadd_executable(hello hello.c)\n");
+    const { output, exitCode } = await ps('cmake -S . -B build -G "MinGW Makefiles"; if ($LASTEXITCODE -eq 0) { cmake --build build }; if ($LASTEXITCODE -eq 0) { ./build/hello.exe }', "cm");
+    assert.doesNotMatch(output, /Modules directory not found/);
+    assert.equal(exitCode, 0, output);
+    assert.match(output, /^cmake ok$/m);
+  });
+
+  // openlore: scenario=OnWindowsMavenStarts spec=sandbox-runner-bash
+  test("OnWindowsMavenStarts: mvn starts, reading its boot folder", { skip: onPath("mvn") ? false : "no mvn on the search path" }, async () => {
+    const { output, exitCode } = await ps("mvn -v");
+    assert.doesNotMatch(output, /-classpath requires class path specification/);
+    assert.equal(exitCode, 0, output);
+    assert.match(output, /Apache Maven \d/);
+  });
+
   // openlore: scenario=OnWindowsGccCompiles spec=sandbox-runner-bash
   test("OnWindowsGccCompiles: gcc compiles and the program runs", { skip: onPath("gcc") ? false : "no gcc on the search path" }, async () => {
     await mkdir(path.join(root, "c"), { recursive: true });
