@@ -18,14 +18,16 @@
 - [x] 2.3 Verify the confined commands for real on Windows 11: asyncio prints `ok` in the agent's shell and in a confined terminal (`OnWindowsPythonAsyncioRunsConfined`, `OnWindowsAsyncioRunsInTheTerminal`); a command opening the server's WebSocket without the token gets 4401 (`OnWindowsTheServerRefusesAConfinedCommand`); with `hostLoopback: false` a host listener is out of reach from both (`AClosedLoopbackKeepsHostServicesOut`, `OnWindowsAClosedLoopbackAlsoClosesTheTerminal`); the generated token is neither in the command's environment nor readable (`GeneratedTokenOutOfTheSandbox`).
 - [x] 2.4 State the loopback in the startup sandbox line under MXC on Windows, with the asyncio limit when it is closed or under `allowedHosts`. Verify with `TheLineNamesTheAsyncioLimit` and a test of the open case.
 - [x] 2.5 Exercise it through the agent in the running app on Windows: ask it to run a pytest suite using pytest-asyncio and to `import lancedb` (issue #525's case), then read the session transcript to confirm the commands finished. Verify by the transcript, not a screenshot.
+  Done on Windows 11 24H2 with OpenRouter's free `nvidia/nemotron-3-ultra-550b-a55b:free` and a uv project (uv 0.13.9, a uv-managed CPython 3.13 behind `.venv`, pytest-asyncio, lancedb 0.41.0), no `readOnlyPaths`: `uv sync`, `uv run pytest -q` (1 passed) and `uv run python -c "import app"` (lancedb imported) all finished in a 44 s turn, nothing asked.
 - [x] 2.6 Document it in `docs/sandboxing.md` (Windows 11: what the open loopback reaches, `sandbox.hostLoopback`, the `allowedHosts` limit with microsoft/mxc#1261 and #1731) and `docs/configuration.md`. Verify links and the JSON examples parse.
 
 ## 3. Integration
 
-- [ ] 3.1 Write `openspec/changes/windows-sandbox-loopback/scenario-coverage.md` mapping every scenario from `rg '^#### Scenario:' openspec/changes/windows-sandbox-loopback` to its test, all `covered`; run `npm run check:scenarios`, `npm run lint` and `openspec validate windows-sandbox-loopback --strict`.
+- [x] 3.1 Write `openspec/changes/windows-sandbox-loopback/scenario-coverage.md` mapping every scenario from `rg '^#### Scenario:' openspec/changes/windows-sandbox-loopback` to its test, all `covered`; run `npm run check:scenarios`, `npm run lint` and `openspec validate windows-sandbox-loopback --strict`.
 
 ## Workflow follow-up
 
 - Comment on issue #525 with the outcome and the upstream links once released.
 - When Windows fixes intra-container loopback (microsoft/mxc#1261), consider flipping `sandbox.hostLoopback` to `false` by default.
+- Found on the way, for a change of its own: uv cannot find the Pythons it manages from inside the sandbox. `APPDATA` is not passed and `USERPROFILE` is the command's temporary directory, so uv looks in `<temp>\AppData\Roaming\uv\python`, downloads a CPython and fails to install it ("Failed to create Python minor version link directory", os error 5). A project whose `.venv` names one works (2.5); `uv sync` without a `.venv`, or with `python-preference = "only-managed"`, does not, and `sandbox.readOnlyPaths` cannot help since uv never looks there. Passing `UV_PYTHON_INSTALL_DIR` at the real directory when it is readable would. `docs/sandboxing.md`'s example also names `uv\data\python`, where uv 0.13 uses `uv\python`.
 - Archive the change after review.
