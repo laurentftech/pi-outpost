@@ -71,7 +71,7 @@ async function start() {
 test("under MXC on macOS: a refused read ends the result naming the directory, is listed under the lock, and an always-allow made there opens it to the next command", async ({ page }) => {
   const app = await start();
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
 
     // Before any command: nothing recorded, and no sentence saying this runner reports nothing.
@@ -126,7 +126,7 @@ test("under MXC on macOS: a refused read ends the result naming the directory, i
 test("break it under MXC on macOS: always allow clicked twice, the directory deleted under its rule, the panel open across turns", async ({ page }) => {
   const app = await start();
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
     // The panel is open before the first refusal exists, and stays open.
     await page.getByTestId("sandbox-rules-toggle").click();

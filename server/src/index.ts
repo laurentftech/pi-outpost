@@ -101,7 +101,7 @@ import {
 import { readPrompt, runPrintTurn } from "./printMode.ts";
 import { checkRunner, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
-import { browsableUrl, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
+import { browsableUrl, withToken, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import { listenerTls } from "./serverTransport.ts";
 import {
   currentEvidence,
@@ -163,6 +163,7 @@ import {
 } from "./fileBrowser.ts";
 import { attachmentDisposition, prepareDownload } from "./download.ts";
 import { Trash } from "./trash.ts";
+import { generatedToken } from "./serverToken.ts";
 import { writeZipStream } from "@pi-outpost/office/zipStream.ts";
 import { PassThrough } from "node:stream";
 import { resolveGitExecutable, useGitExecutable } from "./git.ts";
@@ -618,6 +619,18 @@ if (cli.command === "print") {
 const PORT = config.port;
 const HOST = config.host;
 const AGENT_DIR = config.agentDir ?? getAgentDir();
+// Every connection presents a token, on the loopback too (see serverToken.ts). Generated
+// after loadConfig, so a generated one never satisfies requireTokenOffLoopback.
+/** The operator chose the token: a deployment that may sit behind a reverse proxy (see hostAllowed). */
+const TOKEN_CONFIGURED = config.token !== undefined;
+if (config.token === undefined) {
+  try {
+    config.token = generatedToken(AGENT_DIR);
+  } catch (error) {
+    console.error(`[server] could not set up the access token: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+}
 /**
  * Where deletions from the Files tree wait to be undone — see trash.ts. Emptied now:
  * what an earlier run deleted is not this run's to restore.
@@ -899,7 +912,8 @@ const workspaces = new WorkspaceRegistry();
  * could otherwise connect to this localhost server and drive an agent that
  * has bash/write tools. Only accept browser connections from local dev
  * origins. Requests without an Origin header (non-browser clients: curl,
- * native tools) are allowed — a local process already has shell access.
+ * native tools) pass this check but not the token's: a local process is not
+ * trusted for being local, since a sandboxed command may reach the loopback.
  */
 const ORIGIN_ALLOWLIST = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
@@ -1093,8 +1107,8 @@ app.get("/health", (req, reply) => {
   // callers don't mistake the HTTP 200 for readiness — the real handler
   // (wired after createAgentSessionRuntime resolves) returns { ok: true }.
   if (!health.ok) return reply.code(503).send({ ok: false });
-  // With auth enabled, the public health probe must not leak the session id
-  return config.token !== undefined ? { ok: health.ok } : health;
+  // The public health probe never leaks the session id: every server has a token.
+  return { ok: health.ok };
 });
 
 /** Only these render inline; SVG additionally gets a scripts-off CSP below. */
@@ -1109,14 +1123,15 @@ const IMAGE_CONTENT_TYPES: Record<string, string> = {
 };
 
 /**
- * DNS-rebinding guard for token-less servers: a malicious page can rebind its
- * hostname to 127.0.0.1 and read workspace files through /files/raw — the
- * browser then sends the attacker's Host header, which this rejects. With a
- * token configured the auth check already stops that attacker, and strict Host
- * matching would break reverse-proxy setups, so the guard only arms without one.
+ * DNS-rebinding guard: a malicious page can rebind its hostname to 127.0.0.1
+ * and reach /files/raw — the browser then sends the attacker's Host header,
+ * which this rejects. The token already stops that attacker; the guard stays
+ * as a second wall where it costs nothing, on a server whose token was
+ * generated (a local one). An operator-configured token may mean a reverse
+ * proxy, where strict Host matching would break, so the guard stands down.
  */
 function hostAllowed(hostHeader: string | undefined): boolean {
-  if (config.token !== undefined) return true;
+  if (TOKEN_CONFIGURED) return true;
   if (hostHeader === undefined) return false;
   let hostname: string;
   try {
@@ -1442,7 +1457,10 @@ try {
   // `http://127.0.0.1:0/` — which is the whole of what an operator gets when no
   // browser opens.
   const scheme = httpsOptions ? "https" : "http";
-  const url = typeof bound === "object" && bound !== null ? browsableUrl(bound, scheme) : `${scheme}://${HOST}:${PORT}/`;
+  const address = typeof bound === "object" && bound !== null ? browsableUrl(bound, scheme) : `${scheme}://${HOST}:${PORT}/`;
+  // With the token, as Jupyter does: the browser stores it and strips it from the
+  // address bar (ui/src/authToken.ts), so the operator never types it.
+  const url = withToken(address, config.token);
   console.log(`[server] ${url}`);
   // A terminal switched on in the configuration that cannot run here is said now, in
   // the console the operator is reading, not first discovered as a button that fails.
@@ -3047,6 +3065,7 @@ function terminalConfinement(workspace: Workspace): TerminalConfinement | undefi
     allowWrite: sandbox ? sandbox.allowWrite : true,
     agentDir: AGENT_DIR,
     ...(config.configFile ? { configFile: config.configFile } : {}),
+    ...(config.sandbox?.hostLoopback === undefined ? {} : { hostLoopback: config.sandbox.hostLoopback }),
   });
 }
 
@@ -3887,6 +3906,8 @@ async function handleUpdateConfig(
         ...(config.sandbox?.grants === undefined ? {} : { grants: config.sandbox.grants }),
         // Or an apply would take the user's tool directories away until the next start.
         ...(config.sandbox?.readOnlyPaths === undefined ? {} : { readOnlyPaths: config.sandbox.readOnlyPaths }),
+        // Or an apply would reopen the loopback the file closed.
+        ...(config.sandbox?.hostLoopback === undefined ? {} : { hostLoopback: config.sandbox.hostLoopback }),
         readExceptions: [],
       };
     }

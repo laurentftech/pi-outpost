@@ -16,7 +16,7 @@ test("extension status ANSI styles survive folding, resizing and a fresh update 
   const server = await startServer(root, { noExtensions: false, extensionPaths: [path.join(root, "status.ts")] }, { env: { ANTHROPIC_API_KEY: "e2e-not-a-real-key" } });
   try {
     await page.setViewportSize({ width: 1600, height: 900 });
-    await page.goto(server.base);
+    await page.goto(`${server.base}/?token=${encodeURIComponent(server.token)}`);
     const composer = page.getByRole("textbox", { name: /message pi/i });
     await expect(composer).toBeEnabled();
     await composer.fill("/status-colours");

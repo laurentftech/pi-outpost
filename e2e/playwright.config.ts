@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+/** Written by global-setup.ts: the servers' shared token, in each server's origin. */
+export const E2E_STORAGE_STATE = path.join(HERE, ".auth", "storage-state.json");
 
 /**
  * Browser smoke tests for the two ways this project is consumed: the standalone
@@ -33,5 +35,6 @@ export default defineConfig({
     // Kept only for a failure: enough to see what the page looked like
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    storageState: E2E_STORAGE_STATE,
   },
 });

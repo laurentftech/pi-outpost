@@ -23,7 +23,7 @@ test("FoldedStatusesStayOpenWhileTheyUpdate: the folded list stays open while an
   const server = await startServer(root, { noExtensions: false, extensionPaths: [path.join(root, "ticker.ts")] }, { env: { ANTHROPIC_API_KEY: "e2e-not-a-real-key" } });
   try {
     await page.setViewportSize({ width: 420, height: 800 });
-    await page.goto(server.base);
+    await page.goto(`${server.base}/?token=${encodeURIComponent(server.token)}`);
     const composer = page.getByRole("textbox", { name: /message pi/i });
     await expect(composer).toBeEnabled();
     await composer.fill("/tick");

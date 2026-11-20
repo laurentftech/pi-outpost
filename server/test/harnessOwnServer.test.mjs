@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { test } from "node:test";
-import { makeWorkspace, startServer } from "./harness.mjs";
+import { connect, makeWorkspace, startServer } from "./harness.mjs";
 
 test("a port another server holds is not taken for this test's server", async () => {
   const impostor = http.createServer((req, res) => {
@@ -43,8 +43,11 @@ test("a port another server holds is not taken for this test's server", async ()
 test("a server the harness chose is its own: its log has the session it reports", async () => {
   const server = await startServer(await makeWorkspace());
   try {
-    const health = await (await fetch(`${server.base}/health`)).json();
-    assert.ok(server.log().includes(`[pi] session ${health.sessionId}`));
+    // The session it reports to a client holding its token — /health no longer says it.
+    const client = connect(server.wsUrl());
+    const hello = await client.waitFor("hello", 15_000);
+    client.close();
+    assert.ok(server.log().includes(`[pi] session ${hello.sessionId}`));
   } finally {
     await server.stop();
   }

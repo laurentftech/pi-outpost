@@ -54,7 +54,8 @@ pi-outpost update --extensions [--check]
 | `--model <provider/id>` | With `-p`: the model for the turn |
 
 There is deliberately **no `--token` flag**: a secret on the command line is readable by
-anyone who can list processes. Use `PI_OUTPOST_TOKEN` or the file's `server.token`.
+anyone who can list processes. Use `PI_OUTPOST_TOKEN` or the file's `server.token` — or neither, and
+the server generates one in the agent directory (`outpost-token`) and prints the address with it.
 
 Off-loopback listeners also require encrypted transport. `PI_OUTPOST_TLS_CERT` and
 `PI_OUTPOST_TLS_KEY` override the PEM paths in `server.tls` (relative environment paths

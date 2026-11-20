@@ -28,7 +28,7 @@ const test = base.extend<{ workspace: Workspace }>({
       { env: { ANTHROPIC_API_KEY: "e2e-not-a-real-key" } },
     );
     try {
-      await use({ root, other, url: server.base });
+      await use({ root, other, url: `${server.base}/?token=${encodeURIComponent(server.token)}` });
     } finally {
       await server.stop();
       await Promise.all([root, other].map((directory) => rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })));

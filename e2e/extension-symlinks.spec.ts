@@ -37,7 +37,7 @@ test("the resource manager preserves an extension alias, removes it, and rejects
     await page.getByText(/I trust every extension/).click();
   };
   try {
-    await page.goto(server.base);
+    await page.goto(`${server.base}/?token=${encodeURIComponent(server.token)}`);
     await expect(page.getByTitle("connected")).toBeVisible();
     await manager();
     await chooseAlias();

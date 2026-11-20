@@ -39,7 +39,7 @@ test.beforeEach(async ({ page }) => {
   server = await startServer(root, { noExtensions: false, extensionPaths: [path.join(root, "questions.mjs")] }, { env: { ANTHROPIC_API_KEY: "e2e-not-a-real-key" } });
   client = connect(server.wsUrl());
   await client.waitFor("hello", 30_000);
-  await page.goto(server.base);
+  await page.goto(`${server.base}/?token=${encodeURIComponent(server.token)}`);
   await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
 });
 

@@ -366,6 +366,32 @@ MXC for no clipboard and no input injection. Limits:
 
 Details and probes: [`investigations/windows-sandboxing.md`](investigations/windows-sandboxing.md).
 
+### The loopback and Python
+
+Windows does not let a process in MXC's container connect even to a port it listens on itself, unless
+the container may reach the host's loopback. CPython on Windows builds `socket.socketpair()` — and with it
+every asyncio event loop — from exactly such a connection, so without it any Python using asyncio
+(pytest-asyncio, uvicorn, lancedb as it is imported, MCP servers) hangs forever, silently. It is a Windows
+bug Microsoft has acknowledged ([microsoft/mxc#1261](https://github.com/microsoft/mxc/issues/1261)); no
+MXC setting opens a process's own loopback without the host's.
+
+So by default, without `sandbox.allowedHosts`, the agent's shell and the confined terminal run with the
+host's loopback open, and asyncio works. What that opens: **services listening on this machine's
+loopback are reachable from a command** — a database, a development server, another tool's local API.
+pi-outpost itself is not: it requires its token on every connection, and the token lives in the agent
+directory, which no command can read. Inbound connections from the network stay denied.
+
+To close the loopback again, at the price of asyncio:
+
+```json
+{ "sandbox": { "hostLoopback": false } }
+```
+
+Under `sandbox.allowedHosts` the loopback reaches the proxy alone and asyncio hangs: MXC accepts no other
+loopback rule beside its proxy ([microsoft/mxc#1731](https://github.com/microsoft/mxc/issues/1731)). The
+server's startup line says which way it is (`loopback open: …` or `loopback closed: Python's asyncio
+cannot start in the shell`).
+
 ### Microsoft's telemetry
 
 MXC has two kinds of telemetry, and pi-outpost can switch off only one:

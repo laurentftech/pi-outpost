@@ -84,13 +84,22 @@ Not sure which file is in force, or why a setting has the value it has? **`pi-ou
 config`** prints the resolved configuration and the file it came from, without starting
 anything.
 
+**The access token.** Every connection presents a token, on `127.0.0.1` too: a command confined
+by the sandbox may reach the machine's loopback, and must not find a server that obeys it. Without
+`server.token` or `PI_OUTPOST_TOKEN`, pi-outpost makes one at first start and keeps it in the agent
+directory (`~/.pi/agent/outpost-token`), where the sandbox never reaches. The address printed at start,
+and the window it opens, carry it (`http://127.0.0.1:3141/?token=…`): the browser keeps it and strips
+it from the address bar, so you never type it. A browser that has not seen it shows the token screen;
+paste the file's content there, once. Deleting the file gives you a new token at the next start.
+
 > **Security note.** The server binds to `127.0.0.1` and validates the WebSocket `Origin`
 > header. The agent can be given bash, edit and write tools — never expose this server on a
-> network without a sandbox **and** an auth token: set `server.token` (or the
+> network without a sandbox **and** a token you chose: set `server.token` (or the
 > `PI_OUTPOST_TOKEN` environment variable, which wins) to a long random secret, e.g.
 > `openssl rand -hex 32`. Binding off loopback without one is **refused**, not merely
-> discouraged. Clients authenticate by opening `https://host:3141/?token=<secret>` once
-> (stored locally, stripped from the URL) or via the embed widget's `token` option. Use a
+> discouraged — the generated token does not count. Clients authenticate by opening
+> `https://host:3141/?token=<secret>` once (stored locally, stripped from the URL) or via the
+> embed widget's `token` option. Use a
 > [native HTTPS/WSS, a TLS reverse proxy or an SSH tunnel](deployment.md#remote-transport-https-or-ssh)
 > for transport encryption. Remote HTTP refuses startup by default; local HTTP remains available.
 >

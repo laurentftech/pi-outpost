@@ -71,4 +71,19 @@ describe("networkSummary", () => {
     assert.equal(networkSummary({ ...base, allowedHosts: ["pypi.org"], grants: "never" }), "network only to pypi.org");
     assert.equal(networkSummary(base), undefined);
   });
+
+  const mxc = { ...base, bashRunner: "mxc" } as never as Parameters<typeof networkSummary>[0];
+
+  // openlore: scenario=TheLineNamesTheAsyncioLimit spec=sandbox-runner-bash
+  test("TheLineNamesTheAsyncioLimit: under MXC on Windows a closed loopback says asyncio cannot start", () => {
+    assert.equal(networkSummary({ ...mxc, allowedHosts: ["pypi.org"], grants: "never" }, "win32"), "network only to pypi.org, loopback closed: Python's asyncio cannot start in the shell");
+    assert.equal(networkSummary({ ...mxc, hostLoopback: false }, "win32"), "loopback closed: Python's asyncio cannot start in the shell");
+  });
+
+  test("under MXC on Windows an open loopback says what it reaches; elsewhere nothing is added", () => {
+    assert.equal(networkSummary(mxc, "win32"), "loopback open: services listening on this machine are reachable");
+    assert.equal(networkSummary({ ...mxc, hostLoopback: true }, "win32"), "loopback open: services listening on this machine are reachable");
+    assert.equal(networkSummary(mxc, "linux"), undefined, "MXC on Linux: a process reaches its own loopback");
+    assert.equal(networkSummary({ ...mxc, bashImage: "buildpack-deps:bookworm-scm" }, "win32"), undefined, "WSLC has its own network");
+  });
 });

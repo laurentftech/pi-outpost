@@ -162,7 +162,7 @@ describe("settingsCheck", () => {
     assert.ok(check);
     assert.equal(check.status, "ok");
     assert.match(text(check), /listens on 127\.0\.0\.1:3141 — open http:\/\/127\.0\.0\.1:3141\//);
-    assert.match(text(check), /auth token: none \(loopback only\)/);
+    assert.match(text(check), /auth token: generated, in the agent directory \(loopback only\)/);
     assert.match(text(check), /terminal: disabled/);
   });
 

@@ -18,7 +18,7 @@ test("Word document search loads the extractor in the running app", async ({ pag
     await client.waitFor("hello", 30_000);
     client.send({ type: "set_model", provider: "scripted-tools-test", id: "scripted-tools-test" });
     await client.waitFor((message: { type: string }) => message.type === "model_changed");
-    await page.goto(server.base);
+    await page.goto(`${server.base}/?token=${encodeURIComponent(server.token)}`);
     const composer = page.getByRole("textbox", { name: /message pi/i });
     await composer.fill('STEPS:[{"tool":"tool_search","args":{"query":"Word document"}}]');
     await composer.press("Enter");

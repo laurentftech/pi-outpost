@@ -483,6 +483,7 @@ export interface MxcTerminalConfig {
    */
   network:
     | { egress: { default: "allow" } }
+    | { egress: { default: "allow" }; ingress: { default: "deny"; hostLoopback: "allow" } }
     | { egress: { default: "deny" }; ingress: { default: "allow"; hostLoopback: "allow" } }
     | { egress: { default: "deny" } };
   /** The only way out, with `egress` denied: MXC sets `HTTPS_PROXY` and `HTTP_PROXY` to it. */
@@ -539,6 +540,11 @@ export interface MxcTerminalInput {
   readOnlyFiles?: string[];
   /** `sandbox.allowedHosts`' proxy: the network closed but for it. The agent's shell only. */
   networkProxy?: string;
+  /**
+   * `sandbox.hostLoopback`, without a proxy: the host's loopback open (default), so a process
+   * reaches a port it listens on itself — Python's `socketpair()` and asyncio need it.
+   */
+  hostLoopback?: boolean;
   /**
    * The shell's search path: each folder it names is readable, so a program it finds can run —
    * a tool installed for the user (Python in `AppData\Local\Programs`) sits in the denied profile.
@@ -750,8 +756,15 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     filesystem: { readwritePaths, readonlyPaths, deniedPaths },
     // MXC's defaults deny both today; written out so a change of default cannot open them.
     ui: { disable: false, clipboard: "none", injection: false },
+    // Without a proxy, the host's loopback is open unless `sandbox.hostLoopback` is false:
+    // Windows lets a contained process reach even its own listener only through it (measured,
+    // mxc-sdk 1.1.0 on 10.0.26100: `socketpair()` hangs in `accept` under every other shape;
+    // microsoft/mxc#1261). Other loopback services become reachable; the server is not, without
+    // its token. Inbound from the network stays denied.
     ...(input.networkProxy === undefined
-      ? { network: { egress: { default: "allow" } } }
+      ? input.hostLoopback === false
+        ? { network: { egress: { default: "allow" } } }
+        : { network: { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } } }
       : {
           network: { egress: { default: "deny" }, ingress: { default: "allow", hostLoopback: "allow" } },
           runtimeConfig: { networkProxy: input.networkProxy },

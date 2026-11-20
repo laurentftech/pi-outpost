@@ -35,6 +35,7 @@ coverage/
 # Browser smoke test: the built host page, and what a failing run leaves behind
 e2e/dist-host/
 e2e/test-results/
+e2e/.auth/
 
 # Local test config (personal): the agent's workspace, its own agentDir, its writable zone
 /pi-outpost.config.json

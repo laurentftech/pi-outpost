@@ -4,7 +4,7 @@
 // executable. Also checks no wxc-exec.exe ran for the shell.
 //   node --import tsx/esm scripts/probes/mxc-sdk-exe.mts <path to pi-outpost.exe>
 import { spawn } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -41,7 +41,9 @@ for (;;) {
   await new Promise((resolve) => setTimeout(resolve, 300));
 }
 const verdict = await new Promise<unknown>((resolve, reject) => {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  // The token the server generated in its agent directory: every connection presents one.
+  const token = readFileSync(path.join(dir, "agent", "outpost-token"), "utf8").trim();
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}`);
   const timer = setTimeout(() => reject(new Error(`no verdict: ${log}`)), 120_000);
   ws.on("message", (raw) => {
     const message = JSON.parse(String(raw));

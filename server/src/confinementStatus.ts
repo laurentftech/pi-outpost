@@ -38,8 +38,10 @@ export function buildTerminalConfinement(input: {
   allowWrite: boolean;
   agentDir?: string;
   configFile?: string;
+  /** `sandbox.hostLoopback`: MXC on Windows only (see `mxcTerminalConfig`). */
+  hostLoopback?: boolean;
 }): TerminalConfinement {
-  const { runner, root, writableRoot, allowWrite, agentDir, configFile } = input;
+  const { runner, root, writableRoot, allowWrite, agentDir, configFile, hostLoopback } = input;
   const kind = runnerKind(runner);
   // git's identity: the user's ~/.gitconfig, readable on its own (see userGitConfig).
   const gitConfig = userGitConfig();
@@ -61,6 +63,7 @@ export function buildTerminalConfinement(input: {
                   ...limits,
                   ...terminal,
                   siblings: siblingsToDeny(root),
+                  ...(hostLoopback === undefined ? {} : { hostLoopback }),
                   searchPath: terminal.env.PATH,
                   ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
                 })

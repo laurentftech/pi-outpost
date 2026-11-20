@@ -70,7 +70,7 @@ import { createRunWithGrantToolDefinition } from "./sandboxGrantTool.ts";
 import { checkGrantRequest, EMPTY_GRANT, hostGrantsRefusal, mergeGrants, type Grant, type GrantContext } from "./sandboxGrants.ts";
 import type { Refusal } from "./sandboxRefusals.ts";
 import { hostDecision, type SandboxRulesStore } from "./sandboxRules.ts";
-import { userGitConfig } from "./terminalSandbox.ts";
+import { isPosixMxc, runnerKind, userGitConfig } from "./terminalSandbox.ts";
 
 /**
  * Resolve `target` following symlinks in its deepest existing ancestor, so a
@@ -617,6 +617,7 @@ export async function agentBashOptions(
     // git's identity: the user's ~/.gitconfig, readable on its own.
     gitConfig: userGitConfig(),
     ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts), allowedHosts: sandbox.allowedHosts }),
+    ...(sandbox.hostLoopback === undefined ? {} : { hostLoopback: sandbox.hostLoopback }),
   };
 }
 
@@ -630,15 +631,33 @@ export function asksAboutHosts(sandbox: SandboxConfig): boolean {
 }
 
 /**
- * The agent's network in words, for the startup line an operator reads: undefined without
- * `sandbox.allowedHosts` (open). An empty list under host questions asks about every host, which
- * "only to nothing" said wrongly.
+ * The agent's network in words, for the startup line an operator reads: undefined when open with
+ * nothing to add. An empty list under host questions asks about every host, which "only to
+ * nothing" said wrongly. Under MXC's process container on Windows it also says what the host's
+ * loopback is: open, services on it are reachable; closed, Python's asyncio cannot start
+ * (microsoft/mxc#1261).
  */
-export function networkSummary(sandbox: SandboxConfig): string | undefined {
-  if (sandbox.allowedHosts === undefined) return undefined;
-  const asks = asksAboutHosts(sandbox);
-  if (sandbox.allowedHosts.length === 0) return asks ? "network: every host asked about" : "network closed";
-  return `network only to ${sandbox.allowedHosts.join(", ")}${asks ? ", other hosts asked about" : ""}`;
+export function networkSummary(sandbox: SandboxConfig, platform: NodeJS.Platform = process.platform): string | undefined {
+  const parts: string[] = [];
+  if (sandbox.allowedHosts !== undefined) {
+    const asks = asksAboutHosts(sandbox);
+    if (sandbox.allowedHosts.length === 0) parts.push(asks ? "network: every host asked about" : "network closed");
+    else parts.push(`network only to ${sandbox.allowedHosts.join(", ")}${asks ? ", other hosts asked about" : ""}`);
+  }
+  if (onWindowsMxcProcessContainer(sandbox, platform)) {
+    parts.push(
+      sandbox.allowedHosts === undefined && sandbox.hostLoopback !== false
+        ? "loopback open: services listening on this machine are reachable"
+        : "loopback closed: Python's asyncio cannot start in the shell",
+    );
+  }
+  return parts.length === 0 ? undefined : parts.join(", ");
+}
+
+/** The agent's shell under MXC's process container on Windows: not WSLC, not MXC on Linux or macOS. */
+function onWindowsMxcProcessContainer(sandbox: SandboxConfig, platform: NodeJS.Platform): boolean {
+  const runner = sandbox.bashRunner;
+  return platform === "win32" && runner !== undefined && sandbox.bashImage === undefined && runnerKind(runner) === "mxc" && !isPosixMxc(runner, platform);
 }
 
 export function unsuppliedBuiltIns(sandboxedTools: ToolDefinition[], delegated: readonly string[] = []): string[] {
