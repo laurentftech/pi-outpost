@@ -5,7 +5,7 @@
 ### Requirement: UnderMxcOnWindowsTheTerminalRunsToolchains
 
 A terminal confined by MXC on Windows SHALL get what the agent's confined shell gets for toolchains: `TEMP`,
-`TMP` and `LOCALAPPDATA` naming its private temporary directory, the installations behind its search path
+`TMP` and `LOCALAPPDATA` inside its private temporary directory, the installations behind its search path
 readable, the sandbox cache for tool caches, and rustup's and uv's homes readable.
 
 #### Scenario: OnWindowsTheTerminalBuildsAGoModule

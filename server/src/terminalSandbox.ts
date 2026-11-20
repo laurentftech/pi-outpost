@@ -1231,7 +1231,20 @@ export function gitReadOnlyFiles(gitConfig: string | undefined, home: string = h
 /** The environment of a confined shell: a home in its root, its own temp (history included), no secrets. */
 export function confinedEnvironment(
   serverEnv: NodeJS.ProcessEnv,
-  options: { root: string; tmp: string; shell: string; platform?: NodeJS.Platform; gitConfig?: string },
+  options: {
+    root: string;
+    tmp: string;
+    shell: string;
+    platform?: NodeJS.Platform;
+    gitConfig?: string;
+    /**
+     * MXC on Windows: its container keeps its profile — and the `TEMP` it sets — under the
+     * `LOCALAPPDATA` it is given (`<LOCALAPPDATA>Packagessandbox.{…}ACTemp`), replacing ours.
+     * The server's would put it under a folder the policy denies (`Packages` beside the root's
+     * path, or all of `C:Users`): no temporary file could be created. The private temp instead.
+     */
+    containerProfileInTmp?: boolean;
+  },
 ): Record<string, string> {
   const windows = (options.platform ?? process.platform) === "win32";
   const env: Record<string, string> = {};
@@ -1271,6 +1284,7 @@ export function confinedEnvironment(
     env.USERPROFILE = options.tmp;
     env.TEMP = options.tmp;
     env.TMP = options.tmp;
+    if (options.containerProfileInTmp) env.LOCALAPPDATA = options.tmp;
   }
   return env;
 }

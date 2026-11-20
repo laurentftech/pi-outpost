@@ -4,9 +4,9 @@
 
 ### Requirement: UnderMxcOnWindowsTheTemporaryDirectoryIsTheCommands
 
-Under MXC on Windows, a confined command SHALL start with `TEMP`, `TMP` and `LOCALAPPDATA` naming its
-private temporary directory, whatever the container set, so a tool can create temporary files and its
-per-user state there.
+Under MXC on Windows, a confined command's `TEMP`, `TMP` and `LOCALAPPDATA` SHALL name folders that exist
+and are writable, inside its private temporary directory, so a tool can create temporary files and keep its
+per-user state there; no folder the policy denies SHALL be opened for it.
 
 #### Scenario: OnWindowsATemporaryFileCanBeCreated
 - **GIVEN** the agent's shell confined by MXC on Windows 11 tier 1

@@ -2,8 +2,8 @@
 
 ## 1. The temporary directory
 
-- [ ] 1.1 Re-measure under the real SDK whether any request shape keeps `TEMP`, `TMP` and `LOCALAPPDATA` as sent (`inheritDefaultEnv`, `LOCALAPPDATA` omitted or explicit). Verify by recording the outcome in `design.md` and, if none does, a comment on an existing microsoft/mxc issue or a new one drafted for the user to approve.
-- [ ] 1.2 Restore the three variables from `TMPDIR` in the agent's shell script prologue (PowerShell and busybox) and in the confined terminal's start arguments (PowerShell, `cmd`, busybox). Verify with unit tests on the generated script and arguments, and with a real-MXC test: `OnWindowsATemporaryFileCanBeCreated` and `OnWindowsTheTerminalHasAWritableTemp`.
+- [x] 1.1 Re-measure under the real SDK whether any request shape keeps `TEMP`, `TMP` and `LOCALAPPDATA` as sent (`inheritDefaultEnv`, `LOCALAPPDATA` omitted or explicit). Verify by recording the outcome in `design.md` and, if none does, a comment on an existing microsoft/mxc issue or a new one drafted for the user to approve. Done: MXC derives them from the `LOCALAPPDATA` it is given; the failure was pi-outpost's own deny of `LOCALAPPDATAPackages` (design.md, A). Nothing to report upstream.
+- [x] 1.2 Under MXC on Windows, pass the command's and the confined terminal's private temporary directory as `LOCALAPPDATA`, so the container's profile and `TEMP` are created there (and, for the terminal under `wxc-exec.exe`, which does not create them, its shell starts by restoring the three from `TMPDIR`); landstrip unchanged. Verify with unit tests on the environment for both callers, and real-MXC tests `OnWindowsATemporaryFileCanBeCreated` and `OnWindowsTheTerminalHasAWritableTemp`.
 
 ## 2. Installations behind the search path
 

@@ -34,12 +34,23 @@ See proposal.md for the measured matrix. What the code does today, under MXC on 
 
 ## Decisions
 
-**A — restore the variables in the command, not in the request.** MXC overwrites them after reading the
-request, so the request cannot carry them. The agent's shell gets a prologue in the script it already
-writes (PowerShell `$env:TEMP = $env:TMPDIR`…, busybox `export TEMP="$TMPDIR"`…); the terminal's shell
-gets it as start arguments (PowerShell `-NoExit -Command`, cmd `/K`, busybox `-c '…; exec sh'`). The first
-task re-measures whether a request field (`inheritDefaultEnv`, an explicit `LOCALAPPDATA`) makes MXC keep
-them; if one does, it replaces the prologue. Reported upstream either way.
+**A — give MXC a `LOCALAPPDATA` it can use.** Measured (task 1.1), through the SDK: MXC does not invent
+its values, it derives them from the `LOCALAPPDATA` it is given — `LOCALAPPDATA` becomes
+`<given>\Packages\sandbox.{guid}\AC` and `TEMP`/`TMP` `<given>\…\AC\Temp`, which it creates; with
+`inheritDefaultEnvironment` the same. Launched alone they work. Under pi-outpost's policy the server's
+`LOCALAPPDATA\Packages` is one of the folders denied by name beside the root's path (and for a root outside
+the profile, all of `C:\Users` is), so the container cannot create or use its own profile. Under MXC on
+Windows the command's and the terminal's `LOCALAPPDATA` is therefore their private temporary directory:
+the container's profile, its `TEMP` and anything a tool keeps under `LOCALAPPDATA` (Go's build cache) land
+in a folder already writable and deleted afterwards, and `Packages` — every Store app's data — stays
+denied. landstrip keeps the server's value, which its AppContainer needs to start.
+
+The terminal differs in one respect (measured): it starts under MXC's executor (`wxc-exec.exe`), which
+derives the same paths but does not create the folders, so `TEMP` names one that does not exist. Its shell
+therefore starts by pointing `TEMP`, `TMP` and `LOCALAPPDATA` back at `TMPDIR` (which MXC leaves alone):
+PowerShell in the `-Command` it already starts with, `cmd` as `/K` (without quotes, which the request's
+command line would escape as `\"`, unreadable to cmd). A shell the user gave other arguments, or another
+shell, keeps them as configured.
 
 **B — the parent of `bin`, `cmd`, `Scripts`, `sbin`.** Linux already reads the installation behind a `bin`
 entry (`toolTrees`); Windows did not because landstrip's AppContainer re-granted every tree on each launch

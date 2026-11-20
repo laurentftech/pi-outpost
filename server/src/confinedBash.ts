@@ -454,7 +454,15 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
       const shellArgs = powerShell ? [...POWERSHELL_SCRIPT_ARGS, script] : [script];
       // A start outside the root could not be entered from inside it.
       const startIn = isInside(cwd, options.root) ? cwd : options.root;
-      const env = confinedEnvironment(process.env, { root: options.root, tmp, shell, platform, gitConfig: options.gitConfig });
+      const env = confinedEnvironment(process.env, {
+        root: options.root,
+        tmp,
+        shell,
+        platform,
+        gitConfig: options.gitConfig,
+        // MXC derives the container's TEMP from it (see confinedEnvironment); WSLC is a Linux container.
+        containerProfileInTmp: kind === "mxc" && !wslc && !isPosixMxc(options.runner),
+      });
       const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
       const policyFile = path.join(tmp, "policy.json");
       let args: string[];
