@@ -46,8 +46,45 @@ describe("toolInstallations", () => {
     for (const entry of ["cmd", "bin", "mingw64\\bin", "usr\\bin"]) {
       assert.deepEqual(found(`${git}\\${entry}`, disk), [git], entry);
     }
-    // A cmd folder that is not Git's opens nothing.
-    assert.deepEqual(found(`${HOME}\\AppData\\Local\\Programs\\Other\\cmd`, disk), []);
+    // Another program's cmd folder opens its own installation, as any bin does (windows-toolchains-in-sandbox).
+    assert.deepEqual(found(`${HOME}\\AppData\\Local\\Programs\\Other\\cmd`, disk), [`${HOME}\\AppData\\Local\\Programs\\Other`]);
+  });
+
+  // openlore: scenario=OnWindowsCmakeFindsItsModules spec=sandbox-runner-bash
+  // openlore: scenario=OnWindowsMavenStarts spec=sandbox-runner-bash
+  test("the installation above a bin, cmd, Scripts or sbin folder is opened: Strawberry, Maven, a JDK, Go, Python's Scripts", () => {
+    const disk = fakeDisk({});
+    const maven = `${HOME}\\AppData\\Local\\Programs\\apache-maven-3.9.16`;
+    const python = `${HOME}\\AppData\\Local\\Programs\\Python\\Python315`;
+    const searchPath = [
+      "C:\\Strawberry\\c\\bin",
+      "C:\\Strawberry\\perl\\bin",
+      `${maven}\\bin`,
+      "C:\\Program Files\\Eclipse Adoptium\\jdk-21\\bin",
+      "C:\\Program Files\\Go\\bin",
+      python,
+      `${python}\\Scripts`,
+    ].join(";");
+    assert.deepEqual(found(searchPath, disk), [
+      "C:\\Strawberry\\c",
+      "C:\\Strawberry\\perl",
+      maven,
+      "C:\\Program Files\\Eclipse Adoptium\\jdk-21",
+      "C:\\Program Files\\Go",
+      python,
+    ]);
+  });
+
+  // openlore: scenario=AnInstallationParentNeverOpensTheProfile spec=sandbox-runner-bash
+  test("AnInstallationParentNeverOpensTheProfile: no drive root, no home or folder directly in it, nothing around the agent directory", () => {
+    const disk = fakeDisk({});
+    // A drive's bin, the home's bin, and folders directly in the home (~\.cargo holds credentials.toml).
+    for (const entry of ["C:\\bin", `${HOME}\\bin`, `${HOME}\\.cargo\\bin`, `${HOME}\\.bun\\bin`, `${HOME}\\go\\bin`]) {
+      assert.deepEqual(found(entry, disk), [], entry);
+    }
+    // A bin whose parent holds the agent directory, or lies inside it.
+    assert.deepEqual(found(`${HOME}\\.pi\\bin`, disk), []);
+    assert.deepEqual(found(`${AGENT_DIR}\\tools\\bin`, disk), []);
   });
 
   // openlore: scenario=APythonAVirtualEnvironmentStandsOnRuns spec=sandbox-runner-bash

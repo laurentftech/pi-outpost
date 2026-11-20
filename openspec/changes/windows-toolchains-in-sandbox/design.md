@@ -55,7 +55,7 @@ shell, keeps them as configured.
 **B — the parent of `bin`, `cmd`, `Scripts`, `sbin`.** Linux already reads the installation behind a `bin`
 entry (`toolTrees`); Windows did not because landstrip's AppContainer re-granted every tree on each launch
 (11–13 s). MXC's tier 1 applies a request in about 0.1 s, so the cost is measured (task) and accepted under
-a ceiling. The guard is #524's `allowed` in `toolInstallations`, extended there rather than duplicated.
+a ceiling. The guard is #524's `allowed` in `toolInstallations`, extended there rather than duplicated. Measured (task 2.2), a confined `exit 0` through the SDK with this machine's `PATH` (40 entries, six installations added: Strawberry's two, Maven, the JDK, Go, Python): median 1 773–1 783 ms before, 1 787–1 793 ms after, about +12 ms — PowerShell's own start dominates. A folder directly in the home directory is never taken (`~.cargo` holds `credentials.toml`); each installation is kept once, a wider one replacing folders inside it.
 
 **C — one sandbox cache per user, outside the profile's own tool homes.** `%LOCALAPPDATA%\pi-outpost\
 sandbox-cache` (or `sandbox.cacheDir`), in the request's `readwritePaths`, with one folder per tool

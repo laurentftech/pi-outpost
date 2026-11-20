@@ -7,8 +7,8 @@
 
 ## 2. Installations behind the search path
 
-- [ ] 2.1 Extend `toolInstallations` so a `bin`, `cmd`, `Scripts` or `sbin` entry adds its parent under the existing guard. Verify with unit tests on a fake reader: Strawberry, Maven, a JDK, Go, and `AnInstallationParentNeverOpensTheProfile` (a drive root `bin`, the home's `bin`, a folder holding the agent directory).
-- [ ] 2.2 Measure the launch time of a confined command with a realistic `PATH` before and after, through the SDK and `wxc-exec.exe`. Verify by recording both in `design.md`; keep the change only under 0.5 s added.
+- [x] 2.1 Extend `toolInstallations` so a `bin`, `cmd`, `Scripts` or `sbin` entry adds its parent under the existing guard. Verify with unit tests on a fake reader: Strawberry, Maven, a JDK, Go, and `AnInstallationParentNeverOpensTheProfile` (a drive root `bin`, the home's `bin`, a folder holding the agent directory).
+- [x] 2.2 Measure the launch time of a confined command with a realistic `PATH` before and after, through the SDK and `wxc-exec.exe`. Verify by recording both in `design.md`; keep the change only under 0.5 s added.
 - [ ] 2.3 Real-MXC tests: `OnWindowsCmakeFindsItsModules`, `OnWindowsMavenStarts`, `OnWindowsGccCompiles` (skipped when the tool is absent).
 
 ## 3. The sandbox cache and toolchain homes

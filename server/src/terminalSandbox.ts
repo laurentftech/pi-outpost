@@ -643,6 +643,9 @@ const diskReader: ToolInstallationReader = {
   },
 };
 
+/** A search-path folder by one of these names is part of an installation, the folder above it. */
+const INSTALLATION_FOLDERS = new Set(["bin", "cmd", "scripts", "sbin"]);
+
 /** How many entries of one folder are looked at for launchers: a folder of links, not a system directory. */
 const LAUNCHERS_LOOKED_AT = 400;
 
@@ -678,12 +681,20 @@ export function toolInstallations(
   const take = (folder: string | undefined) => {
     if (folder === undefined) return;
     const clean = folder.replace(/[\\/]+$/, "");
-    if (allowed(clean) && !found.some((known) => lower(known) === lower(clean))) found.push(clean);
+    // One folder per installation: one already covered adds nothing, a wider one replaces those inside it.
+    if (!allowed(clean) || found.some((known) => under(clean, known))) return;
+    for (let i = found.length - 1; i >= 0; i--) if (under(found[i]!, clean)) found.splice(i, 1);
+    found.push(clean);
   };
 
   for (const entry of readableSearchEntries(input.searchPath, input)) {
     const name = win.basename(entry).toLowerCase();
     const parent = win.dirname(entry);
+    // An installation keeps the rest of itself beside the folder PATH names: gcc's libexec, CMake's
+    // share, Maven's boot. Its folder above a bin, cmd, Scripts or sbin, under the same guard — and
+    // never a folder directly in the home directory (~\.cargo holds credentials.toml, ~\.bun and ~\go
+    // a user's own state), whose bin needs nothing beside it.
+    if (INSTALLATION_FOLDERS.has(name) && !(input.home && lower(win.dirname(parent)) === lower(input.home))) take(parent);
     // Git for Windows: cmd\ and bin\ hold launchers for mingw64\bin\git.exe, which needs usr\bin
     // beside it; mingw64\bin and usr\bin on PATH are inside the same installation.
     const parentName = win.basename(parent).toLowerCase();
