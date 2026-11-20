@@ -9,14 +9,15 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import type { WebSocket } from "ws";
 import { confinedBashOperations, type ConfinedBashOptions } from "../src/confinedBash.ts";
 import { buildTerminalConfinement } from "../src/confinementStatus.ts";
 import { CONFINED_POWERSHELL_ARGS, TerminalManager } from "../src/terminalManager.ts";
-import { checkRunner } from "../src/terminalSandbox.ts";
+import { checkRunner, windowsToolchains } from "../src/terminalSandbox.ts";
 
 const RUNNER = process.env.MXC_EXEC;
 const POWERSHELL = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -56,7 +57,9 @@ describe("toolchains under MXC's real executor", { skip }, () => {
 
   /** A command in the agent's confined PowerShell, from `cwd` (relative to the root). */
   async function ps(command: string, cwd = ".", extra: Partial<ConfinedBashOptions> = {}) {
-    const ops = confinedBashOperations({ runner: RUNNER!, shell: POWERSHELL, root, allowWrite: true, agentDir, ...extra });
+    // As the server sets the shell up (agentBashOptions): the sandbox cache and the toolchain homes.
+    const toolchains = windowsToolchains({ cacheDir: path.join(base, "sandbox-cache"), serverEnv: process.env, home: homedir(), agentDir });
+    const ops = confinedBashOperations({ runner: RUNNER!, shell: POWERSHELL, root, allowWrite: true, agentDir, toolchains, ...extra });
     let output = "";
     const { exitCode } = await ops.exec(command, path.join(root, cwd), { onData: (data) => (output += data.toString()), timeout: 600 });
     return { output, exitCode };
@@ -79,7 +82,7 @@ describe("toolchains under MXC's real executor", { skip }, () => {
         exitCode = code ?? -1;
       },
       shell,
-      buildTerminalConfinement({ runner: RUNNER!, root, allowWrite: true, agentDir }),
+      buildTerminalConfinement({ runner: RUNNER!, root, allowWrite: true, agentDir, cacheDir: path.join(base, "sandbox-cache") }),
     );
     const tag = `M${Math.random().toString(36).slice(2, 8)}`;
     manager.write(socket, id, shell.shell === CMD ? `${line} & echo ${tag}-E\r` : `${line}; echo ${tag}-E\r`);
@@ -149,6 +152,78 @@ describe("toolchains under MXC's real executor", { skip }, () => {
     assert.doesNotMatch(output, /-classpath requires class path specification/);
     assert.equal(exitCode, 0, output);
     assert.match(output, /Apache Maven \d/);
+  });
+
+  /** A Go module with one dependency, in `dir` of the root. */
+  async function goModule(dir: string): Promise<void> {
+    await mkdir(path.join(root, dir), { recursive: true });
+    await writeFile(path.join(root, dir, "go.mod"), "module probe/goapp\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n");
+    await writeFile(path.join(root, dir, "main.go"), 'package main\n\nimport (\n\t"fmt"\n\n\t"github.com/google/uuid"\n)\n\nfunc main() { _ = uuid.New(); fmt.Println("go ok") }\n');
+  }
+
+  // openlore: scenario=ADependencyIsDownloadedOnce spec=sandbox-runner-bash
+  test("ADependencyIsDownloadedOnce: a Go dependency is downloaded by the first build only", { skip: onPath("go") ? false : "no go on the search path" }, async () => {
+    await goModule("go1");
+    const first = await ps("go mod tidy; go build -o app.exe .; if ($LASTEXITCODE -eq 0) { ./app.exe }", "go1");
+    assert.equal(first.exitCode, 0, first.output);
+    assert.match(first.output, /^go ok$/m);
+    assert.match(first.output, /go: (downloading|finding).*google\/uuid/, "the first build downloads the dependency");
+    const second = await ps("Remove-Item app.exe; go build -o app.exe .; if ($LASTEXITCODE -eq 0) { ./app.exe }", "go1");
+    assert.equal(second.exitCode, 0, second.output);
+    assert.match(second.output, /^go ok$/m);
+    assert.doesNotMatch(second.output, /downloading/, "the second finds it in the sandbox cache");
+  });
+
+  // openlore: scenario=OnWindowsTheTerminalBuildsAGoModule spec=terminal
+  test("OnWindowsTheTerminalBuildsAGoModule: go build then the program, in a confined terminal", { skip: onPath("go") ? false : "no go on the search path" }, async () => {
+    await goModule("go2");
+    const seen = await inTerminal("go", "cd go2 && go mod tidy && go build -o app.exe . && app.exe");
+    assert.match(seen, /^go ok\s*$/m, seen);
+  });
+
+  // openlore: scenario=GradlesWrapperRunsConfined spec=sandbox-runner-bash
+  test("GradlesWrapperRunsConfined: gradlew test passes twice, the distribution downloaded once", { skip: onPath("gradle") ? false : "no gradle on the search path to make the wrapper" }, async () => {
+    const dir = path.join(root, "gradle-app");
+    await mkdir(dir, { recursive: true });
+    execFileSync(onPath("gradle")!, ["init", "--type", "java-application", "--dsl", "kotlin", "--test-framework", "junit-jupiter", "--project-name", "gradleapp", "--package", "probe", "--no-split-project", "--java-version", "21", "--no-incubating", "--overwrite", "-q"], { cwd: dir, shell: true, windowsHide: true });
+    const first = await ps("./gradlew.bat test -q --console=plain", "gradle-app");
+    assert.equal(first.exitCode, 0, first.output);
+    const second = await ps("./gradlew.bat test -q --console=plain", "gradle-app");
+    assert.equal(second.exitCode, 0, second.output);
+    assert.doesNotMatch(second.output, /Downloading https:\/\/services\.gradle\.org/, "the wrapper's distribution is in the sandbox cache");
+  });
+
+  // openlore: scenario=NpmsGlobalPrefixIsNotInTheProject spec=sandbox-runner-bash
+  test("NpmsGlobalPrefixIsNotInTheProject: npm's global root is a folder of the sandbox cache", { skip: onPath("npm") ? false : "no npm on the search path" }, async () => {
+    const { output, exitCode } = await ps("npm root -g");
+    assert.equal(exitCode, 0, output);
+    assert.ok(output.toLowerCase().includes(path.join(base, "sandbox-cache").toLowerCase()), output);
+    assert.equal(existsSync(path.join(root, "${APPDATA}")), false);
+  });
+
+  // openlore: scenario=OnWindowsCargoTestsConfined spec=sandbox-runner-bash
+  test("OnWindowsCargoTestsConfined: rustup's toolchain is found and a crate with a registry dependency tests", { skip: existsSync(path.join(homedir(), ".rustup")) && onPath("cargo") ? false : "no rustup toolchain for this user" }, async () => {
+    const { output, exitCode } = await ps("cargo new -q --vcs none crate1; Set-Location crate1; cargo add -q itoa; cargo test -q");
+    assert.doesNotMatch(output, /no default is configured/);
+    assert.equal(exitCode, 0, output);
+    assert.match(output, /test result: ok/);
+  });
+
+  // openlore: scenario=CargoCredentialsStayOut spec=sandbox-runner-bash
+  test("CargoCredentialsStayOut: the user's Cargo home is not readable", { skip: existsSync(path.join(homedir(), ".cargo")) ? false : "no ~/.cargo here" }, async () => {
+    const cargo = path.join(homedir(), ".cargo");
+    const { output } = await ps(`try { Get-ChildItem -Force -LiteralPath "${cargo}" -ErrorAction Stop | Out-Null; "LISTED" } catch { "REFUSED" }; try { Get-Content -LiteralPath "${path.join(cargo, "credentials.toml")}" -ErrorAction Stop | Out-Null; "READ" } catch { "NOT READ" }`);
+    // ~\.cargo\bin is on PATH and readable; its home, with credentials.toml, is not.
+    assert.match(output, /^REFUSED$/m, output);
+    assert.match(output, /^NOT READ$/m, output);
+  });
+
+  // openlore: scenario=UvFindsTheUsersPythons spec=sandbox-runner-bash
+  test("UvFindsTheUsersPythons: a uv project with no .venv uses a Python uv installed, downloading none", { skip: onPath("uv") && existsSync(path.join(process.env.APPDATA ?? "", "uv", "python")) ? false : "no uv-managed Python for this user" }, async () => {
+    const { output, exitCode } = await ps("uv init -q --app uvproj; Set-Location uvproj; uv sync --managed-python; uv run --managed-python python -V");
+    assert.doesNotMatch(output, /Downloading cpython/, output);
+    assert.equal(exitCode, 0, output);
+    assert.match(output, /^Python 3\.\d+/m);
   });
 
   // openlore: scenario=OnWindowsGccCompiles spec=sandbox-runner-bash

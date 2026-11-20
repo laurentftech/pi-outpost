@@ -643,6 +643,73 @@ const diskReader: ToolInstallationReader = {
   },
 };
 
+/** The sandbox cache's place when `sandbox.cacheDir` names none: beside the user's local data, the sandbox's own. */
+export function defaultSandboxCache(env: NodeJS.ProcessEnv = process.env): string {
+  return path.win32.join(env.LOCALAPPDATA || path.win32.join(homedir(), "AppData", "Local"), "pi-outpost", "sandbox-cache");
+}
+
+/** What a confined command under MXC on Windows gets for its toolchains (`windowsToolchains`). */
+export interface WindowsToolchains {
+  /** The sandbox cache: writable by confined commands, read by nothing unconfined. */
+  cacheDir: string;
+  /** Where each tool keeps its downloads, and where rustup and uv find what the user installed. */
+  env: Record<string, string>;
+  /** Toolchain homes that hold no credentials, readable, read only. */
+  readable: string[];
+}
+
+/**
+ * Where a confined command's tools keep their downloads, and the toolchains it may read.
+ *
+ * Each tool's cache or home is a folder of the sandbox cache, so a dependency is downloaded once per
+ * user rather than once per command, and never into the user's own caches, which sit beside
+ * credentials (`~\.cargo\credentials.toml`, `~\.m2\settings.xml`, `~\.gradle\gradle.properties`) and
+ * whose packages run unconfined later. `APPDATA` too, so npm's global prefix and per-user state land
+ * there and not in the project. rustup's home and the Pythons uv installed hold toolchains and no
+ * credentials: they are read where they are, named in the environment, when they exist and pass the
+ * search path's guard.
+ */
+export function windowsToolchains(
+  input: { cacheDir: string; serverEnv: NodeJS.ProcessEnv; home?: string; agentDir?: string; configFile?: string },
+  reader: ToolInstallationReader = diskReader,
+): WindowsToolchains {
+  const win = path.win32;
+  const at = (...parts: string[]) => win.join(input.cacheDir, ...parts);
+  const env: Record<string, string> = {
+    CARGO_HOME: at("cargo"),
+    GRADLE_USER_HOME: at("gradle"),
+    GOPATH: at("go"),
+    GOMODCACHE: at("go", "pkg", "mod"),
+    GOCACHE: at("go", "build"),
+    MAVEN_OPTS: `-Dmaven.repo.local=${at("m2", "repository")}`,
+    NUGET_PACKAGES: at("nuget", "packages"),
+    DOTNET_CLI_HOME: at("dotnet"),
+    BUN_INSTALL_CACHE_DIR: at("bun", "install-cache"),
+    npm_config_cache: at("npm"),
+    UV_CACHE_DIR: at("uv"),
+    PIP_CACHE_DIR: at("pip"),
+    APPDATA: at("appdata", "Roaming"),
+  };
+  const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+  const under = (child: string, parent: string) => lower(child) === lower(parent) || lower(child).startsWith(`${lower(parent)}\\`);
+  const allowed = (folder: string) =>
+    win.isAbsolute(folder) &&
+    folder !== win.parse(folder).root &&
+    !(input.home && under(input.home, folder)) &&
+    ![input.agentDir, input.configFile].some((secret) => secret && (under(secret, folder) || under(folder, secret)));
+  const readable: string[] = [];
+  const home = (variable: string, fallback: string | undefined) => {
+    const folder = input.serverEnv[variable] || fallback;
+    if (folder === undefined || !allowed(folder) || !reader.isDirectory(folder)) return;
+    readable.push(folder);
+    env[variable] = folder;
+  };
+  const roaming = input.serverEnv.APPDATA || (input.home ? win.join(input.home, "AppData", "Roaming") : undefined);
+  home("RUSTUP_HOME", input.home ? win.join(input.home, ".rustup") : undefined);
+  home("UV_PYTHON_INSTALL_DIR", roaming ? win.join(roaming, "uv", "python") : undefined);
+  return { cacheDir: input.cacheDir, env, readable };
+}
+
 /** A search-path folder by one of these names is part of an installation, the folder above it. */
 const INSTALLATION_FOLDERS = new Set(["bin", "cmd", "scripts", "sbin"]);
 

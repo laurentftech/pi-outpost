@@ -3067,6 +3067,7 @@ function terminalConfinement(workspace: Workspace): TerminalConfinement | undefi
     agentDir: AGENT_DIR,
     ...(config.configFile ? { configFile: config.configFile } : {}),
     ...(config.sandbox?.hostLoopback === undefined ? {} : { hostLoopback: config.sandbox.hostLoopback }),
+    ...(config.sandbox?.cacheDir === undefined ? {} : { cacheDir: config.sandbox.cacheDir }),
   });
 }
 
@@ -3909,6 +3910,8 @@ async function handleUpdateConfig(
         ...(config.sandbox?.readOnlyPaths === undefined ? {} : { readOnlyPaths: config.sandbox.readOnlyPaths }),
         // Or an apply would reopen the loopback the file closed.
         ...(config.sandbox?.hostLoopback === undefined ? {} : { hostLoopback: config.sandbox.hostLoopback }),
+        // Or an apply would move the sandbox cache back to its default.
+        ...(config.sandbox?.cacheDir === undefined ? {} : { cacheDir: config.sandbox.cacheDir }),
         readExceptions: [],
       };
     }

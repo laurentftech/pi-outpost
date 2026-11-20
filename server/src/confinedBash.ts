@@ -13,7 +13,7 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
@@ -40,6 +40,7 @@ import {
   terminalPolicy,
   type MxcMacConfig,
   type RunnerCheck,
+  type WindowsToolchains,
 } from "./terminalSandbox.ts";
 
 export interface ConfinedBashOptions {
@@ -71,6 +72,11 @@ export interface ConfinedBashOptions {
    * hosts it refuses while a command runs are named after the command's output.
    */
   networkProxy?: Pick<EgressProxy, "url" | "watchRefusals">;
+  /**
+   * MXC's process container on Windows: the sandbox cache, writable, the toolchain homes, readable,
+   * and the variables pointing tools at them (`windowsToolchains`).
+   */
+  toolchains?: WindowsToolchains;
   /** `sandbox.hostLoopback`: MXC on Windows only, without a proxy (see `mxcTerminalConfig`). */
   hostLoopback?: boolean;
   /** `sandbox.allowedHosts` itself, which a command's own proxy starts from. */
@@ -412,6 +418,13 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
       throw new Error("a directory grant cannot reach bash in a WSLC container: its mounts are fixed when it starts");
     }
     const directories = grantedDirectories(grant);
+    // The sandbox cache and the toolchain homes: part of the sandbox, a diagnosis' too.
+    const toolchains = kind === "mxc" && windows && !wslc && !isPosixMxc(options.runner) ? options.toolchains : undefined;
+    if (toolchains) {
+      await mkdir(toolchains.cacheDir, { recursive: true });
+      directories.grantedWrite.push(toolchains.cacheDir);
+      directories.grantedRead.push(...toolchains.readable);
+    }
     // A host the list does not name is asked about while the connection waits — by a proxy of
     // this command's own, so that what it asks is this command's, and closed after it. The shared
     // proxy of the list is left as it is, for every other command and session using it.
@@ -463,6 +476,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         // MXC derives the container's TEMP from it (see confinedEnvironment); WSLC is a Linux container.
         containerProfileInTmp: kind === "mxc" && !wslc && !isPosixMxc(options.runner),
       });
+      if (toolchains) Object.assign(env, toolchains.env);
       const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
       const policyFile = path.join(tmp, "policy.json");
       let args: string[];

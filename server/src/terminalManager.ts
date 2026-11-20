@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { confinedEnvironment, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
+import { confinedEnvironment, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -642,6 +642,7 @@ export async function confinedLaunch(confine: TerminalConfinement, shell: string
   const startIn = isInside(path.resolve(cwd), confine.root) ? path.resolve(cwd) : confine.root;
   const shellArgs = confine.kind === "mxc" && process.platform === "win32" ? withTemporaryDirectoryRestored(shell, givenArgs) : givenArgs;
   let shellEnv: Record<string, string> = {};
+  if (confine.toolchains) await fs.mkdir(confine.toolchains.cacheDir, { recursive: true });
   const files = await prepareConfinedTerminal((tmp) => {
     shellEnv = confinedEnvironment(process.env, {
       root: confine.root,
@@ -650,6 +651,7 @@ export async function confinedLaunch(confine: TerminalConfinement, shell: string
       gitConfig: confine.gitConfig,
       containerProfileInTmp: confine.kind === "mxc" && process.platform === "win32",
     });
+    if (confine.toolchains) Object.assign(shellEnv, confine.toolchains.env);
     return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv });
   });
   // MXC's request carries the command line and the environment itself: its executor hands
@@ -726,6 +728,8 @@ export interface TerminalConfinement {
   root: string;
   /** The user's git configuration, read-only inside (see `userGitConfig`): git's identity. */
   gitConfig?: string;
+  /** MXC on Windows: the sandbox cache, created before the launch, and the variables naming it. */
+  toolchains?: WindowsToolchains;
   /** The policy for this terminal, given its private temporary directory and what it runs. */
   policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy;
 }

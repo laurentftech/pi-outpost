@@ -113,6 +113,12 @@ export interface SandboxConfig {
    */
   hostLoopback?: boolean;
   /**
+   * MXC's process container on Windows: where confined commands' tools keep their downloads (Cargo,
+   * Gradle, Go, Maven, NuGet, bun, npm, uv, pip) — writable by them, read by nothing unconfined.
+   * Absent: `%LOCALAPPDATA%pi-outpostsandbox-cache` (see `windowsToolchains`).
+   */
+  cacheDir?: string;
+  /**
    * Whether the agent's confined shell may ask the user for a grant — named hosts or
    * directories beyond the sandbox, for one command or the session (`sandboxGrants.ts`).
    * Absent: `"ask"`. `"never"`: no grant tool. Read from the file only; Settings carry it over.
@@ -1127,6 +1133,25 @@ export function loadConfig(
       );
     }
     const resolvedRoot = root ? resolve(root) : cwdOverridden ? config.cwd : fileCwd;
+    const cacheDir = optionalString(sandbox, "cacheDir", "sandbox.cacheDir");
+    const resolvedCacheDir = cacheDir === undefined ? undefined : resolve(cacheDir);
+    if (resolvedCacheDir !== undefined) {
+      // The sandbox's own: never the user's home or above it, never where the keys or the
+      // configuration are, never inside the root — where the project's own tooling, run
+      // unconfined, would read what a confined command left.
+      const inside = (child: string, parent: string) => {
+        const rel = path.relative(parent, child);
+        return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+      };
+      const why = inside(os.homedir(), resolvedCacheDir)
+        ? "the home directory"
+        : [config.agentDir, filePath].some((secret) => secret !== undefined && (inside(secret, resolvedCacheDir) || inside(resolvedCacheDir, secret)))
+          ? "where the agent directory or the configuration is"
+          : inside(resolvedCacheDir, resolvedRoot)
+            ? "inside the sandbox root"
+            : undefined;
+      if (why !== undefined) fail(`"sandbox.cacheDir" must be a folder of its own, not ${why}: ${resolvedCacheDir}`);
+    }
     const writableRoot = optionalString(sandbox, "writableRoot");
     const resolvedWritableRoot = writableRoot ? resolve(writableRoot) : undefined;
     if (resolvedWritableRoot !== undefined) {
@@ -1173,6 +1198,7 @@ export function loadConfig(
       ...(bashImage === undefined ? {} : { bashImage }),
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
       ...(hostLoopback === undefined ? {} : { hostLoopback }),
+      ...(resolvedCacheDir === undefined ? {} : { cacheDir: resolvedCacheDir }),
       ...(grants === undefined ? {} : { grants: grants as SandboxGrantsMode }),
       ...(readOnlyPaths === undefined ? {} : { readOnlyPaths: readOnlyPaths.map(resolve) }),
       readExceptions: [

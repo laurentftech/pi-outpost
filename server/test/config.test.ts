@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import os, { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
 import {
@@ -520,6 +520,21 @@ describe("loadConfig — resource path resolution", () => {
       if (process.platform === "win32") assert.equal(await load("pwsh"), path.join(bin, "pwsh.exe"), "a name without extension, through PATHEXT");
       await assert.rejects(async () => load("no-such-shell.exe"), /"sandbox\.bashShell" names "no-such-shell\.exe", which is not on PATH: give its full path/);
       assert.equal(await load("./tools/sh.exe"), path.join(dir, "tools", "sh.exe"), "a path is the config folder's, as before");
+    });
+  });
+
+  // openlore: scenario=TheSandboxCacheIsNotTheUsers spec=sandbox-runner-bash
+  test("TheSandboxCacheIsNotTheUsers: sandbox.cacheDir is kept as a folder of its own, refused at the home, the keys or inside the root", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      const write = (cacheDir: string) => writeFile(configPath, JSON.stringify({ agentDir: path.join(dir, "agent"), sandbox: { root: path.join(dir, "root"), allowBash: true, bashRunner: "./mxc/wxc-exec.exe", cacheDir } }));
+      await mkdir(path.join(dir, "root"), { recursive: true });
+      await write(path.join(dir, "cache"));
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.cacheDir, path.join(dir, "cache"));
+      for (const refused of [os.homedir(), path.parse(os.homedir()).root, path.join(dir, "agent"), path.join(dir, "agent", "inner"), path.join(dir, "root", "cache")]) {
+        await write(refused);
+        assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox.cacheDir" must be a folder of its own/, refused);
+      }
     });
   });
 

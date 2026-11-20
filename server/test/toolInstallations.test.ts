@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { mxcTerminalConfig, toolInstallations, type ToolInstallationReader } from "../src/terminalSandbox.ts";
+import { mxcTerminalConfig, toolInstallations, windowsToolchains, type ToolInstallationReader } from "../src/terminalSandbox.ts";
 
 const HOME = "C:\\Users\\me";
 const ROOT = "L:\\Python\\isai_oper";
@@ -175,5 +175,47 @@ describe("toolInstallations", () => {
     assert.ok(config.filesystem.readonlyPaths.includes(git));
     assert.ok(!config.filesystem.readwritePaths.includes(git), "read only");
     assert.ok(config.filesystem.deniedPaths.includes(AGENT_DIR));
+  });
+});
+
+describe("windowsToolchains", () => {
+  const CACHE = "C:\\Users\\me\\AppData\\Local\\pi-outpost\\sandbox-cache";
+
+  // openlore: scenario=ADependencyIsDownloadedOnce spec=sandbox-runner-bash
+  // openlore: scenario=NpmsGlobalPrefixIsNotInTheProject spec=sandbox-runner-bash
+  test("every tool's cache and APPDATA are folders of the sandbox cache, never the user's own", () => {
+    const { env, cacheDir } = windowsToolchains({ cacheDir: CACHE, serverEnv: { CARGO_HOME: `${HOME}\\.cargo`, APPDATA: `${HOME}\\AppData\\Roaming` }, home: HOME, agentDir: AGENT_DIR }, fakeDisk({}));
+    assert.equal(cacheDir, CACHE);
+    for (const name of ["CARGO_HOME", "GRADLE_USER_HOME", "GOPATH", "GOMODCACHE", "GOCACHE", "NUGET_PACKAGES", "DOTNET_CLI_HOME", "BUN_INSTALL_CACHE_DIR", "npm_config_cache", "UV_CACHE_DIR", "PIP_CACHE_DIR", "APPDATA"]) {
+      assert.ok(env[name]?.startsWith(`${CACHE}\\`), `${name} = ${env[name]}`);
+    }
+    assert.equal(env.MAVEN_OPTS, `-Dmaven.repo.local=${CACHE}\\m2\\repository`);
+  });
+
+  // openlore: scenario=OnWindowsCargoTestsConfined spec=sandbox-runner-bash
+  // openlore: scenario=UvFindsTheUsersPythons spec=sandbox-runner-bash
+  test("rustup's home and uv's Pythons are read where they are and named, when they exist", () => {
+    const rustup = `${HOME}\\.rustup`;
+    const uv = `${HOME}\\AppData\\Roaming\\uv\\python`;
+    const present = windowsToolchains({ cacheDir: CACHE, serverEnv: {}, home: HOME }, fakeDisk({ folders: [rustup, uv] }));
+    assert.deepEqual(present.readable, [rustup, uv]);
+    assert.equal(present.env.RUSTUP_HOME, rustup);
+    assert.equal(present.env.UV_PYTHON_INSTALL_DIR, uv);
+    // The server's own RUSTUP_HOME is honoured; nothing is named when the folder does not exist.
+    const moved = windowsToolchains({ cacheDir: CACHE, serverEnv: { RUSTUP_HOME: "D:\\rust\\rustup" }, home: HOME }, fakeDisk({ folders: ["D:\\rust\\rustup"] }));
+    assert.deepEqual(moved.readable, ["D:\\rust\\rustup"]);
+    assert.equal(moved.env.UV_PYTHON_INSTALL_DIR, undefined);
+  });
+
+  // openlore: scenario=CargoCredentialsStayOut spec=sandbox-runner-bash
+  test("CargoCredentialsStayOut: no home that may hold credentials is read, and a home that would open the profile or the keys is refused", () => {
+    const all = [`${HOME}\\.cargo`, `${HOME}\\.m2`, `${HOME}\\.gradle`, `${HOME}\\.rustup`];
+    const { readable } = windowsToolchains({ cacheDir: CACHE, serverEnv: {}, home: HOME, agentDir: AGENT_DIR }, fakeDisk({ folders: all }));
+    assert.deepEqual(readable, [`${HOME}\\.rustup`]);
+    for (const rustupHome of [HOME, "C:\\", AGENT_DIR, `${AGENT_DIR}\\rustup`]) {
+      const refused = windowsToolchains({ cacheDir: CACHE, serverEnv: { RUSTUP_HOME: rustupHome }, home: HOME, agentDir: AGENT_DIR }, fakeDisk({ folders: [rustupHome] }));
+      assert.deepEqual(refused.readable, [], rustupHome);
+      assert.equal(refused.env.RUSTUP_HOME, undefined, rustupHome);
+    }
   });
 });

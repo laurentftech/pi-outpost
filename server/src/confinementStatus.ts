@@ -5,6 +5,7 @@
  */
 import { mxcSdk, runThroughSdk, sdkRequest } from "./mxcSdk.ts";
 import { execFile } from "node:child_process";
+import { homedir } from "node:os";
 import path from "node:path";
 import type { ConfinementVerdict } from "@pi-outpost/shared";
 import { CONFINE_SUGGESTION, platformRunner, type PlatformRunner } from "./autoRunner.ts";
@@ -14,6 +15,7 @@ import { agentBashOptions } from "./sandbox.ts";
 import type { SandboxConfig } from "./config.ts";
 import { confinedLaunch, type TerminalConfinement } from "./terminalManager.ts";
 import {
+  defaultSandboxCache,
   gitReadOnlyFiles,
   isPosixMxc,
   mxcPosixConfig,
@@ -24,6 +26,7 @@ import {
   siblingsToDeny,
   terminalPolicy,
   userGitConfig,
+  windowsToolchains,
 } from "./terminalSandbox.ts";
 
 /**
@@ -40,9 +43,16 @@ export function buildTerminalConfinement(input: {
   configFile?: string;
   /** `sandbox.hostLoopback`: MXC on Windows only (see `mxcTerminalConfig`). */
   hostLoopback?: boolean;
+  /** `sandbox.cacheDir`: MXC on Windows only (see `windowsToolchains`). Absent: the default. */
+  cacheDir?: string;
 }): TerminalConfinement {
   const { runner, root, writableRoot, allowWrite, agentDir, configFile, hostLoopback } = input;
   const kind = runnerKind(runner);
+  // MXC's process container on Windows: the sandbox cache and the toolchain homes, as the agent's shell gets them.
+  const toolchains =
+    kind === "mxc" && !isPosixMxc(runner) && process.platform === "win32"
+      ? windowsToolchains({ cacheDir: input.cacheDir ?? defaultSandboxCache(), serverEnv: process.env, home: homedir(), agentDir, configFile })
+      : undefined;
   // git's identity: the user's ~/.gitconfig, readable on its own (see userGitConfig).
   const gitConfig = userGitConfig();
   const readOnlyFiles = gitReadOnlyFiles(gitConfig);
@@ -52,6 +62,7 @@ export function buildTerminalConfinement(input: {
     kind,
     root,
     ...(gitConfig ? { gitConfig } : {}),
+    ...(toolchains ? { toolchains } : {}),
     policy:
       kind === "seatbelt"
         ? (terminal) => seatbeltPolicy({ ...limits, ...terminal, searchPath: terminal.env.PATH })
@@ -64,6 +75,7 @@ export function buildTerminalConfinement(input: {
                   ...terminal,
                   siblings: siblingsToDeny(root),
                   ...(hostLoopback === undefined ? {} : { hostLoopback }),
+                  ...(toolchains ? { grantedWrite: [toolchains.cacheDir], grantedRead: toolchains.readable } : {}),
                   searchPath: terminal.env.PATH,
                   ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
                 })

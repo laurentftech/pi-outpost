@@ -13,11 +13,11 @@
 
 ## 3. The sandbox cache and toolchain homes
 
-- [ ] 3.1 `sandbox.cacheDir` (default `%LOCALAPPDATA%\pi-outpost\sandbox-cache`), refused when it is or holds the home, the agent directory or the configuration, or lies inside the sandbox root; carried over by Settings. Verify with config tests for `TheSandboxCacheIsNotTheUsers`.
-- [ ] 3.2 The per-tool table and its variables in `confinedEnvironment` under MXC on Windows; the cache in `readwritePaths`, created on first use; npm's, uv's and pip's caches moved there from the temporary directory on Windows. Verify with unit tests on the environment and the request, and that Linux and macOS are unchanged.
-- [ ] 3.3 `RUSTUP_HOME` and uv's Pythons readable and named, when they exist and pass the guard; Cargo's, Maven's, Gradle's and npm's homes never. Verify with request tests and a real-MXC `CargoCredentialsStayOut`.
-- [ ] 3.4 Real-MXC tests: `ADependencyIsDownloadedOnce` (Go), `GradlesWrapperRunsConfined`, `NpmsGlobalPrefixIsNotInTheProject`, `OnWindowsCargoTestsConfined`, `UvFindsTheUsersPythons`, `OnWindowsTheTerminalBuildsAGoModule`; each skipped when its tool is absent.
-- [ ] 3.5 State the sandbox cache's location on the startup sandbox line under MXC on Windows. Verify with a startup-line test.
+- [x] 3.1 `sandbox.cacheDir` (default `%LOCALAPPDATA%\pi-outpost\sandbox-cache`), refused when it is or holds the home, the agent directory or the configuration, or lies inside the sandbox root; carried over by Settings. Verify with config tests for `TheSandboxCacheIsNotTheUsers`.
+- [x] 3.2 The per-tool table and its variables in `confinedEnvironment` under MXC on Windows; the cache in `readwritePaths`, created on first use; npm's, uv's and pip's caches moved there from the temporary directory on Windows. Verify with unit tests on the environment and the request, and that Linux and macOS are unchanged.
+- [x] 3.3 `RUSTUP_HOME` and uv's Pythons readable and named, when they exist and pass the guard; Cargo's, Maven's, Gradle's and npm's homes never. Verify with request tests and a real-MXC `CargoCredentialsStayOut`.
+- [x] 3.4 Real-MXC tests: `ADependencyIsDownloadedOnce` (Go), `GradlesWrapperRunsConfined`, `NpmsGlobalPrefixIsNotInTheProject`, `OnWindowsCargoTestsConfined`, `UvFindsTheUsersPythons`, `OnWindowsTheTerminalBuildsAGoModule`; each skipped when its tool is absent.
+- [x] 3.5 State the sandbox cache's location on the startup sandbox line under MXC on Windows. Verify with a startup-line test.
 
 ## 4. MSYS2 and bun
 

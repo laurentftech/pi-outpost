@@ -10,6 +10,7 @@
  */
 import fs from "node:fs/promises";
 import { realpathSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Type, type TSchema } from "typebox";
 import {
@@ -70,7 +71,7 @@ import { createRunWithGrantToolDefinition } from "./sandboxGrantTool.ts";
 import { checkGrantRequest, EMPTY_GRANT, hostGrantsRefusal, mergeGrants, type Grant, type GrantContext } from "./sandboxGrants.ts";
 import type { Refusal } from "./sandboxRefusals.ts";
 import { hostDecision, type SandboxRulesStore } from "./sandboxRules.ts";
-import { isPosixMxc, runnerKind, userGitConfig } from "./terminalSandbox.ts";
+import { defaultSandboxCache, isPosixMxc, runnerKind, userGitConfig, windowsToolchains, type WindowsToolchains } from "./terminalSandbox.ts";
 
 /**
  * Resolve `target` following symlinks in its deepest existing ancestor, so a
@@ -618,6 +619,27 @@ export async function agentBashOptions(
     gitConfig: userGitConfig(),
     ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts), allowedHosts: sandbox.allowedHosts }),
     ...(sandbox.hostLoopback === undefined ? {} : { hostLoopback: sandbox.hostLoopback }),
+    ...(toolchainsFor(sandbox, neverReadable) ?? {}),
+  };
+}
+
+/**
+ * What the agent's shell under MXC's process container on Windows gets for toolchains: the sandbox
+ * cache and the homes rustup and uv keep (`windowsToolchains`). Nothing elsewhere.
+ */
+export function toolchainsFor(
+  sandbox: SandboxConfig,
+  neverReadable: { agentDir?: string; configFile?: string } = {},
+  platform: NodeJS.Platform = process.platform,
+): { toolchains: WindowsToolchains } | undefined {
+  if (!onWindowsMxcProcessContainer(sandbox, platform)) return undefined;
+  return {
+    toolchains: windowsToolchains({
+      cacheDir: sandbox.cacheDir ?? defaultSandboxCache(),
+      serverEnv: process.env,
+      home: os.homedir(),
+      ...neverReadable,
+    }),
   };
 }
 
@@ -650,6 +672,8 @@ export function networkSummary(sandbox: SandboxConfig, platform: NodeJS.Platform
         ? "loopback open: services listening on this machine are reachable"
         : "loopback closed: Python's asyncio cannot start in the shell",
     );
+    // Where confined commands' tools keep their downloads, so the operator knows what grows, and where.
+    parts.push(`sandbox cache ${sandbox.cacheDir ?? defaultSandboxCache()}`);
   }
   return parts.length === 0 ? undefined : parts.join(", ");
 }
