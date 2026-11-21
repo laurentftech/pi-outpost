@@ -35,10 +35,12 @@ generates one in your agent directory (`~/.pi/agent/outpost-token`) and prints
 `http://localhost:5173/?token=<the same value>` — or paste it into the token screen; the browser
 keeps it for that origin.
 
-`npm run dev` passes the repository's committed
+`npm run dev` runs with the repository's committed
 [`pi-outpost.config.dev.json`](../pi-outpost.config.dev.json) — the same code path and the
 same "no config, no start" rule as any other deployment, with no special case for
-developers.
+developers. It starts from an untracked copy, `pi-outpost.config.dev.local.json`, which the
+server writes back to (the projects you open, Settings you apply), so the committed file stays
+clean; the copy is made again when the committed file changes, keeping the keys only it has.
 
 `npm run dev:sandbox` does the same with
 [`pi-outpost.config.dev-sandbox.json`](../pi-outpost.config.dev-sandbox.json): the agent's
@@ -47,7 +49,7 @@ the proxy, so each host is asked about — the way to try grants and network que
 PowerShell 7 rather than Windows PowerShell 5.1: models write `&&` and `||`, which only 7 parses.
 It needs Windows 11 with MXC (see [sandboxing](sandboxing.md)) and PowerShell 7 installed where
 its installer puts it (`winget install Microsoft.PowerShell`); stop `npm run dev` first, both
-listen on 3142. Settings you apply there are written back to that file: `git restore` it after.
+listen on 3142. It too runs from an untracked copy, `pi-outpost.config.dev-sandbox.local.json`.
 
 Both restart the server when a file under `server/src`, `shared/src`, `office/src` or
 `posters/src` is written (`server/scripts/dev-watch.mjs`), and only then: not when one is

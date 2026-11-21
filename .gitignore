@@ -82,3 +82,5 @@ RELEASE_NOTES.md
 
 # Kept local on purpose: a probe with its own lockfile (pptxgenjs), not part of the repo
 /scripts/probes/free-layout/
+# The dev servers' own copies of their configuration (server/scripts/dev-config.mjs)
+pi-outpost.config.*.local.json
