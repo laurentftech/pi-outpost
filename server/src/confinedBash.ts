@@ -13,7 +13,7 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
@@ -48,6 +48,8 @@ import {
 export interface ConfinedBashOptions {
   /** `sandbox.bashRunner`: MXC's executor or landstrip's binary. */
   runner: string;
+  /** Seconds a command given no timeout may run. Default `DEFAULT_COMMAND_TIMEOUT_SECONDS`; tests set less. */
+  defaultTimeout?: number;
   /**
    * `sandbox.bashShell`. Default `/bin/bash`; Windows has none that works by default.
    * PowerShell (see `isPowerShell`) runs the command as a `.ps1` script instead.
@@ -157,7 +159,7 @@ export const DIAGNOSE_OPTION = "diagnose";
 /** What ends a failed command where the sandbox says nothing on its own: that a diagnosis can. */
 export function diagnosisOfferNote(): string {
   return (
-    `[pi-outpost] This sandbox does not say on its own what it refused. If this failure looks like a refused path, ` +
+    `[pi-outpost] This output reports an access denied, and this sandbox does not say on its own what it refused. To learn whether it was the sandbox, ` +
     `run the same command again with ${DIAGNOSE_OPTION}: true — it runs once more under a narrower sandbox, without network, ` +
     `and returns only what the sandbox refused. Its effects happen again: never diagnose a command that must not run twice. ` +
     `"Access denied" starting a program (a tool installed for the user, the Python a virtual environment points at) is such a path: ` +
@@ -172,8 +174,8 @@ export function diagnosisOfferNote(): string {
  */
 export function diagnosisIgnoredNote(): string {
   return (
-    `[pi-outpost] ${DIAGNOSE_OPTION} was ignored: this command has not failed here yet, so it ran as usual, output and network included. ` +
-    `Ask for a diagnosis only after it fails and its output offers one.`
+    `[pi-outpost] ${DIAGNOSE_OPTION} was ignored: this command had not just failed here, so it ran as usual, output and network included. ` +
+    `Ask for a diagnosis only after it fails reporting an access denied.`
   );
 }
 
@@ -349,8 +351,16 @@ export const POWERSHELL_SCRIPT_ARGS = ["-NoProfile", "-NonInteractive", "-Execut
  * its variables stay in the script's scope, and its `$?` is taken inside the block, right after
  * it: after the pipe it would be `Out-Default`'s. A command that itself exits (or throws) right
  * after a table still loses it: PowerShell does that under `-Command` too, pi's own tool included.
+ *
+ * The command is not in this script but in its own file beside it (`powerShellCommandFile`),
+ * parsed here before it runs. A script PowerShell would not parse runs no line at all, so with the
+ * command inline its parse error came out before the output encoding was set — in the console's
+ * old code page, read as UTF-8: the model got `caract�re` and `��||��` (a real session). Parsed
+ * here, the error is shown in UTF-8, its line numbers are the command's own, and a file
+ * `COMMAND_UNPARSED` beside the script tells pi-outpost that nothing ran — so that nothing is said
+ * about the sandbox, which cannot have refused a command that never started.
  */
-export function powerShellScript(command: string): string {
+export function powerShellScript(): string {
   return [
     "\uFEFF$ProgressPreference = 'SilentlyContinue'",
     "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}",
@@ -366,15 +376,38 @@ export function powerShellScript(command: string): string {
     "$global:LASTEXITCODE = $null",
     // A command that returns at its top level ends the block with nothing failed.
     "$global:PiOutpostCommandOk = $true",
+    // Read as text and run as a script block, not dot-sourced as a file: an `exit` in a file run
+    // from this one would end that file alone, and its code would be lost.
+    `$global:PiOutpostCommand = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '${POWERSHELL_COMMAND_FILE}'))`,
+    "$global:PiOutpostParseErrors = $null",
+    "[void][System.Management.Automation.Language.Parser]::ParseInput($global:PiOutpostCommand, [ref]$null, [ref]$global:PiOutpostParseErrors)",
+    // Not run: each error as the parser words it, with its place in the command and the line itself.
+    "if ($global:PiOutpostParseErrors) {",
+    `  [void](New-Item -ItemType File -Force (Join-Path $PSScriptRoot '${COMMAND_UNPARSED}'))`,
+    "  foreach ($e in $global:PiOutpostParseErrors) { $p = $e.Extent.StartScriptPosition; [Console]::Error.WriteLine(\"ParserError: line $($p.LineNumber), column $($p.ColumnNumber): $($e.Message)\"); [Console]::Error.WriteLine(\"    $($p.Line)\") }",
+    "  exit 1",
+    "}",
     ". {",
-    command,
-    "",
-    "$global:PiOutpostCommandOk = $?",
+    ". ([ScriptBlock]::Create($global:PiOutpostCommand))",
     "} | Out-Default",
     "if (-not $global:PiOutpostCommandOk) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }",
     "exit 0",
     "",
   ].join("\n");
+}
+
+/** The file beside the script holding the command. */
+export const POWERSHELL_COMMAND_FILE = "command-body.ps1";
+/** The file the script leaves beside itself when PowerShell would not parse the command. */
+export const COMMAND_UNPARSED = "command-unparsed";
+
+/**
+ * The command's own file: the command, then its status taken on its own line right after it, so a
+ * comment ending the command cannot swallow it. With a byte-order mark, as the script: Windows
+ * PowerShell 5.1 reads UTF-8 without one in the ANSI code page.
+ */
+export function powerShellCommandFile(command: string): string {
+  return ["﻿" + command, "", "$global:PiOutpostCommandOk = $?", ""].join("\n");
 }
 
 export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBashOperations {
@@ -395,11 +428,17 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
    * One command. With `diagnosis`, run as a diagnosis (`mxcDiagnosticConfig`): none of its output is
    * shown, and what MXC's report names — filtered, undefined when MXC wrote none — goes there.
    */
-  const launchCommand = async (command: string, cwd: string, { onData: shown, signal, timeout }: ExecOptions, extra: Grant, diagnosis?: (found: Refusal[] | undefined) => void) => {
+  const launchCommand = async (command: string, cwd: string, { onData: shown, signal, timeout: asked }: ExecOptions, extra: Grant, diagnosis?: (found: Refusal[] | undefined) => void) => {
+    // A command given no timeout gets one: a server started to check it answers never ends, and the
+    // turn waited on it for an hour (a real session). Said when it ends one, with what to do instead.
+    const timeout = asked ?? options.defaultTimeout ?? DEFAULT_COMMAND_TIMEOUT_SECONDS;
     const diagnose = diagnosis !== undefined;
     // bun's install, refused a rename in the container (see bunInstallNote): watched for, a window
     // kept across chunks so a message split between two is still seen.
     let bunInstallRefused = false;
+    // Whether the output reports an access denied: the only sign a refusal here leaves.
+    let accessDenied = false;
+    let deniedTail = "";
     let tail = "";
     const onData: (data: Buffer) => void = diagnose
       ? () => {}
@@ -408,6 +447,11 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
             const text = tail + data.toString();
             if (text.includes(BUN_TEMPORARY_DIRECTORY_REFUSED)) bunInstallRefused = true;
             tail = text.slice(-BUN_TEMPORARY_DIRECTORY_REFUSED.length);
+          }
+          if (!accessDenied) {
+            const text = deniedTail + data.toString();
+            if (reportsAccessDenied(text)) accessDenied = true;
+            deniedTail = text.slice(-64);
           }
           shown(data);
         };
@@ -478,7 +522,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     let exitCode: number | null | undefined;
     try {
       const script = path.join(tmp, powerShell ? "command.ps1" : "command.sh");
-      await writeFile(script, powerShell ? powerShellScript(command) : command, { mode: 0o600 });
+      await writeFile(script, powerShell ? powerShellScript() : command, { mode: 0o600 });
+      if (powerShell) await writeFile(path.join(tmp, POWERSHELL_COMMAND_FILE), powerShellCommandFile(command), { mode: 0o600 });
       const shellArgs = powerShell ? [...POWERSHELL_SCRIPT_ARGS, script] : [script];
       // A start outside the root could not be entered from inside it.
       const startIn = isInside(cwd, options.root) ? cwd : options.root;
@@ -694,8 +739,14 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         // Not when the proxy already named a refused host — that is what failed, and a diagnosis
         // runs without network: it would contradict "do not retry".
         const hostRefused = refused.size > 0 || [...answers.values()].some((answer) => !isApproved(answer));
-        if (diagnosable && !diagnose && !hostRefused && exitCode !== undefined && exitCode !== 0) {
-          onData(Buffer.from(`\n${diagnosisOfferNote()}\n`));
+        // Nor when PowerShell would not parse the script: nothing ran, so the sandbox refused
+        // nothing, and a note about it would send the agent after a grant it already has.
+        const unparsed = powerShell && (await stat(path.join(tmp, COMMAND_UNPARSED)).then(() => true, () => false));
+        if (diagnosable && !diagnose && !hostRefused && !unparsed && exitCode !== undefined && exitCode !== 0) {
+          // Said only where the output reports an access denied: on any failure, it sent a model
+          // after grants for "program not found" — a missing package — run after run (a real session).
+          // A diagnosis stays available for any failure; the tool's description says so.
+          if (accessDenied) onData(Buffer.from(`\n${diagnosisOfferNote()}\n`));
           offered.delete(command);
           offered.add(command);
           // Bounded: the oldest offer goes first.
@@ -705,6 +756,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           offered.delete(command);
         }
       }
+    } catch (error) {
+      if (asked === undefined && !diagnose && error instanceof Error && error.message.startsWith("timeout:")) shown(Buffer.from(`\n${defaultTimeoutNote(timeout)}\n`));
+      throw error;
     } finally {
       if (reportDir !== undefined) await rm(reportDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
       await rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
@@ -829,6 +883,18 @@ export function oneWslcAtATime<T>(launch: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/** How long a command given no timeout may run: an install finishes in it, a server does not. */
+export const DEFAULT_COMMAND_TIMEOUT_SECONDS = 300;
+
+/** What ends a command stopped by the default timeout. It is no refusal, and says nothing of the sandbox. */
+export function defaultTimeoutNote(seconds: number = DEFAULT_COMMAND_TIMEOUT_SECONDS): string {
+  return (
+    `It was stopped after ${seconds} seconds, the limit for a command given no timeout: it had not ended. ` +
+    "A command that keeps running until stopped, such as a server, needs a timeout of its own — a few seconds to check it starts. " +
+    "A command that needs longer needs a larger one."
+  );
+}
+
 function timeoutInMs(timeout: number | undefined): number | undefined {
   if (timeout === undefined) return undefined;
   if (!Number.isFinite(timeout) || timeout <= 0) throw new Error("Invalid timeout: must be a finite number of seconds");
@@ -843,6 +909,40 @@ function isInside(candidate: string, root: string): boolean {
 
 /** How bun says its install could not use its temporary directory (`PackageManagerDirectories.rs`). */
 const BUN_TEMPORARY_DIRECTORY_REFUSED = "accessing temporary directory. set $BUN_TMPDIR or $BUN_INSTALL";
+
+/**
+ * True when a command's output reports an access denied — how a refusal of MXC's shows on Windows,
+ * whatever the program: Windows' own message (localised, and in a program's old code page read as
+ * UTF-8, `Acc�s refus�`), PowerShell's untranslated categories, .NET's and the runtimes' names for
+ * it, and error 5 as numbers. A failure without one of these is not the sandbox's to speak of.
+ */
+export function reportsAccessDenied(output: string): boolean {
+  return ACCESS_DENIED.test(output);
+}
+
+const ACCESS_DENIED = new RegExp(
+  [
+    String.raw`access (?:is )?denied`,
+    String.raw`access to the path .{1,300}? is denied`,
+    String.raw`acc.s refus.`,
+    String.raw`acc.s au chemin .{1,300}? (?:est )?refus.`,
+    String.raw`zugriff verweigert`,
+    String.raw`acceso denegado`,
+    String.raw`accesso negato`,
+    String.raw`acesso negado`,
+    String.raw`toegang geweigerd`,
+    String.raw`permission ?denied`,
+    String.raw`UnauthorizedAccess`,
+    String.raw`AccessDeniedException`,
+    String.raw`PermissionError`,
+    String.raw`\bE(?:ACCES|PERM)\b`,
+    String.raw`\[WinError 5\]`,
+    String.raw`\bos error 5\b`,
+    String.raw`0x80070005`,
+  ].join("|"),
+  "i",
+);
+
 
 /**
  * What ends a command whose `bun install` / `bun add` hit MXC's rename limit: inside the container a

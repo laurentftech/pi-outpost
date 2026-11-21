@@ -60,9 +60,11 @@ describe("a diagnosis under MXC, run in process through its SDK", { skip }, () =
     const ops = operations(told);
     let output = "";
     if (kind === "diagnose") {
+      // A diagnosis may be asked for any failure here; the note offering it comes only with an access
+      // denied, which these commands, catching their own errors, never print.
       let first = "";
-      await ops.exec(command, root, { onData: (data) => void (first += data.toString()) });
-      assert.match(first, /diagnose: true/, `the command must fail with the offer first: ${first}`);
+      const failed = await ops.exec(command, root, { onData: (data) => void (first += data.toString()) });
+      assert.notEqual(failed.exitCode, 0, `the command must fail first: ${first}`);
       told.length = 0;
     }
     const runIt = kind === "exec" ? ops.exec.bind(ops) : ops.diagnose!.bind(ops);
@@ -82,6 +84,40 @@ describe("a diagnosis under MXC, run in process through its SDK", { skip }, () =
     const ok = await run("exec", "'fine'");
     assert.equal(ok.exitCode, 0);
     assert.doesNotMatch(ok.output, /diagnose/, "a success is offered nothing");
+  });
+
+  // openlore: scenario=ACommandThatWouldNotParseIsOfferedNothing spec=sandbox-durable-rules
+  test("a command PowerShell would not parse is offered nothing about the sandbox; one that ran still is", async () => {
+    // The commands a small model wrote in a real session, in bash: PowerShell 5.1 has no `||` or `&&`.
+    for (const command of ['which uv || echo "uv not found"', "mkdir -p out/x && cd out/x && 'test'"]) {
+      const { output, exitCode } = await run("exec", command);
+      assert.notEqual(exitCode, 0);
+      assert.match(output, /ParserError/, `PowerShell's own error is shown: ${output}`);
+      // In the encoding the model reads: it was the console's old code page, read as UTF-8 (`caract�re`).
+      assert.doesNotMatch(output, /�/, `the error came back undamaged: ${output}`);
+      assert.match(output, /ParserError: line 1, column \d+: /, `the line is the command's own: ${output}`);
+      assert.ok(output.includes(`    ${command}`), `the line itself is quoted: ${output}`);
+      assert.doesNotMatch(output, /\[pi-outpost\]/, `nothing about the sandbox: ${output}`);
+      // Asked for anyway, no diagnosis runs: it was not offered.
+      let diagnosed = "";
+      await operations([]).diagnose!(command, root, { onData: (data) => void (diagnosed += data.toString()) });
+      assert.doesNotMatch(diagnosed, /\[pi-outpost\] diagnosis:/, "no diagnosis ran");
+    }
+    // A failure that reports no access denied is not the sandbox's to speak of: the real session's
+    // "program not found" (a package not installed) sent a model after grants, run after run.
+    const same = operations([]);
+    const missingTool = "& (Join-Path $PWD 'no-such-tool.exe')";
+    let missingOutput = "";
+    const missing = await same.exec(missingTool, root, { onData: (data) => void (missingOutput += data.toString()) });
+    assert.notEqual(missing.exitCode, 0);
+    assert.doesNotMatch(missingOutput, /\[pi-outpost\]/, `nothing about the sandbox: ${missingOutput}`);
+    let diagnosedMissing = "";
+    await same.diagnose!(missingTool, root, { onData: (data) => void (diagnosedMissing += data.toString()) });
+    assert.match(diagnosedMissing, /\[pi-outpost\] diagnosis: /, "a diagnosis can still be asked for any failure");
+    // A script that ran, failing on a parse error raised inside it, may have been refused something.
+    const ran = await run("exec", `Get-Content ${quoted(path.join(other, "secret.txt"))}; Invoke-Expression 'a ||'`);
+    assert.match(ran.output, /ParserError/);
+    assert.match(ran.output, /run the same command again with diagnose: true[^\n]*\n?\s*$/, ran.output);
   });
 
   // openlore: scenario=ADiagnosisNamesTheRefusedDirectory spec=sandbox-durable-rules
@@ -163,8 +199,8 @@ describe("a diagnosis under MXC, run in process through its SDK", { skip }, () =
     assert.match(output, /VISIBLE-MARKER/, "the output is shown");
     assert.doesNotMatch(output, /other-secret/, "still confined");
     assert.doesNotMatch(output, /\[pi-outpost\] diagnosis:/, "no diagnosis ran");
-    assert.match(output, /diagnose was ignored: this command has not failed here yet[^\n]*\n?\s*$/);
-    // That run failed with the offer: the same command is now diagnosed.
+    assert.match(output, /diagnose was ignored: this command had not just failed here[^\n]*\n?\s*$/);
+    // That run failed: the same command is now diagnosed.
     let second = "";
     await ops.diagnose!(command, root, { onData: (data) => void (second += data.toString()) });
     assert.doesNotMatch(second, /VISIBLE-MARKER/, "a diagnosis hides the output");
@@ -174,7 +210,7 @@ describe("a diagnosis under MXC, run in process through its SDK", { skip }, () =
     const flaky = `if (Test-Path ${quoted(flag)}) { 'now-fine' } else { exit 1 }`;
     let failed = "";
     await ops.exec(flaky, root, { onData: (data) => void (failed += data.toString()) });
-    assert.match(failed, /diagnose: true/, "it failed with the offer");
+    assert.doesNotMatch(failed, /\[pi-outpost\]/, "a failure reporting no access denied says nothing about the sandbox");
     await writeFile(flag, "x");
     await ops.exec(flaky, root, { onData: () => {} });
     let third = "";

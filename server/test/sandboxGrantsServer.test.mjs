@@ -335,6 +335,28 @@ test("ARefusedRequestRunsNothing: refused, the command does not run and the agen
   assert.equal(existsSync(marker), false, "the refused command ran");
 });
 
+// openlore: scenario=ARefusalIsNotAskedAgainInTheSameRequest spec=sandbox-approved-grants
+test("ARefusalIsNotAskedAgainInTheSameRequest: refused once, the same grant asked again in the same request shows no second dialog", async (t) => {
+  // A model re-asked a refused grant seventeen times in one turn: seventeen dialogs for the user.
+  const { root, beside } = await project();
+  const { client, results } = await run(t, {
+    root,
+    steps: [grantStep(beside), grantStep(beside), grantStep(beside, { directories: [{ path: path.join(beside, "inner"), access: "read" }] })],
+    answer: async (client) => {
+      const { request } = await client.waitFor("sandbox_grant_request", 60_000);
+      client.send({ type: "sandbox_grant_response", id: request.id, decision: "refuse" });
+      // The narrower read is a question of its own.
+      const second = await client.waitFor((message) => message.type === "sandbox_grant_request" && message.request.id !== request.id, 60_000);
+      client.send({ type: "sandbox_grant_response", id: second.request.id, decision: "refuse" });
+    },
+  });
+  assert.equal(results.length, 3);
+  assert.match(results[0].text, /The user refused the grant\. The command did not run\. Do not ask for it again in this request: tell the user what it blocked\./);
+  assert.match(results[1].text, /^Not asked again: the user already refused .* in this request\. The command did not run\. Do not ask for it again: tell the user what it blocked\.$/);
+  // A folder inside the one refused for writing may still be asked to read: a different question.
+  assert.equal(client.received.filter((message) => message.type === "sandbox_grant_request").length, 2, "the repeat was not put to the user; the narrower read was");
+});
+
 // openlore: scenario=LaterCommandsKeepTheSessionGrant spec=sandbox-approved-grants
 // openlore: scenario=ANewSessionStartsWithoutGrants spec=sandbox-approved-grants
 test("a session grant reaches later commands, and a new session starts without it, the configuration unchanged", async (t) => {

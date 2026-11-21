@@ -1414,6 +1414,14 @@ export function confinedEnvironment(
     env.USERPROFILE = options.tmp;
     env.TEMP = options.tmp;
     env.TMP = options.tmp;
+    // PowerShell writes its module cache a few seconds after it starts, to the folder Windows names
+    // for local application data — asked of Windows, not of LOCALAPPDATA. In MXC's container that
+    // folder does not exist, .NET answers "", and the cache landed in the working directory: a
+    // `Microsoft\Windows\PowerShell\ModuleAnalysisCache` in the user's project (a real session).
+    env.PSModuleAnalysisCachePath = path.win32.join(options.tmp, "PowerShell", "ModuleAnalysisCache");
+    // Python writes to a pipe in the ANSI code page, read here as UTF-8: Windows' own messages came
+    // to the model as `Le fichier sp�cifi� est introuvable`. Its output only; files keep their default.
+    env.PYTHONIOENCODING ??= "utf-8";
     if (options.containerProfileInTmp) {
       env.LOCALAPPDATA = options.tmp;
       // No MSYS2 program starts in MXC's container: their folders would only shadow native ones.
