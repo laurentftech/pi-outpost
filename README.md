@@ -34,7 +34,7 @@ npx --allow-scripts=node-pty,koffi pi-outpost
 The script permissions enable the native terminal (`node-pty`) and sandbox FFI (`koffi`);
 other dependency install scripts remain blocked.
 
-Open `http://127.0.0.1:3141/` if the interface does not open automatically. Pick a provider and sign in or enter an API key, then ask **“What does this project do?”** You can also configure a local or OpenAI-compatible model from the setup screen.
+If the interface does not open automatically, open the address the server prints (`http://127.0.0.1:3141/?token=…`: it carries the [access token](docs/getting-started.md), which the browser then keeps). Pick a provider and sign in or enter an API key, then ask **“What does this project do?”** You can also configure a local or OpenAI-compatible model from the setup screen.
 
 The starter configuration lets the agent **read and write this directory, with a sandboxed shell**. Use the gear menu to adjust permissions. See [getting started](docs/getting-started.md) for the configuration, launch options, and security boundaries.
 
