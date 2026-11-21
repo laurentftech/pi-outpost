@@ -98,6 +98,24 @@ drafted and dropped at the user's decision: the defect is MXC's.
 home directory, the agent directory, the configuration, or lies inside the sandbox root (where the agent
 could place it to be read unconfined by the project's own tooling).
 
+**Tools the table does not name: `sandbox.toolEnvironment`.** The table is a default, not a limit. The
+configuration may add variables, or replace the table's, with `${cache}` standing for the sandbox cache's
+folder (`"COMPOSER_HOME": "${cache}/composer"`, `"SBT_OPTS": "-Dsbt.global.base=${cache}/sbt"`); reading a
+tool's installation or home elsewhere is `sandbox.readOnlyPaths` (#524). A variable grants nothing — the
+policy still bounds what is read and written, and a command can set its own — and the file is out of the
+sandbox's reach, so only the operator writes them. Refused: names the sandbox itself sets (`PATH`, `TEMP`,
+`TMP`, `TMPDIR`, `LOCALAPPDATA`, `USERPROFILE`, `HOME`, `SystemRoot`, `windir`), names that are not
+variable names, and empty values.
+
+## The matrix, with the fixes built in (task 5.1)
+
+Measured on Windows 11 24H2 10.0.26100.9711, mxc-sdk 1.1.0, the agent's PowerShell confined by MXC with
+the sandbox cache, this machine's `PATH`, no configuration: node, `npm test`, `npm install`, `npx`,
+`npm root -g` (a folder of the cache), `python -m venv` + pip, `uv init` + `uv run`, gcc, CMake, `rustc`,
+`cargo build`, `cargo test`, `javac` + `java`, `mvn test`, `gradlew test`, `go test` + `go build` (a module
+downloaded), `dotnet run` (.NET 9.0.321), Strawberry's Perl, `bun run` + `bun test` (1.4.5) — 19 of 20 pass.
+`bun add` fails on MXC's handle-relative rename, as expected, and ends with the note.
+
 ## Risks / Trade-offs
 
 - [One project's command can leave a poisoned package in the cache another project's command uses] → every

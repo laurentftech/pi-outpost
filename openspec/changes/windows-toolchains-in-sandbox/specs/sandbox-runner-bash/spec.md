@@ -126,3 +126,19 @@ changes, and that the user can run it outside the sandbox.
 - **GIVEN** the same project
 - **WHEN** a confined command runs `bun add is-odd`
 - **THEN** it fails, and the output ends with the note naming the rename limit and running it outside the sandbox
+
+### Requirement: AnOperatorPointsOtherToolsAtTheSandboxCache
+
+`sandbox.toolEnvironment` MAY map variable names to values, `${cache}` standing for the sandbox cache's folder;
+under MXC on Windows a confined command and terminal SHALL get them, after and over the built-in table. A name
+the sandbox itself sets, a name that is not a variable name, or an empty value SHALL be refused at load.
+
+#### Scenario: AToolTheTableDoesNotNameKeepsItsCache
+- **GIVEN** `sandbox.toolEnvironment` naming `PROBE_TOOL_HOME` as `${cache}/probe-tool`
+- **WHEN** a confined command writes a file into `$env:PROBE_TOOL_HOME` and a second command reads it back
+- **THEN** both succeed, and the file lies in the sandbox cache's `probe-tool` folder
+
+#### Scenario: AToolEnvironmentCannotUndoTheSandbox
+- **GIVEN** `sandbox.toolEnvironment` naming `PATH`, `TEMP` or `USERPROFILE`, a name with a space, or an empty value
+- **WHEN** the configuration is loaded
+- **THEN** it is refused with a reason naming `sandbox.toolEnvironment` and the entry

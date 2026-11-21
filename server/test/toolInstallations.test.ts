@@ -207,6 +207,18 @@ describe("windowsToolchains", () => {
     assert.equal(moved.env.UV_PYTHON_INSTALL_DIR, undefined);
   });
 
+  // openlore: scenario=AToolTheTableDoesNotNameKeepsItsCache spec=sandbox-runner-bash
+  test("the operator's tool variables are added after the table, ${cache} replaced, and win over its entries", () => {
+    const { env } = windowsToolchains(
+      { cacheDir: CACHE, serverEnv: {}, home: HOME, toolEnvironment: { COMPOSER_HOME: "${cache}/composer", CARGO_HOME: "${cache}/cargo-nightly", PLAIN: "on" } },
+      fakeDisk({}),
+    );
+    assert.equal(env.COMPOSER_HOME, `${CACHE}/composer`);
+    assert.equal(env.CARGO_HOME, `${CACHE}/cargo-nightly`, "replaces the table's entry");
+    assert.equal(env.PLAIN, "on");
+    assert.ok(env.GRADLE_USER_HOME?.startsWith(CACHE), "the rest of the table stays");
+  });
+
   // openlore: scenario=CargoCredentialsStayOut spec=sandbox-runner-bash
   test("CargoCredentialsStayOut: no home that may hold credentials is read, and a home that would open the profile or the keys is refused", () => {
     const all = [`${HOME}\\.cargo`, `${HOME}\\.m2`, `${HOME}\\.gradle`, `${HOME}\\.rustup`];

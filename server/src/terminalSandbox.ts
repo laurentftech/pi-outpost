@@ -710,7 +710,15 @@ export interface WindowsToolchains {
  * search path's guard.
  */
 export function windowsToolchains(
-  input: { cacheDir: string; serverEnv: NodeJS.ProcessEnv; home?: string; agentDir?: string; configFile?: string },
+  input: {
+    cacheDir: string;
+    serverEnv: NodeJS.ProcessEnv;
+    home?: string;
+    agentDir?: string;
+    configFile?: string;
+    /** `sandbox.toolEnvironment`, checked at load: applied last, `${cache}` standing for `cacheDir`. */
+    toolEnvironment?: Record<string, string>;
+  },
   reader: ToolInstallationReader = diskReader,
 ): WindowsToolchains {
   const win = path.win32;
@@ -749,6 +757,8 @@ export function windowsToolchains(
   const roaming = input.serverEnv.APPDATA || (input.home ? win.join(input.home, "AppData", "Roaming") : undefined);
   home("RUSTUP_HOME", input.home ? win.join(input.home, ".rustup") : undefined);
   home("UV_PYTHON_INSTALL_DIR", roaming ? win.join(roaming, "uv", "python") : undefined);
+  // The operator's own, for tools the table does not name or to replace its entries.
+  for (const [name, value] of Object.entries(input.toolEnvironment ?? {})) env[name] = value.replaceAll("${cache}", input.cacheDir);
   return { cacheDir: input.cacheDir, env, readable };
 }
 

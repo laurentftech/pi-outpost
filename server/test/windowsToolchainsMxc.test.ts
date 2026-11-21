@@ -282,6 +282,18 @@ describe("toolchains under MXC's real executor", { skip }, () => {
     assert.match(output, /bun cannot install packages in this sandbox.*run the install outside the sandbox/s, output);
   });
 
+  // openlore: scenario=AToolTheTableDoesNotNameKeepsItsCache spec=sandbox-runner-bash
+  test("AToolTheTableDoesNotNameKeepsItsCache: a variable from sandbox.toolEnvironment points a tool into the sandbox cache", async () => {
+    const cacheDir = path.join(base, "sandbox-cache");
+    const toolchains = windowsToolchains({ cacheDir, serverEnv: process.env, home: homedir(), agentDir, toolEnvironment: { PROBE_TOOL_HOME: "${cache}/probe-tool" } });
+    const write = await ps(`New-Item -ItemType Directory -Force $env:PROBE_TOOL_HOME | Out-Null; Set-Content (Join-Path $env:PROBE_TOOL_HOME kept.txt) kept`, ".", { toolchains });
+    assert.equal(write.exitCode, 0, write.output);
+    const read = await ps(`Get-Content (Join-Path $env:PROBE_TOOL_HOME kept.txt)`, ".", { toolchains });
+    assert.equal(read.exitCode, 0, read.output);
+    assert.match(read.output, /^kept\s*$/m, "a second command finds what the first left");
+    assert.ok(existsSync(path.join(cacheDir, "probe-tool", "kept.txt")), "the file lies in the sandbox cache's probe-tool folder");
+  });
+
   // openlore: scenario=OnWindowsGccCompiles spec=sandbox-runner-bash
   test("OnWindowsGccCompiles: gcc compiles and the program runs", { skip: onPath("gcc") ? false : "no gcc on the search path" }, async () => {
     await mkdir(path.join(root, "c"), { recursive: true });

@@ -538,6 +538,27 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  // openlore: scenario=AToolEnvironmentCannotUndoTheSandbox spec=sandbox-runner-bash
+  test("AToolEnvironmentCannotUndoTheSandbox: tool variables are kept, the sandbox's own names, bad names and empty values refused", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      const write = (toolEnvironment: unknown) => writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", toolEnvironment } }));
+      await write({ COMPOSER_HOME: "${cache}/composer", SBT_OPTS: "-Dsbt.global.base=${cache}/sbt" });
+      assert.deepEqual(loadConfig(dir, { config: configPath }).sandbox!.toolEnvironment, { COMPOSER_HOME: "${cache}/composer", SBT_OPTS: "-Dsbt.global.base=${cache}/sbt" });
+      for (const [refused, reason] of [
+        [{ PATH: "x" }, /cannot set PATH: the sandbox sets it itself/],
+        [{ temp: "x" }, /cannot set temp/],
+        [{ UserProfile: "x" }, /cannot set UserProfile/],
+        [{ "MY TOOL": "x" }, /"MY TOOL", which is not a variable name/],
+        [{ MY_TOOL: "" }, /gives MY_TOOL no value/],
+        [["COMPOSER_HOME"], /must be an object of variable names to values/],
+      ] as const) {
+        await write(refused);
+        assert.throws(() => loadConfig(dir, { config: configPath }), reason, JSON.stringify(refused));
+      }
+    });
+  });
+
   // openlore: scenario=HostLoopbackMustBeABoolean spec=sandbox-runner-bash
   test("HostLoopbackMustBeABoolean: sandbox.hostLoopback is kept when a boolean, refused otherwise", async () => {
     await withTempDir(async (dir) => {

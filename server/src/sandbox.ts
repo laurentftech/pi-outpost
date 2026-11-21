@@ -639,6 +639,7 @@ export function toolchainsFor(
       serverEnv: process.env,
       home: os.homedir(),
       ...neverReadable,
+      ...(sandbox.toolEnvironment === undefined ? {} : { toolEnvironment: sandbox.toolEnvironment }),
     }),
   };
 }

@@ -18,6 +18,7 @@
 - [x] 3.3 `RUSTUP_HOME` and uv's Pythons readable and named, when they exist and pass the guard; Cargo's, Maven's, Gradle's and npm's homes never. Verify with request tests and a real-MXC `CargoCredentialsStayOut`.
 - [x] 3.4 Real-MXC tests: `ADependencyIsDownloadedOnce` (Go), `GradlesWrapperRunsConfined`, `NpmsGlobalPrefixIsNotInTheProject`, `OnWindowsCargoTestsConfined`, `UvFindsTheUsersPythons`, `OnWindowsTheTerminalBuildsAGoModule`; each skipped when its tool is absent.
 - [x] 3.5 State the sandbox cache's location on the startup sandbox line under MXC on Windows. Verify with a startup-line test.
+- [x] 3.6 `sandbox.toolEnvironment`: parse and validate it (refused names, variable-name shape, empty values), apply it after the built-in table with `${cache}` replaced, for the agent's shell and the confined terminal, carried over by Settings. Verify with config and unit tests (`AToolEnvironmentCannotUndoTheSandbox`) and a real-MXC `AToolTheTableDoesNotNameKeepsItsCache`; document it with an example in `docs/configuration.md`.
 
 ## 4. MSYS2 and bun
 
@@ -27,9 +28,9 @@
 
 ## 5. Running app and documentation
 
-- [ ] 5.1 Run the full matrix (`node`, npm, npx, pip, uv, gcc, cmake, cargo, javac, mvn, gradlew, go, dotnet, Strawberry Perl, bun run/test/add) confined, as is, and record it in `design.md`; add .NET's row now that its SDK is installed.
+- [x] 5.1 Run the full matrix (`node`, npm, npx, pip, uv, gcc, cmake, cargo, javac, mvn, gradlew, go, dotnet, Strawberry Perl, bun run/test/add) confined, as is, and record it in `design.md`; add .NET's row now that its SDK is installed.
 - [ ] 5.2 Through the real agent (a free OpenRouter model): ask it to build and test a Rust crate, a Gradle project, a Go module and a bun project (run and test) in turn, and to run a Perl one-liner, then read the transcript to confirm each finished without a grant. Then a monkey pass: two commands of different projects at once on the same cache, the cache folder deleted between commands, a command cancelled mid-download.
-- [ ] 5.3 Document in `docs/sandboxing.md` (Windows 11: toolchains, the sandbox cache, what is not carried in, MSYS2 programs, bun's install limit and bun 1.4.5) and `docs/configuration.md` (`sandbox.cacheDir`). Verify links and JSON examples.
+- [x] 5.3 Document in `docs/sandboxing.md` (Windows 11: toolchains, the sandbox cache, what is not carried in, MSYS2 programs, bun's install limit and bun 1.4.5) and `docs/configuration.md` (`sandbox.cacheDir`). Verify links and JSON examples.
 
 ## 6. Integration
 

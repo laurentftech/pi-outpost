@@ -119,6 +119,13 @@ export interface SandboxConfig {
    */
   cacheDir?: string;
   /**
+   * MXC's process container on Windows: variables for tools the built-in table does not name, or
+   * replacing its entries, `${cache}` standing for the sandbox cache's folder
+   * (`{ "COMPOSER_HOME": "${cache}/composer" }`). A variable grants nothing: the policy still bounds
+   * what is read and written.
+   */
+  toolEnvironment?: Record<string, string>;
+  /**
    * Whether the agent's confined shell may ask the user for a grant — named hosts or
    * directories beyond the sandbox, for one command or the session (`sandboxGrants.ts`).
    * Absent: `"ask"`. `"never"`: no grant tool. Read from the file only; Settings carry it over.
@@ -1133,6 +1140,7 @@ export function loadConfig(
       );
     }
     const resolvedRoot = root ? resolve(root) : cwdOverridden ? config.cwd : fileCwd;
+    const toolEnvironment = sandbox.toolEnvironment === undefined ? undefined : toolEnvironmentOf(sandbox.toolEnvironment);
     const cacheDir = optionalString(sandbox, "cacheDir", "sandbox.cacheDir");
     const resolvedCacheDir = cacheDir === undefined ? undefined : resolve(cacheDir);
     if (resolvedCacheDir !== undefined) {
@@ -1199,6 +1207,7 @@ export function loadConfig(
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
       ...(hostLoopback === undefined ? {} : { hostLoopback }),
       ...(resolvedCacheDir === undefined ? {} : { cacheDir: resolvedCacheDir }),
+      ...(toolEnvironment === undefined ? {} : { toolEnvironment }),
       ...(grants === undefined ? {} : { grants: grants as SandboxGrantsMode }),
       ...(readOnlyPaths === undefined ? {} : { readOnlyPaths: readOnlyPaths.map(resolve) }),
       readExceptions: [
@@ -1596,6 +1605,21 @@ export function loadConfig(
     announce(`[config] no sandbox: full toolset in ${config.cwd}`);
   }
   return config;
+}
+
+/** What the sandbox itself sets in a confined command's environment: never `sandbox.toolEnvironment`'s. */
+const SANDBOX_OWN_VARIABLES = new Set(["path", "temp", "tmp", "tmpdir", "localappdata", "userprofile", "home", "systemroot", "windir", "shell"]);
+
+/** `sandbox.toolEnvironment`, checked: variable names the sandbox does not own, each with a value. */
+function toolEnvironmentOf(raw: unknown): Record<string, string> {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) fail(`"sandbox.toolEnvironment" must be an object of variable names to values`);
+  const entries = Object.entries(raw as Record<string, unknown>);
+  for (const [name, value] of entries) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) fail(`"sandbox.toolEnvironment" holds "${name}", which is not a variable name`);
+    if (SANDBOX_OWN_VARIABLES.has(name.toLowerCase())) fail(`"sandbox.toolEnvironment" cannot set ${name}: the sandbox sets it itself`);
+    if (typeof value !== "string" || value === "") fail(`"sandbox.toolEnvironment" gives ${name} no value: name a non-empty string`);
+  }
+  return Object.fromEntries(entries) as Record<string, string>;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1"]);

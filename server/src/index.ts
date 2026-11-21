@@ -3068,6 +3068,7 @@ function terminalConfinement(workspace: Workspace): TerminalConfinement | undefi
     ...(config.configFile ? { configFile: config.configFile } : {}),
     ...(config.sandbox?.hostLoopback === undefined ? {} : { hostLoopback: config.sandbox.hostLoopback }),
     ...(config.sandbox?.cacheDir === undefined ? {} : { cacheDir: config.sandbox.cacheDir }),
+    ...(config.sandbox?.toolEnvironment === undefined ? {} : { toolEnvironment: config.sandbox.toolEnvironment }),
   });
 }
 
@@ -3912,6 +3913,7 @@ async function handleUpdateConfig(
         ...(config.sandbox?.hostLoopback === undefined ? {} : { hostLoopback: config.sandbox.hostLoopback }),
         // Or an apply would move the sandbox cache back to its default.
         ...(config.sandbox?.cacheDir === undefined ? {} : { cacheDir: config.sandbox.cacheDir }),
+        ...(config.sandbox?.toolEnvironment === undefined ? {} : { toolEnvironment: config.sandbox.toolEnvironment }),
         readExceptions: [],
       };
     }
