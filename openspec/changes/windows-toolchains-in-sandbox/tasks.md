@@ -29,12 +29,12 @@
 ## 5. Running app and documentation
 
 - [x] 5.1 Run the full matrix (`node`, npm, npx, pip, uv, gcc, cmake, cargo, javac, mvn, gradlew, go, dotnet, Strawberry Perl, bun run/test/add) confined, as is, and record it in `design.md`; add .NET's row now that its SDK is installed.
-- [ ] 5.2 Through the real agent (a free OpenRouter model): ask it to build and test a Rust crate, a Gradle project, a Go module and a bun project (run and test) in turn, and to run a Perl one-liner, then read the transcript to confirm each finished without a grant. Then a monkey pass: two commands of different projects at once on the same cache, the cache folder deleted between commands, a command cancelled mid-download.
+- [x] 5.2 Through the real agent (a free OpenRouter model): ask it to build and test a Rust crate, a Gradle project, a Go module and a bun project (run and test) in turn, and to run a Perl one-liner, then read the transcript to confirm each finished without a grant. Then a monkey pass: two commands of different projects at once on the same cache, the cache folder deleted between commands, a command cancelled mid-download. Done: OpenRouter's free `nvidia/nemotron-3-ultra-550b-a55b:free` ran `cargo test`, `gradlew test`, `go test` + `go run`, `bun test` + `bun run` and `perl` in one 156 s turn, all passing, no grant asked (its first `cd x && y` failed on Windows PowerShell 5.1's missing `&&` and it retried with `;`). Monkey pass: two projects at once on one cache, the cache deleted between commands, a command cancelled mid-download then run again — all held.
 - [x] 5.3 Document in `docs/sandboxing.md` (Windows 11: toolchains, the sandbox cache, what is not carried in, MSYS2 programs, bun's install limit and bun 1.4.5) and `docs/configuration.md` (`sandbox.cacheDir`). Verify links and JSON examples.
 
 ## 6. Integration
 
-- [ ] 6.1 Write `scenario-coverage.md` for every scenario of this change, all `covered`; run `node scripts/check-scenario-coverage.mjs --change windows-toolchains-in-sandbox`, `npm run lint`, `npm run typecheck` and `openspec validate windows-toolchains-in-sandbox --strict`.
+- [x] 6.1 Write `scenario-coverage.md` for every scenario of this change, all `covered`; run `node scripts/check-scenario-coverage.mjs --change windows-toolchains-in-sandbox`, `npm run lint`, `npm run typecheck` and `openspec validate windows-toolchains-in-sandbox --strict`.
 
 ## Workflow follow-up
 
