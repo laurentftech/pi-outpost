@@ -15,6 +15,9 @@ pi-outpost config [options]   print the configuration that would be used, and wh
 pi-outpost config --confine   confine the agent's shell: check this machine's runner, then set
                               "sandbox.bashRunner": "auto", or restore the default sandbox where it
                               is false (see sandboxing.md#the-default)
+pi-outpost config --unconfine where this machine cannot confine the shell: set "sandbox.bashRunner":
+                              "none", so the agent's commands run unconfined, with every right of
+                              your account (see sandboxing.md#older-windows)
 pi-outpost doctor [options]   check whether this installation can start and serve, and say what stops it
 pi-outpost login --provider <name>
                               run account sign-in, or store an API key

@@ -37,8 +37,8 @@ test("a Windows without the August update: the shell is unavailable, with the up
   const bash = settled.confinement.bash;
   assert.deepEqual(bash.remedy, { kind: "windows-update", build: "26100.6584", needed: "26100.9278", update: "the August 2026 cumulative update (KB5120998)" });
   assert.match(bash.reason, /^The agent's shell is unavailable on this machine: this Windows \(build 26100\.6584\) lacks the August 2026 cumulative update \(KB5120998\)/);
-  assert.match(bash.reason, /Install it with Windows Update, then restart pi-outpost\./);
-  assert.match(bash.reason, /"sandbox\.bashRunner": "none".*every right of your account/);
+  assert.match(bash.reason, /Update Windows to build 26100\.9278 or later, then restart pi-outpost\./);
+  assert.match(bash.reason, /run "pi-outpost config --unconfine" \(it sets "sandbox\.bashRunner": "none" in the configuration file\).*every right of your account/);
   assert.doesNotMatch(bash.reason, /terminals/, "the shell's refusal speaks of the shell");
 
   // Written just before the verdict is sent, but a pipe on Windows may deliver it after.

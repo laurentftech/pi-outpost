@@ -8,10 +8,11 @@
  * to repeat at every start: dismissing it is remembered in this browser for that cause, and the
  * padlock opens it again.
  *
- * Nothing here loosens the sandbox. Running commands unconfined stays a decision written in the
- * configuration file; the dialog names the line and what it costs, it does not set it.
+ * Two ways out, side by side: update Windows — not always the user's to do — or run commands
+ * unconfined. Nothing here loosens the sandbox: that stays a command the user runs on this machine
+ * (`pi-outpost config --unconfine`), and the dialog names it and what it costs, it does not run it.
  */
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ConfinementVerdict } from "@pi-outpost/shared";
 
 const SEEN_KEY = "pi-outpost:shell-unavailable-seen";
@@ -38,6 +39,8 @@ function markSeen(key: string): void {
   }
 }
 
+export const UNCONFINE_COMMAND = "pi-outpost config --unconfine";
+
 const primaryButton =
   "rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white";
 const plainButton =
@@ -54,6 +57,13 @@ export function ShellUnavailableDialog({
   const bodyId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const remedy = verdict.remedy?.kind === "windows-update" ? verdict.remedy : undefined;
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard?.writeText(UNCONFINE_COMMAND).then(
+      () => setCopied(true),
+      () => setCopied(false),
+    );
+  };
 
   const close = () => {
     markSeen(shellNoticeKey(verdict));
@@ -95,16 +105,35 @@ export function ShellUnavailableDialog({
               {verdict.reason}
             </p>
           )}
-          {remedy ? (
-            <p>
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">To fix it:</span> install the update with Windows Update (build{" "}
-              {remedy.needed} or later), then restart pi-outpost.
-            </p>
-          ) : null}
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Meanwhile, to run commands unconfined, set <code className="font-mono">"sandbox.bashRunner": "none"</code> in{" "}
-            <code className="font-mono">pi-outpost.config.json</code>: they then run with every right of your account.
-          </p>
+          <p className="font-medium text-zinc-900 dark:text-zinc-100">Two ways out:</p>
+          <ol className="list-decimal space-y-3 pl-5">
+            {remedy ? (
+              <li data-testid="shell-unavailable-update">
+                <span className="font-medium text-zinc-900 dark:text-zinc-100">Update Windows</span> to build {remedy.needed} or later, then
+                restart pi-outpost. The shell is then confined, with nothing to change.
+              </li>
+            ) : null}
+            <li data-testid="shell-unavailable-unconfine">
+              <span className="font-medium text-zinc-900 dark:text-zinc-100">{remedy ? "If you cannot update Windows, run" : "Run"} commands unconfined.</span>{" "}
+              On this machine, run
+              <span className="mt-1.5 flex items-center gap-2">
+                <code className="select-all rounded bg-zinc-100 px-2 py-1 font-mono text-xs text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
+                  {UNCONFINE_COMMAND}
+                </code>
+                <button type="button" onClick={copy} className="text-xs text-zinc-500 underline hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200" data-testid="shell-unavailable-copy">
+                  {copied ? "copied" : "copy"}
+                </button>
+              </span>
+              <span className="mt-1.5 block">
+                then restart pi-outpost. It sets <code className="font-mono">"sandbox.bashRunner": "none"</code> in the configuration file.{" "}
+                <span className="font-medium text-red-700 dark:text-red-400">
+                  The agent's commands then run with every right of your account: they can read, change and delete any file you can, outside
+                  the project too.
+                </span>{" "}
+                <code className="font-mono">pi-outpost config --confine</code> confines them again once this machine can.
+              </span>
+            </li>
+          </ol>
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           {remedy ? (

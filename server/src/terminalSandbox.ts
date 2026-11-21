@@ -128,6 +128,11 @@ const MXC_WINDOWS_BUILDS: Record<string, { ubr: number; update: string }> = {
 /** The update a Windows build lacks for MXC's process container, when it is one this table knows. */
 export function windowsUpdateRemedy(build: string, ubr: number): ConfinementRemedy | undefined {
   const known = MXC_WINDOWS_BUILDS[build];
+  // Before 24H2 (23H2 is 22631) no cumulative update brings the process container: Windows itself
+  // must move to 24H2 or later, and then take the update that brings it there.
+  if (!known && Number(build) < 26100) {
+    return { kind: "windows-update", build: `${build}.${ubr}`, needed: "26100.9278", update: "Windows 11 24H2 or later, with the August 2026 cumulative update (KB5120998)" };
+  }
   if (!known || ubr >= known.ubr) return undefined;
   return { kind: "windows-update", build: `${build}.${ubr}`, needed: `${build}.${known.ubr}`, update: known.update.replace(/ or later$/, "") };
 }

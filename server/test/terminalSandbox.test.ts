@@ -628,7 +628,8 @@ describe("checkRunner with MXC on Windows", () => {
     // What the interface offers to do about it, as data: the build, the one needed, the update by name.
     assert.deepEqual(old.ok ? undefined : old.remedy, { kind: "windows-update", build: "26100.8000", needed: "26100.9278", update: "the August 2026 cumulative update (KB5120998)" });
     const older = await checkRunner("mxc", reg("22631", 4000), "win32", probe("appcontainer-dacl"));
-    assert.equal(older.ok ? "ok" : older.remedy, undefined, "no update brings Windows 11 23H2 to 24H2: no update remedy");
+    // Before 24H2 no cumulative update brings it: Windows must move to 24H2, then take the update.
+    assert.deepEqual(older.ok ? "ok" : older.remedy, { kind: "windows-update", build: "22631.4000", needed: "26100.9278", update: "Windows 11 24H2 or later, with the August 2026 cumulative update (KB5120998)" });
     assert.ok(!older.ok && /22631\.4000; MXC's process container needs Windows 11 24H2/.test(older.reason));
     const unreadable = await checkRunner("mxc", async () => { throw new Error("reg is not there"); }, "win32", probe("appcontainer-dacl"));
     assert.ok(!unreadable.ok && /appcontainer-dacl/.test(unreadable.reason) && !/Windows build/.test(unreadable.reason));

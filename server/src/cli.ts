@@ -60,6 +60,8 @@ Usage
   pi-outpost config --confine    confine the agent's shell: check this machine's sandbox runner, then
                                  set "sandbox.bashRunner": "auto" in the configuration file, or restore
                                  the default sandbox where "sandbox" is false
+  pi-outpost config --unconfine  where this machine cannot confine the shell: set "sandbox.bashRunner": "none",
+                                 so the agent's commands run unconfined, with every right of your account
   pi-outpost doctor [options]    check whether this installation can start and serve, and say what stops it
   pi-outpost login --provider <name>
                                  sign in to a provider, or store an API key
@@ -187,7 +189,7 @@ export interface ParsedCli {
   print: { prompt?: string; json: boolean; grants: PrintGrants; model?: string };
   init: { global: boolean; force: boolean };
   /** `config --confine`: check this machine's runner, then confine the shell in the file. */
-  config: { confine: boolean };
+  config: { confine: boolean; unconfine: boolean };
   login: { provider?: string };
   logout: { provider?: string };
   buildExe: { out?: string; force: boolean };
@@ -243,6 +245,7 @@ export function parseCli(argv: string[]): ParsedCli {
         grants: { type: "string" },
         model: { type: "string" },
         confine: { type: "boolean", default: false },
+        unconfine: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
         version: { type: "boolean", short: "v", default: false },
       },
@@ -281,6 +284,12 @@ export function parseCli(argv: string[]): ParsedCli {
   }
   if (values.confine && command !== "config") {
     throw new CliError('"--confine" belongs to "pi-outpost config" — see "pi-outpost --help"');
+  }
+  if (values.unconfine && command !== "config") {
+    throw new CliError('"--unconfine" belongs to "pi-outpost config" — see "pi-outpost --help"');
+  }
+  if (values.confine && values.unconfine) {
+    throw new CliError('"--confine" and "--unconfine" ask opposite things: give one — see "pi-outpost --help"');
   }
   if (values.global && command !== "init") {
     throw new CliError('"--global" belongs to "pi-outpost init" — see "pi-outpost --help"');
@@ -335,7 +344,7 @@ export function parseCli(argv: string[]): ParsedCli {
     flags,
     print: { ...(printing ? { prompt: values.print } : {}), json: values.json, grants: (values.grants ?? "refuse") as PrintGrants, ...(values.model ? { model: values.model } : {}) },
     init: { global: values.global, force: values.force },
-    config: { confine: values.confine },
+    config: { confine: values.confine, unconfine: values.unconfine },
     login: { provider: values.provider },
     logout: { provider: values.provider },
     buildExe: { out: values.out, force: values.force },

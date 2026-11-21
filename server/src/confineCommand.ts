@@ -5,8 +5,13 @@
  * runner `"auto"` would choose has passed its self-check and the confinement canary, run the
  * way the server runs them. Otherwise the file is left byte for byte as it was, and the reason
  * is printed. With `"sandbox": false` it restores the default sandbox, which also scopes the
- * agent's file tools to the project, and says so. Loosening is never this command's to do:
- * there is no `--unconfine`.
+ * agent's file tools to the project, and says so.
+ *
+ * `pi-outpost config --unconfine`: the way round a machine that cannot confine (a Windows that
+ * cannot be updated to the build MXC needs), written for the user to run, never by the agent — a
+ * confined command cannot write this file, and an unconfined shell has nothing to loosen. It sets
+ * `"sandbox.bashRunner": "none"` and nothing else: the file tools stay limited to the project, and
+ * what the shell then may do is said before anything else.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -37,6 +42,66 @@ export function serializeLike(original: string, value: unknown): string {
   const eol = original.includes("\r\n") ? "\r\n" : "\n";
   const body = JSON.stringify(value, null, indent).replace(/\n/g, eol);
   return /\r?\n$/.test(original) ? body + eol : body;
+}
+
+/** What an unconfined shell may do, said by `--unconfine` and nowhere softer. */
+export const UNCONFINED_COST = [
+  "The agent's commands now run with every right of your account: they can read, change and delete any file you can,",
+  "outside the project too, and reach any host. The agent's file tools stay limited to the project.",
+];
+
+export async function unconfineConfiguration(input: Pick<ConfineInput, "launchDir" | "flags" | "env">): Promise<ConfineResult> {
+  const env = input.env ?? process.env;
+  let file: string;
+  try {
+    file = findConfigFile(input.launchDir, input.flags, env);
+  } catch (error) {
+    if (error instanceof NoConfigError) {
+      return { exitCode: 1, lines: ['No configuration file to change: "pi-outpost init" writes one, then run "pi-outpost config --unconfine" again.'] };
+    }
+    throw error;
+  }
+  const original = fs.readFileSync(file, "utf8");
+  const raw = JSON.parse(original) as Record<string, unknown>;
+  const unchanged = (exitCode: number, ...lines: string[]): ConfineResult => ({ exitCode, lines: [`${file}: unchanged.`, ...lines] });
+
+  if (raw.sandbox === false) return unchanged(0, `"sandbox" is false: nothing is confined, so nothing to unconfine.`);
+  // No section is the default sandbox: written out as it is, but for its runner.
+  const section = (raw.sandbox === undefined ? { allowWrite: true, allowBash: true, bashRunner: AUTO_RUNNER } : raw.sandbox) as Record<string, unknown>;
+  if (section.bashFrom !== undefined) {
+    return unchanged(0, `The shell is the extension's ("sandbox.bashFrom": ${JSON.stringify(section.bashFrom)}): pi-outpost does not confine it.`);
+  }
+  if (section.allowBash !== true) {
+    return unchanged(0, `The agent has no shell ("sandbox.allowBash" is not true): set it to true to give it one.`);
+  }
+  if (section.bashRunner === undefined || section.bashRunner === NO_RUNNER) {
+    return unchanged(0, "The agent's shell is already unconfined.");
+  }
+  const before = JSON.stringify(section.bashRunner);
+  const next = { ...raw, sandbox: { ...section, bashRunner: NO_RUNNER } };
+  // Validated as the server would read it, before the file is touched.
+  const candidate = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.unconfine.tmp`);
+  let mode: number | undefined;
+  try {
+    mode = fs.statSync(file).mode & 0o777;
+  } catch {
+    mode = undefined;
+  }
+  fs.writeFileSync(candidate, serializeLike(original, next), mode === undefined ? undefined : { mode });
+  try {
+    loadConfig(input.launchDir, { ...input.flags, config: candidate, profile: undefined }, env, { quiet: true });
+    fs.renameSync(candidate, file);
+  } finally {
+    fs.rmSync(candidate, { force: true });
+  }
+  return {
+    exitCode: 0,
+    lines: [
+      `${file}: "sandbox.bashRunner": ${before} → "none"`,
+      ...UNCONFINED_COST,
+      "Restart pi-outpost for it to take effect. Once this machine can confine, \"pi-outpost config --confine\" confines the shell again.",
+    ],
+  };
 }
 
 export async function confineConfiguration(input: ConfineInput): Promise<ConfineResult> {
