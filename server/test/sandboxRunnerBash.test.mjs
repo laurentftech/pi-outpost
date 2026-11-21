@@ -30,12 +30,23 @@ process.stdout.write("via-the-runner\\n");
 spawn(shell, [script], { stdio: "inherit", env: process.env }).on("exit", (code) => process.exit(code ?? 1));
 `;
 
+function isJson(text) {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function waitForFile(file, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const value = await readFile(file, "utf8").catch(() => undefined);
-    if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error(`${path.basename(file)} never written`);
+    // The provider writes it with writeFileSync, which creates the file before filling it: a read in
+    // between finds it empty (seen on CI's Linux). Only a whole JSON document is the result.
+    if (value !== undefined && isJson(value)) return value;
+    if (Date.now() > deadline) throw new Error(`${path.basename(file)} never written whole: ${JSON.stringify(value)}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }

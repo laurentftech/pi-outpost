@@ -56,10 +56,16 @@ unreachable server.
 
 ### Requirement: StartupUrlCarriesTheToken
 
-The URL the server prints at startup, and the one it opens in a browser, SHALL carry the effective token
-as `?token=`, so the operator reaches the interface without typing it.
+When the token was generated, the URL the server prints at startup, and the one it opens in a browser,
+SHALL carry it as `?token=`, so the operator reaches the interface without typing it. A token the operator
+configured SHALL NOT be printed.
 
 #### Scenario: OpenedBrowserIsAuthenticated
 - **GIVEN** a loopback server with a generated token that opens the interface in a browser
 - **WHEN** the page loads from the opened URL
 - **THEN** the interface connects without showing the token screen, and the address bar no longer shows the token
+
+#### Scenario: AConfiguredTokenIsNeverPrinted
+- **GIVEN** a server started with `server.token` set
+- **WHEN** it prints its startup line
+- **THEN** the address has no `token` parameter and the token appears nowhere in its output

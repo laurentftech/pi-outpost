@@ -114,4 +114,14 @@ describe("auth", () => {
     assert.equal(guarded.token, TOKEN);
     assert.equal(existsSync(path.join(guarded.root, ".pi-agent", "outpost-token")), false);
   });
+
+  // openlore: scenario=AConfiguredTokenIsNeverPrinted spec=auth
+  test("AConfiguredTokenIsNeverPrinted: a configured token stays out of the log; a generated one is in the printed address", () => {
+    const printed = guarded.log().match(/\[server\] (https?:\/\/\S+)/)?.[1];
+    assert.ok(printed, guarded.log());
+    assert.equal(new URL(printed).searchParams.has("token"), false);
+    assert.ok(!guarded.log().includes(TOKEN), "the configured token appears in the server's output");
+    const generated = open.log().match(/\[server\] (https?:\/\/\S+)/)?.[1];
+    assert.equal(new URL(generated).searchParams.get("token"), open.token);
+  });
 });

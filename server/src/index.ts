@@ -1458,9 +1458,10 @@ try {
   // browser opens.
   const scheme = httpsOptions ? "https" : "http";
   const address = typeof bound === "object" && bound !== null ? browsableUrl(bound, scheme) : `${scheme}://${HOST}:${PORT}/`;
-  // With the token, as Jupyter does: the browser stores it and strips it from the
-  // address bar (ui/src/authToken.ts), so the operator never types it.
-  const url = withToken(address, config.token);
+  // With a generated token, as Jupyter does: the browser stores it and strips it from the
+  // address bar (ui/src/authToken.ts), so the operator never types it. A token the operator
+  // configured is never written to the log: they have it, and a container's log is not theirs alone.
+  const url = TOKEN_CONFIGURED ? address : withToken(address, config.token);
   console.log(`[server] ${url}`);
   // A terminal switched on in the configuration that cannot run here is said now, in
   // the console the operator is reading, not first discovered as a button that fails.

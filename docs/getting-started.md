@@ -88,7 +88,8 @@ anything.
 by the sandbox may reach the machine's loopback, and must not find a server that obeys it. Without
 `server.token` or `PI_OUTPOST_TOKEN`, pi-outpost makes one at first start and keeps it in the agent
 directory (`~/.pi/agent/outpost-token`), where the sandbox never reaches. The address printed at start,
-and the window it opens, carry it (`http://127.0.0.1:3141/?token=…`): the browser keeps it and strips
+and the window it opens, carry that generated token (`http://127.0.0.1:3141/?token=…`; a token you set
+yourself is never printed): the browser keeps it and strips
 it from the address bar, so you never type it. A browser that has not seen it shows the token screen;
 paste the file's content there, once. Deleting the file gives you a new token at the next start.
 
