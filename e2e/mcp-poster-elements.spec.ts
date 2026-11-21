@@ -521,6 +521,11 @@ test("TextIsTypedInAShape and TheTextFollowsItsShape: a double-clicked rectangle
   await insert(view, "shape:rectangle");
   const rectangle = canvas.locator(".poster-shape.rectangle");
   await rectangle.dblclick();
+  // The text becomes editable a moment after the double click: keys typed before that are lost
+  // (a slow runner kept "ée" of "Entrée"). Type once the editor holds it, focused.
+  const editing = rectangle.locator('.poster-shape-text[contenteditable="true"]');
+  await expect(editing).toBeVisible();
+  await expect(editing).toBeFocused();
   await page.keyboard.type("Entrée");
   await canvas.locator(".title").click();
   const text = rectangle.locator(".poster-shape-text");

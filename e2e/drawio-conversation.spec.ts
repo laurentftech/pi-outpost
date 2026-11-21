@@ -305,12 +305,16 @@ test("a new wire drawn from a shape's edge, and a shape deleted with the keyboar
   const box = (await frame.boundingBox())!;
   // First Bravo, selected and deleted from the keyboard — its wire goes with it, as in draw.io
   const bravo = await centreOf(page, frame, "Bravo");
-  await page.mouse.click(bravo.x - 45, bravo.y + 18);
-  // The key goes where focus is: until the click has moved it into the frame, a slow
-  // runner delivers Delete to the page and draw.io never sees it.
-  await expect(frame).toBeFocused();
-  await page.keyboard.press("Delete");
-  await expect.poll(async () => labels(inner)).not.toContain("Bravo");
+  // The key goes where focus is, and draw.io deletes what it has selected: on a slow runner the
+  // frame was focused but Bravo not yet selected when Delete arrived, and Bravo stayed. Select and
+  // delete until it is gone — clicking only while it is still there, so nothing else is hit.
+  await expect(async () => {
+    if (!(await labels(inner)).includes("Bravo")) return;
+    await page.mouse.click(bravo.x - 45, bravo.y + 18);
+    await expect(frame).toBeFocused();
+    await page.keyboard.press("Delete");
+    await expect.poll(async () => labels(inner), { timeout: 2_000 }).not.toContain("Bravo");
+  }).toPass({ timeout: 20_000 });
 
   // Hovering Charlie shows its connection points, draw.io's small marks on the outline;
   // a wire starts from one — the one in the middle of its right side — and ends on Alpha
