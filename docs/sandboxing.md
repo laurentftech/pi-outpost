@@ -105,7 +105,9 @@ Under a runner, a command (or a terminal) may:
 | Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's, uv's and pip's caches in the temporary directory (`npm_config_cache`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`: never your own cache made writable, where a package left by a command would later run unconfined), the shell's history there too (`HISTFILE`, and `ZDOTDIR` for zsh) so none is left in your project, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity — with the global ignore and attributes files it names in `core.excludesFile` and `core.attributesFile`, read-only too); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory. None of the server's other variables, so no provider key. |
 | Signal | No process outside the sandbox. |
 
-Output, exit status, timeout and cancellation behave as for an unconfined `bash`. Commands the model
+Output, exit status, timeout and cancellation behave as for an unconfined `bash`, with one difference: a
+command given no timeout is stopped after 300 seconds, its output ending with a sentence that says so —
+a server started to check it answers would otherwise hold the turn for ever. Commands the model
 asks for in one message run one after another, in the order it wrote them, where pi would run them
 together: each starts a runner first, and a step that depends on the previous one (create, then
 rename) would otherwise overtake it. Each project's
@@ -424,6 +426,13 @@ work, and what it costs:
 - **bun**: 1.4.5 or later for `bun run` and `bun test` (1.3 gave up on folders above the project). `bun
   install` and `bun add` cannot complete inside the container — it refuses the rename bun uses to probe
   its cache — and the command ends with a note; run them outside the sandbox.
+- **`uvicorn --reload`** fails at start: its reloader's child cannot open the named pipe its parent hands
+  the socket through (`FileNotFoundError: [WinError 2]`). `uvicorn` without `--reload`, and
+  `multiprocessing` itself, work.
+- **What a shell writes for itself stays out of your project**: PowerShell's module cache goes to the
+  command's temporary directory (inside the container Windows names no folder for local application
+  data, and PowerShell fell back on the working directory), and Python writes its output in UTF-8, so a
+  message Windows words in your language reaches the agent undamaged.
 
 A tool pi-outpost does not set up itself keeps its downloads in the sandbox cache with
 `sandbox.toolEnvironment`, `${cache}` standing for the cache's folder; `sandbox.readOnlyPaths` lets it read
