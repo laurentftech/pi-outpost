@@ -392,6 +392,55 @@ loopback rule beside its proxy ([microsoft/mxc#1731](https://github.com/microsof
 server's startup line says which way it is (`loopback open: …` or `loopback closed: Python's asyncio
 cannot start in the shell`).
 
+### Toolchains and the sandbox cache
+
+Measured on Windows 11 24H2 with nothing configured, the agent's confined shell and the confined terminal
+run node, npm and npx, pip and `python -m venv`, uv, gcc and CMake (Strawberry), `rustc` and `cargo`,
+`javac`, Maven, Gradle's wrapper, Go, `dotnet`, a native Perl, and `bun run` / `bun test`. What makes that
+work, and what it costs:
+
+- **A temporary directory that exists.** Each command's `TEMP`, `TMP` and `LOCALAPPDATA` are inside its
+  private temporary directory, deleted afterwards.
+- **The installation behind each `PATH` folder is readable**, read only: a folder named `bin`, `cmd`,
+  `Scripts` or `sbin` opens the one above it (`C:\Strawberry\c`, Maven's, the JDK's), so a tool finds the
+  rest of itself. Never a drive's root, your home directory or a folder directly in it (`~\.cargo` holds
+  `credentials.toml`), nor anything holding the agent directory or the configuration.
+- **A sandbox cache**, `%LOCALAPPDATA%\pi-outpost\sandbox-cache` (`sandbox.cacheDir` moves it): Cargo's
+  home, Gradle's user home, Go's module and build caches, Maven's repository, NuGet's packages, bun's, npm's,
+  uv's and pip's caches and `APPDATA` are folders of it, so a dependency is downloaded once per user, not
+  once per command. Confined commands write there and nothing unconfined reads it: your own caches stay
+  yours, and a package a command left never runs outside the sandbox. It grows with what the agent
+  builds — Gradle's distribution, Rust and Maven dependencies; delete it to reset it. Commands of every
+  project share it, all of them confined.
+- **Toolchain homes are read where they are**: rustup's (`RUSTUP_HOME`, by default `~\.rustup`), so
+  `cargo` and `rustc` find your toolchain, and the Pythons uv installed (`%APPDATA%\uv\python`).
+- **Not carried in**: your mirrors and tokens — `~\.m2\settings.xml`, `~\.gradle\gradle.properties`,
+  `~\.npmrc`, `~\.cargo\config.toml` and `credentials.toml` stay out of reach. A project's own
+  configuration (`.npmrc`, `gradle.properties`, `.cargo\config.toml` in the root) still applies.
+- **MSYS2 programs cannot start** — Git's `usr\bin` (its `bash`, `perl`, coreutils), an MSYS2 install:
+  their runtime needs named objects a container may not create (microsoft/mxc#1061). Their folders are
+  left out of the confined `PATH`, so `perl` finds a native Perl, and the startup line names them. A
+  command naming one by its path ends with a note saying so.
+- **bun**: 1.4.5 or later for `bun run` and `bun test` (1.3 gave up on folders above the project). `bun
+  install` and `bun add` cannot complete inside the container — it refuses the rename bun uses to probe
+  its cache — and the command ends with a note; run them outside the sandbox.
+
+A tool pi-outpost does not set up itself keeps its downloads in the sandbox cache with
+`sandbox.toolEnvironment`, `${cache}` standing for the cache's folder; `sandbox.readOnlyPaths` lets it read
+an installation or home that no `PATH` folder leads to:
+
+```json
+{
+  "sandbox": {
+    "toolEnvironment": { "COMPOSER_HOME": "${cache}/composer", "SBT_OPTS": "-Dsbt.global.base=${cache}/sbt" },
+    "readOnlyPaths": ["C:\\tools\\php"]
+  }
+}
+```
+
+A variable grants nothing — the sandbox still decides what a command reads and writes — and the
+sandbox's own (`PATH`, `TEMP`, `USERPROFILE`, …) are refused.
+
 ### Microsoft's telemetry
 
 MXC has two kinds of telemetry, and pi-outpost can switch off only one:

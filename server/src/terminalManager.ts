@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { confinedEnvironment, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy } from "./terminalSandbox.ts";
+import { confinedEnvironment, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -637,12 +637,21 @@ export interface ConfinedLaunch {
  * for this one launch and an environment built from nothing, so no key the server holds reaches
  * it. Shared by the terminal and by the confinement canary, which must check what runs.
  */
-export async function confinedLaunch(confine: TerminalConfinement, shell: string, shellArgs: string[], cwd: string): Promise<ConfinedLaunch> {
+export async function confinedLaunch(confine: TerminalConfinement, shell: string, givenArgs: string[], cwd: string): Promise<ConfinedLaunch> {
   // A starting directory outside the root could not be entered from inside.
   const startIn = isInside(path.resolve(cwd), confine.root) ? path.resolve(cwd) : confine.root;
+  const shellArgs = confine.kind === "mxc" && process.platform === "win32" ? withTemporaryDirectoryRestored(shell, givenArgs) : givenArgs;
   let shellEnv: Record<string, string> = {};
+  if (confine.toolchains) await fs.mkdir(confine.toolchains.cacheDir, { recursive: true });
   const files = await prepareConfinedTerminal((tmp) => {
-    shellEnv = confinedEnvironment(process.env, { root: confine.root, tmp, shell, gitConfig: confine.gitConfig });
+    shellEnv = confinedEnvironment(process.env, {
+      root: confine.root,
+      tmp,
+      shell,
+      gitConfig: confine.gitConfig,
+      containerProfileInTmp: confine.kind === "mxc" && process.platform === "win32",
+    });
+    if (confine.toolchains) Object.assign(shellEnv, confine.toolchains.env);
     return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv });
   });
   // MXC's request carries the command line and the environment itself: its executor hands
@@ -681,6 +690,34 @@ export async function confinedLaunch(confine: TerminalConfinement, shell: string
   return { file: confine.runner, args, env: files.env ?? shellEnv, cwd: startIn, files, ...(confine.kind === "mxc" ? { mxc: files.policy as MxcWireRequest } : {}) };
 }
 
+/**
+ * A terminal confined by MXC's executor on Windows: its shell starts by pointing `TEMP`, `TMP` and
+ * `LOCALAPPDATA` back at its private temporary directory (`TMPDIR`, which MXC leaves alone).
+ *
+ * MXC derives those three from the `LOCALAPPDATA` it is given (`<it>Packagessandbox.{…}AC[Temp]`).
+ * Through the SDK — the agent's shell — it creates those folders; its executor, which starts the
+ * terminal, does not, so they name folders that do not exist and nothing could create a temporary
+ * file. PowerShell gets it in the `-Command` it already starts with; `cmd` as `/K`. A shell given
+ * other arguments by the user, or another shell, is left as configured.
+ */
+export function withTemporaryDirectoryRestored(shell: string, args: string[]): string[] {
+  const name = path.win32.basename(shell).toLowerCase().replace(/\.exe$/, "");
+  if (name === "powershell" || name === "pwsh") {
+    const restore = "$env:TEMP = $env:TMPDIR; $env:TMP = $env:TMPDIR; $env:LOCALAPPDATA = $env:TMPDIR";
+    const at = args.findIndex((arg) => arg.toLowerCase() === "-command");
+    if (at === -1) return [...args, "-NoExit", "-Command", restore];
+    if (at !== args.length - 2) return args;
+    return [...args.slice(0, at + 1), `${restore}; ${args[at + 1]}`];
+  }
+  if (name === "cmd") {
+    if (args.some((arg) => /^\/[ck]$/i.test(arg))) return args;
+    // No quotes inside: the request's command line escapes them as \", which cmd does not read.
+    // Each value ends at its "&", so a path with spaces is set whole and without a trailing one.
+    return [...args, "/K", "set TEMP=%TMPDIR%& set TMP=%TMPDIR%& set LOCALAPPDATA=%TMPDIR%"];
+  }
+  return args;
+}
+
 /** How a terminal is confined: the runner to spawn, and what its policy allows. */
 export interface TerminalConfinement {
   /** The sandbox runner: landstrip's binary, or MXC's executor (`wxc-exec.exe`). */
@@ -691,6 +728,8 @@ export interface TerminalConfinement {
   root: string;
   /** The user's git configuration, read-only inside (see `userGitConfig`): git's identity. */
   gitConfig?: string;
+  /** MXC on Windows: the sandbox cache, created before the launch, and the variables naming it. */
+  toolchains?: WindowsToolchains;
   /** The policy for this terminal, given its private temporary directory and what it runs. */
   policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy;
 }

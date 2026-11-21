@@ -643,6 +643,128 @@ const diskReader: ToolInstallationReader = {
   },
 };
 
+/**
+ * The search-path folders of MSYS2 programs: those holding `msys-2.0.dll` (Git's `usrin`, an MSYS2
+ * install's `usrin`). None of their programs can start in MXC's container — the MSYS2 runtime
+ * creates named objects in the global namespace a container may not use, and dies with `0xC0000142`
+ * (microsoft/mxc#1061) — so they are left out of a confined command's search path, where they would
+ * only shadow the native program of the same name (`perl`, `bash`, `find`).
+ */
+export function msysFolders(searchPath: string | undefined, reader: Pick<ToolInstallationReader, "isFile"> = diskReader): string[] {
+  return (searchPath ?? "").split(";").filter((entry) => entry && path.win32.isAbsolute(entry) && reader.isFile(path.win32.join(entry, "msys-2.0.dll")));
+}
+
+/**
+ * The MSYS2 program a command names by its path, if any: an `.exe` in a folder holding `msys-2.0.dll`,
+ * or one in a search-path folder that does. For the note after its `0xC0000142`.
+ */
+export function msysProgramNamed(command: string, searchPath: string | undefined, reader: Pick<ToolInstallationReader, "isFile"> = diskReader): string | undefined {
+  const folders = msysFolders(searchPath, reader).map((entry) => entry.toLowerCase().replace(/[\\/]+$/, ""));
+  for (const match of command.matchAll(/[A-Za-z]:[\\/][^"'`<>|\r\n]*?\.exe\b/gi)) {
+    const program = match[0].replaceAll("/", "\\");
+    const folder = path.win32.dirname(program);
+    if (folders.includes(folder.toLowerCase()) || reader.isFile(path.win32.join(folder, "msys-2.0.dll"))) return program;
+  }
+  return undefined;
+}
+
+/** What ends a command whose MSYS2 program could not start (`0xC0000142`). */
+export function msysNote(program: string): string {
+  return (
+    `[pi-outpost] ${program} is an MSYS2 program (Git Bash's usr\\bin, MSYS2): none of them can start in this sandbox — ` +
+    `their runtime needs named objects a container may not create (microsoft/mxc#1061). Use the native program instead: ` +
+    `PowerShell or cmd for the shell, a native Perl (Strawberry) for perl, git itself for git.`
+  );
+}
+
+/** A Windows search path without its MSYS2 folders (`msysFolders`). */
+export function withoutMsysFolders(searchPath: string, reader: Pick<ToolInstallationReader, "isFile"> = diskReader): string {
+  const dropped = new Set(msysFolders(searchPath, reader).map((entry) => entry.toLowerCase()));
+  return searchPath.split(";").filter((entry) => !dropped.has(entry.toLowerCase())).join(";");
+}
+
+/** The sandbox cache's place when `sandbox.cacheDir` names none: beside the user's local data, the sandbox's own. */
+export function defaultSandboxCache(env: NodeJS.ProcessEnv = process.env): string {
+  return path.win32.join(env.LOCALAPPDATA || path.win32.join(homedir(), "AppData", "Local"), "pi-outpost", "sandbox-cache");
+}
+
+/** What a confined command under MXC on Windows gets for its toolchains (`windowsToolchains`). */
+export interface WindowsToolchains {
+  /** The sandbox cache: writable by confined commands, read by nothing unconfined. */
+  cacheDir: string;
+  /** Where each tool keeps its downloads, and where rustup and uv find what the user installed. */
+  env: Record<string, string>;
+  /** Toolchain homes that hold no credentials, readable, read only. */
+  readable: string[];
+}
+
+/**
+ * Where a confined command's tools keep their downloads, and the toolchains it may read.
+ *
+ * Each tool's cache or home is a folder of the sandbox cache, so a dependency is downloaded once per
+ * user rather than once per command, and never into the user's own caches, which sit beside
+ * credentials (`~\.cargo\credentials.toml`, `~\.m2\settings.xml`, `~\.gradle\gradle.properties`) and
+ * whose packages run unconfined later. `APPDATA` too, so npm's global prefix and per-user state land
+ * there and not in the project. rustup's home and the Pythons uv installed hold toolchains and no
+ * credentials: they are read where they are, named in the environment, when they exist and pass the
+ * search path's guard.
+ */
+export function windowsToolchains(
+  input: {
+    cacheDir: string;
+    serverEnv: NodeJS.ProcessEnv;
+    home?: string;
+    agentDir?: string;
+    configFile?: string;
+    /** `sandbox.toolEnvironment`, checked at load: applied last, `${cache}` standing for `cacheDir`. */
+    toolEnvironment?: Record<string, string>;
+  },
+  reader: ToolInstallationReader = diskReader,
+): WindowsToolchains {
+  const win = path.win32;
+  const at = (...parts: string[]) => win.join(input.cacheDir, ...parts);
+  const env: Record<string, string> = {
+    CARGO_HOME: at("cargo"),
+    GRADLE_USER_HOME: at("gradle"),
+    GOPATH: at("go"),
+    GOMODCACHE: at("go", "pkg", "mod"),
+    GOCACHE: at("go", "build"),
+    MAVEN_OPTS: `-Dmaven.repo.local=${at("m2", "repository")}`,
+    NUGET_PACKAGES: at("nuget", "packages"),
+    DOTNET_CLI_HOME: at("dotnet"),
+    BUN_INSTALL_CACHE_DIR: at("bun", "install-cache"),
+    // bun moves what it downloads from its temporary folder into its cache: the same volume.
+    BUN_TMPDIR: at("bun", "tmp"),
+    npm_config_cache: at("npm"),
+    UV_CACHE_DIR: at("uv"),
+    PIP_CACHE_DIR: at("pip"),
+    APPDATA: at("appdata", "Roaming"),
+  };
+  const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+  const under = (child: string, parent: string) => lower(child) === lower(parent) || lower(child).startsWith(`${lower(parent)}\\`);
+  const allowed = (folder: string) =>
+    win.isAbsolute(folder) &&
+    folder !== win.parse(folder).root &&
+    !(input.home && under(input.home, folder)) &&
+    ![input.agentDir, input.configFile].some((secret) => secret && (under(secret, folder) || under(folder, secret)));
+  const readable: string[] = [];
+  const home = (variable: string, fallback: string | undefined) => {
+    const folder = input.serverEnv[variable] || fallback;
+    if (folder === undefined || !allowed(folder) || !reader.isDirectory(folder)) return;
+    readable.push(folder);
+    env[variable] = folder;
+  };
+  const roaming = input.serverEnv.APPDATA || (input.home ? win.join(input.home, "AppData", "Roaming") : undefined);
+  home("RUSTUP_HOME", input.home ? win.join(input.home, ".rustup") : undefined);
+  home("UV_PYTHON_INSTALL_DIR", roaming ? win.join(roaming, "uv", "python") : undefined);
+  // The operator's own, for tools the table does not name or to replace its entries.
+  for (const [name, value] of Object.entries(input.toolEnvironment ?? {})) env[name] = value.replaceAll("${cache}", input.cacheDir);
+  return { cacheDir: input.cacheDir, env, readable };
+}
+
+/** A search-path folder by one of these names is part of an installation, the folder above it. */
+const INSTALLATION_FOLDERS = new Set(["bin", "cmd", "scripts", "sbin"]);
+
 /** How many entries of one folder are looked at for launchers: a folder of links, not a system directory. */
 const LAUNCHERS_LOOKED_AT = 400;
 
@@ -678,12 +800,20 @@ export function toolInstallations(
   const take = (folder: string | undefined) => {
     if (folder === undefined) return;
     const clean = folder.replace(/[\\/]+$/, "");
-    if (allowed(clean) && !found.some((known) => lower(known) === lower(clean))) found.push(clean);
+    // One folder per installation: one already covered adds nothing, a wider one replaces those inside it.
+    if (!allowed(clean) || found.some((known) => under(clean, known))) return;
+    for (let i = found.length - 1; i >= 0; i--) if (under(found[i]!, clean)) found.splice(i, 1);
+    found.push(clean);
   };
 
   for (const entry of readableSearchEntries(input.searchPath, input)) {
     const name = win.basename(entry).toLowerCase();
     const parent = win.dirname(entry);
+    // An installation keeps the rest of itself beside the folder PATH names: gcc's libexec, CMake's
+    // share, Maven's boot. Its folder above a bin, cmd, Scripts or sbin, under the same guard — and
+    // never a folder directly in the home directory (~\.cargo holds credentials.toml, ~\.bun and ~\go
+    // a user's own state), whose bin needs nothing beside it.
+    if (INSTALLATION_FOLDERS.has(name) && !(input.home && lower(win.dirname(parent)) === lower(input.home))) take(parent);
     // Git for Windows: cmd\ and bin\ hold launchers for mingw64\bin\git.exe, which needs usr\bin
     // beside it; mingw64\bin and usr\bin on PATH are inside the same installation.
     const parentName = win.basename(parent).toLowerCase();
@@ -1231,7 +1361,20 @@ export function gitReadOnlyFiles(gitConfig: string | undefined, home: string = h
 /** The environment of a confined shell: a home in its root, its own temp (history included), no secrets. */
 export function confinedEnvironment(
   serverEnv: NodeJS.ProcessEnv,
-  options: { root: string; tmp: string; shell: string; platform?: NodeJS.Platform; gitConfig?: string },
+  options: {
+    root: string;
+    tmp: string;
+    shell: string;
+    platform?: NodeJS.Platform;
+    gitConfig?: string;
+    /**
+     * MXC on Windows: its container keeps its profile — and the `TEMP` it sets — under the
+     * `LOCALAPPDATA` it is given (`<LOCALAPPDATA>Packagessandbox.{…}ACTemp`), replacing ours.
+     * The server's would put it under a folder the policy denies (`Packages` beside the root's
+     * path, or all of `C:Users`): no temporary file could be created. The private temp instead.
+     */
+    containerProfileInTmp?: boolean;
+  },
 ): Record<string, string> {
   const windows = (options.platform ?? process.platform) === "win32";
   const env: Record<string, string> = {};
@@ -1271,6 +1414,11 @@ export function confinedEnvironment(
     env.USERPROFILE = options.tmp;
     env.TEMP = options.tmp;
     env.TMP = options.tmp;
+    if (options.containerProfileInTmp) {
+      env.LOCALAPPDATA = options.tmp;
+      // No MSYS2 program starts in MXC's container: their folders would only shadow native ones.
+      if (env.PATH) env.PATH = withoutMsysFolders(env.PATH);
+    }
   }
   return env;
 }

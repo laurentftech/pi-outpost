@@ -204,6 +204,16 @@ describe("confinedEnvironment on Windows", () => {
     assert.equal(env.HOME, "C:\\work\\app");
     assert.equal(env.TEMP, "C:\\tmp\\t1");
   });
+
+  // openlore: scenario=OnWindowsATemporaryFileCanBeCreated spec=sandbox-runner-bash
+  test("under MXC the container's profile goes to the private temp: MXC derives TEMP from LOCALAPPDATA", () => {
+    const server = { SystemRoot: "C:\\Windows", LOCALAPPDATA: "C:\\Users\\server\\AppData\\Local" };
+    const mxc = confinedEnvironment(server, { root: "C:\\work\\app", tmp: "C:\\tmp\\t1", shell: "powershell.exe", platform: "win32", containerProfileInTmp: true });
+    assert.equal(mxc.LOCALAPPDATA, "C:\\tmp\\t1", "never the server's, whose Packages folder the policy denies");
+    // landstrip's AppContainer needs the server's own to start (os error 203 without it).
+    const landstrip = confinedEnvironment(server, { root: "C:\\work\\app", tmp: "C:\\tmp\\t1", shell: "powershell.exe", platform: "win32" });
+    assert.equal(landstrip.LOCALAPPDATA, "C:\\Users\\server\\AppData\\Local");
+  });
 });
 
 describe("prepareConfinedTerminal", () => {

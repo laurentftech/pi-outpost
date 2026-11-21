@@ -5,7 +5,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { landstripNote, landstripStderr } from "../src/confinedBash.ts";
-import { networkSummary } from "../src/sandbox.ts";
+import { networkSummary, toolchainsFor } from "../src/sandbox.ts";
+import { bunInstallNote } from "../src/confinedBash.ts";
 
 // As landstrip 0.20.26 prints them (abridged to the fields read).
 const BIND = '{"kind":"network","code":"NETWORK_DENIED","state":"info","query_id":"0","operation":"bind","target":"[::1]:0","syscall":"bind","errno":"EACCES","mechanism":"seccomp"}';
@@ -72,18 +73,49 @@ describe("networkSummary", () => {
     assert.equal(networkSummary(base), undefined);
   });
 
-  const mxc = { ...base, bashRunner: "mxc" } as never as Parameters<typeof networkSummary>[0];
+  const mxc = { ...base, bashRunner: "mxc", cacheDir: "D:/cache" } as never as Parameters<typeof networkSummary>[0];
+  const cache = ", sandbox cache D:/cache";
 
   // openlore: scenario=TheLineNamesTheAsyncioLimit spec=sandbox-runner-bash
   test("TheLineNamesTheAsyncioLimit: under MXC on Windows a closed loopback says asyncio cannot start", () => {
-    assert.equal(networkSummary({ ...mxc, allowedHosts: ["pypi.org"], grants: "never" }, "win32"), "network only to pypi.org, loopback closed: Python's asyncio cannot start in the shell");
-    assert.equal(networkSummary({ ...mxc, hostLoopback: false }, "win32"), "loopback closed: Python's asyncio cannot start in the shell");
+    assert.equal(networkSummary({ ...mxc, allowedHosts: ["pypi.org"], grants: "never" }, "win32"), `network only to pypi.org, loopback closed: Python's asyncio cannot start in the shell${cache}`);
+    assert.equal(networkSummary({ ...mxc, hostLoopback: false }, "win32"), `loopback closed: Python's asyncio cannot start in the shell${cache}`);
+  });
+
+  test("under MXC on Windows the line names the MSYS2 folders left out of PATH, and nothing when there are none", () => {
+    const gitUsr = String.raw`C:\Program Files\Git\usr\bin`;
+    assert.ok(networkSummary(mxc, "win32", [gitUsr])!.endsWith(`, MSYS2 folders left out of PATH: ${gitUsr}`));
+    assert.doesNotMatch(networkSummary(mxc, "win32", [])!, /MSYS2/);
   });
 
   test("under MXC on Windows an open loopback says what it reaches; elsewhere nothing is added", () => {
-    assert.equal(networkSummary(mxc, "win32"), "loopback open: services listening on this machine are reachable");
-    assert.equal(networkSummary({ ...mxc, hostLoopback: true }, "win32"), "loopback open: services listening on this machine are reachable");
+    assert.equal(networkSummary(mxc, "win32"), `loopback open: services listening on this machine are reachable${cache}`);
+    assert.equal(networkSummary({ ...mxc, hostLoopback: true }, "win32"), `loopback open: services listening on this machine are reachable${cache}`);
     assert.equal(networkSummary(mxc, "linux"), undefined, "MXC on Linux: a process reaches its own loopback");
     assert.equal(networkSummary({ ...mxc, bashImage: "buildpack-deps:bookworm-scm" }, "win32"), undefined, "WSLC has its own network");
+  });
+});
+
+describe("toolchainsFor", () => {
+  const base = { root: "C:/w", allowWrite: true, allowBash: true, readExceptions: [] } as never as Parameters<typeof toolchainsFor>[0];
+
+  test("only MXC's process container on Windows gets the sandbox cache; Linux, macOS, WSLC and other runners are unchanged", () => {
+    const windows = toolchainsFor({ ...base, bashRunner: "mxc", cacheDir: "D:/cache" } as never, {}, "win32");
+    assert.equal(windows?.toolchains.cacheDir, "D:/cache");
+    assert.equal(toolchainsFor({ ...base, bashRunner: "mxc" } as never, {}, "linux"), undefined);
+    assert.equal(toolchainsFor({ ...base, bashRunner: "mxc" } as never, {}, "darwin"), undefined);
+    assert.equal(toolchainsFor({ ...base, bashRunner: "mxc", bashImage: "buildpack-deps:bookworm-scm" } as never, {}, "win32"), undefined);
+    assert.equal(toolchainsFor({ ...base, bashRunner: "C:/tools/landstrip.exe" } as never, {}, "win32"), undefined);
+    assert.ok(toolchainsFor({ ...base, bashRunner: "mxc" } as never, {}, "win32")?.toolchains.cacheDir.endsWith("pi-outpost\\sandbox-cache"));
+  });
+});
+
+describe("bunInstallNote", () => {
+  // openlore: scenario=BunInstallsFailureIsExplained spec=sandbox-runner-bash
+  test("says what fails, what still works, and to run the install outside without retrying", () => {
+    const note = bunInstallNote();
+    assert.match(note, /bun cannot install packages in this sandbox/);
+    assert.match(note, /bun run, bun test and bun <file> work/);
+    assert.match(note, /outside the sandbox; do not retry/);
   });
 });

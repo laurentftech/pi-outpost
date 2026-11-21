@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
-import { TERMINAL_KILL_GRACE_MS, TerminalManager as RealTerminalManager, findWindowsGitBash, setPtyModuleForTesting, terminalEnvironment } from "../src/terminalManager.ts";
+import { CONFINED_POWERSHELL_ARGS, TERMINAL_KILL_GRACE_MS, TerminalManager as RealTerminalManager, findWindowsGitBash, setPtyModuleForTesting, terminalEnvironment, withTemporaryDirectoryRestored } from "../src/terminalManager.ts";
 import type { WebSocket } from "ws";
 
 /**
@@ -293,5 +293,23 @@ describe("terminalEnvironment", () => {
     assert.equal("PI_CODING_AGENT_DIR" in unset, false);
     assert.equal(unset.PATH, "/usr/bin");
     assert.equal(unset.TERM, "xterm-256color");
+  });
+});
+
+// openlore: scenario=OnWindowsTheTerminalHasAWritableTemp spec=terminal
+describe("withTemporaryDirectoryRestored", () => {
+  test("PowerShell's start command restores TEMP, TMP and LOCALAPPDATA first, keeping what it already ran", () => {
+    const args = withTemporaryDirectoryRestored("C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe", CONFINED_POWERSHELL_ARGS);
+    assert.deepEqual(args.slice(0, -1), CONFINED_POWERSHELL_ARGS.slice(0, -1));
+    assert.equal(args.at(-1), "$env:TEMP = $env:TMPDIR; $env:TMP = $env:TMPDIR; $env:LOCALAPPDATA = $env:TMPDIR; $ProgressPreference='SilentlyContinue'");
+    assert.deepEqual(withTemporaryDirectoryRestored("pwsh.exe", ["-NoLogo"]), ["-NoLogo", "-NoExit", "-Command", "$env:TEMP = $env:TMPDIR; $env:TMP = $env:TMPDIR; $env:LOCALAPPDATA = $env:TMPDIR"]);
+  });
+
+  test("cmd gets it as /K, with no quote cmd could not read; a user's /C or /K and other shells are left alone", () => {
+    const args = withTemporaryDirectoryRestored("C:/Windows/System32/cmd.exe", []);
+    assert.deepEqual(args, ["/K", "set TEMP=%TMPDIR%& set TMP=%TMPDIR%& set LOCALAPPDATA=%TMPDIR%"]);
+    assert.ok(!args[1].includes('"'));
+    assert.deepEqual(withTemporaryDirectoryRestored("cmd.exe", ["/K", "doskey"]), ["/K", "doskey"]);
+    assert.deepEqual(withTemporaryDirectoryRestored("C:/tools/sh.exe", ["-l"]), ["-l"]);
   });
 });
