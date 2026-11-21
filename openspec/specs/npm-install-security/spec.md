@@ -7,7 +7,7 @@ Keeps npm 12 installations secure while allowing the reviewed native scripts pi-
 ## Requirements
 
 ### Requirement: ReviewedRepositoryScriptPolicy
-The repository SHALL use pinned npm 12.2.2 and explicitly review dependency lifecycle scripts.
+The repository SHALL use pinned npm 12.2.3 and explicitly review dependency lifecycle scripts.
 An unreviewed script SHALL fail repository installation before execution.
 
 #### Scenario: UnreviewedRepositoryScriptsFailClosed

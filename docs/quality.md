@@ -18,7 +18,7 @@ and the work planned for each gap, is in [OpenSSF: status and plan](openssf.md).
 | Coverage thresholds | `scripts/coverage-config.mjs` | Lines, branches and functions over every file of each scope, all suites together: `server/src` 97/92/97%, `shared/src` 97/80/96%, `ui/src` 96/86/92%. These are minimum thresholds, not claimed current measurements. |
 | Spec scenario inventory | `scripts/check-scenario-coverage.mjs` | Checks a touched change's scenario matrix and cited files. A reviewer must still read the assertions and verify their outcomes. |
 | Packaging and confinement | CLI install, container, MCP bundle and native sandbox tests | Exercises installed/native artifacts and refusals. Some jobs run only on specific platforms or changed paths; use their actual result for the change. |
-| Install and publication policy | `.npmrc`, root `allowScripts`, release workflow | npm 12.2.2 rejects unreviewed install scripts; npm publication uses GitHub OIDC/provenance. Dependencies and upstream advisories still need review. |
+| Install and publication policy | `.npmrc`, root `allowScripts`, release workflow | npm 12.2.3 rejects unreviewed install scripts; npm publication uses GitHub OIDC/provenance. Dependencies and upstream advisories still need review. |
 
 ## Tests are type-checked
 

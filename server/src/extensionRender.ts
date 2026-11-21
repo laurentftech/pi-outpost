@@ -105,7 +105,8 @@ function lightCounterparts(dark: Theme, light: Theme | undefined): Map<string, s
 
 /** Minimal pi-tui Component surface used by renderers. */
 interface RenderComponent {
-  render(width: number): string[];
+  // Read-only since pi 1.6.0: a Container returns its cached array, never to be changed in place.
+  render(width: number): readonly string[];
 }
 
 export interface RenderedHtml {

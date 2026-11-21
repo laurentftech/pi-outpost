@@ -68,9 +68,9 @@
     "node-pty@1.1.0": true,
     "protobufjs": false
   },
-  "packageManager": "npm@12.2.2",
+  "packageManager": "npm@12.2.3",
   "engines": {
     "node": "^24.21.0 || >=26.8.0",
-    "npm": ">=12.2.2 <13"
+    "npm": ">=12.2.3 <13"
   }
 }

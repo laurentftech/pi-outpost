@@ -20,11 +20,11 @@ publishing vulnerability details.
 
 ## Development setup
 
-Use Node.js 24 (the main CI runtime), Git and **npm 12.2.2**. Native terminal dependencies may
+Use Node.js 24 (the main CI runtime), Git and **npm 12.2.3**. Native terminal dependencies may
 require Python and a C/C++ toolchain. Node 26 is used separately for release executable builds.
 
 ```sh
-npm install -g npm@12.2.2
+npm install -g npm@12.2.3
 npm ci
 npm run dev
 ```
@@ -84,7 +84,7 @@ strict validation. Do not weaken an assertion or a sandbox check to get a green 
 
 ## Dependencies and security-sensitive changes
 
-Regenerate `package-lock.json` with npm 12.2.2 when changing dependencies or package versions.
+Regenerate `package-lock.json` with npm 12.2.3 when changing dependencies or package versions.
 Review new install scripts explicitly: `.npmrc` and `allowScripts` reject unreviewed scripts.
 Keep the Playwright package and CI container versions aligned. Retain third-party license notices.
 
