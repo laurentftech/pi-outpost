@@ -27,11 +27,12 @@ import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, 
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
+import type { ConfinementRemedy } from "@pi-outpost/shared";
 import { linuxMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
 import { mxcSdk, runThroughSdk, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
 
 /** Whether terminals can be confined, and if not, the reason a user is shown. */
-export type RunnerCheck = { ok: true } | { ok: false; reason: string };
+export type RunnerCheck = { ok: true } | { ok: false; reason: string; remedy?: ConfinementRemedy };
 
 /** How long the runner's self-check may take before it counts as unusable. */
 export const RUNNER_CHECK_TIMEOUT_MS = 5_000;
@@ -124,6 +125,13 @@ const MXC_WINDOWS_BUILDS: Record<string, { ubr: number; update: string }> = {
   "28000": { ubr: 2804, update: "the August 2026 cumulative update (KB5120996) or later" },
 };
 
+/** The update a Windows build lacks for MXC's process container, when it is one this table knows. */
+export function windowsUpdateRemedy(build: string, ubr: number): ConfinementRemedy | undefined {
+  const known = MXC_WINDOWS_BUILDS[build];
+  if (!known || ubr >= known.ubr) return undefined;
+  return { kind: "windows-update", build: `${build}.${ubr}`, needed: `${build}.${known.ubr}`, update: known.update.replace(/ or later$/, "") };
+}
+
 /** What a Windows build lacks for MXC's process container, in words a user can act on. */
 export function windowsBuildAdvice(build: string, ubr: number): string {
   const here = `This machine is Windows build ${build}.${ubr}`;
@@ -135,6 +143,9 @@ export function windowsBuildAdvice(build: string, ubr: number): string {
 
 /** This machine's Windows build and update revision, from the registry; undefined when unreadable. */
 async function windowsBuild(exec: Exec): Promise<{ build: string; ubr: number } | undefined> {
+  // For the tests that show this refusal end to end: a build to word it with. It changes the words only.
+  const told = /^(\d+)\.(\d+)$/.exec(process.env.PI_OUTPOST_TEST_WINDOWS_BUILD ?? "");
+  if (told) return { build: told[1], ubr: Number(told[2]) };
   const key = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
   try {
     const [build, ubr] = await Promise.all(
@@ -184,13 +195,19 @@ async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: (
   } catch (error) {
     return { ok: false, reason: `MXC failed its probe: ${(error as Error).message}` };
   }
+  // For the tests that show this refusal end to end: a tier the probe is taken to report. Only a tier
+  // that refuses is taken — "base-container" is ignored — so it can make the check fail, never pass.
+  const toldTier = process.env.PI_OUTPOST_TEST_MXC_TIER;
+  if (toldTier && toldTier !== "base-container") probe = { ...probe, tier: toldTier };
   if (probe.tier !== "base-container") {
     const build = await windowsBuild(exec);
+    const remedy = build ? windowsUpdateRemedy(build.build, build.ubr) : undefined;
     return {
       ok: false,
       reason:
-        `MXC would confine terminals with tier "${String(probe.tier ?? probe.error)}"; a terminal needs "base-container" (Windows 11 24H2 or 25H2 with the August 2026 update or later)` +
+        `MXC cannot confine commands on this Windows: its process container is not available here (MXC reports tier "${String(probe.tier ?? probe.error)}" and needs "base-container": Windows 11 24H2 or 25H2 with the August 2026 update or later)` +
         (build ? `. ${windowsBuildAdvice(build.build, build.ubr)}` : ""),
+      ...(remedy ? { remedy } : {}),
     };
   }
   if (probe.probes?.baseContainerSupportsDenyPaths === false) {
@@ -651,7 +668,15 @@ const diskReader: ToolInstallationReader = {
  * only shadow the native program of the same name (`perl`, `bash`, `find`).
  */
 export function msysFolders(searchPath: string | undefined, reader: Pick<ToolInstallationReader, "isFile"> = diskReader): string[] {
-  return (searchPath ?? "").split(";").filter((entry) => entry && path.win32.isAbsolute(entry) && reader.isFile(path.win32.join(entry, "msys-2.0.dll")));
+  const found = (searchPath ?? "").split(";").filter((entry) => entry && path.win32.isAbsolute(entry) && reader.isFile(path.win32.join(entry, "msys-2.0.dll")));
+  // Once each: a PATH often names Git's usr\bin several times, and the startup line listed it thrice.
+  const seen = new Set<string>();
+  return found.filter((entry) => {
+    const key = entry.toLowerCase().replace(/[\\/]+$/, "");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**

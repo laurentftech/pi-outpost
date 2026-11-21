@@ -21,6 +21,7 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ConfinementAttempt, ConfinementVerdict } from "@pi-outpost/shared";
+import { reasonOf, remedyOf } from "./confinedBash.ts";
 
 /** The line the canary prints for each attempt. */
 const MARK = "PI_OUTPOST_CANARY";
@@ -293,7 +294,8 @@ export async function runCanary(run: CanaryRun): Promise<ConfinementVerdict> {
     const serverSecrets = secretVariables(await serverEnvironment());
     return readCanary(output, expectedAttempts(bait, options), { wroteBeside, victimAlive, serverSecrets }, { runner: run.runner, checkedAt, notChecked: bait.notChecked });
   } catch (error) {
-    return { state: "failed", runner: run.runner, checkedAt, reason: (error as Error).message };
+    const remedy = remedyOf(error);
+    return { state: "failed", runner: run.runner, checkedAt, reason: reasonOf(error), ...(remedy ? { remedy } : {}) };
   } finally {
     await bait?.cleanup().catch(() => {});
   }

@@ -1163,6 +1163,13 @@ export type ConfinementAttempt =
  * the canary itself could not run or answer, so nothing is known. `unavailable` and `unconfined`
  * are not the canary's: see each.
  */
+/**
+ * What the user can do about a runner that cannot confine on this machine, when it is known.
+ * `windows-update`: MXC's process container needs a Windows update this machine lacks — `build`
+ * is this machine's (`26100.6584`), `needed` the first that has it, `update` the update by name.
+ */
+export type ConfinementRemedy = { kind: "windows-update"; build: string; needed: string; update: string };
+
 export type ConfinementVerdict =
   | { state: "checking"; runner: string }
   | {
@@ -1182,9 +1189,9 @@ export type ConfinementVerdict =
       notChecked: Array<{ attempt: ConfinementAttempt; why: string }>;
     }
   | { state: "leaking"; runner: string; checkedAt: string; reached: ConfinementAttempt[]; refused: ConfinementAttempt[] }
-  | { state: "failed"; runner: string; checkedAt: string; reason: string }
+  | { state: "failed"; runner: string; checkedAt: string; reason: string; remedy?: ConfinementRemedy }
   /** A runner the server chose (`"auto"`) that has not shown it confines: every command is refused, with `reason`. */
-  | { state: "unavailable"; runner: string; reason: string }
+  | { state: "unavailable"; runner: string; reason: string; remedy?: ConfinementRemedy }
   /**
    * A shell that runs unconfined (`"none"`, or `allowBash` without a runner). `available`: this
    * machine's runner passed its self-check, so the shell could be confined; `reason`: why not.

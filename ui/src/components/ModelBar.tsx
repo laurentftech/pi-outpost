@@ -7,6 +7,8 @@ import { formatCost, formatTokens, type SessionUsage } from "../util/sessionUsag
 import { eventHitsNode } from "../util/clickOutside";
 
 interface ModelBarProps {
+  /** A shell that cannot be confined here: the padlock opens the notice saying why, rather than the rules. */
+  onShellUnavailable?: () => void;
   model: string;
   models: ModelChoice[];
   thinkingLevel: string;
@@ -292,8 +294,8 @@ function SandboxRulesControl(props: ModelBarProps & { shellConfinement: Confinem
         data-testid="sandbox-rules-toggle"
         aria-haspopup="true"
         aria-expanded={open}
-        aria-label="Sandbox rules and refusals"
-        onClick={() => setOpen((was) => !was)}
+        aria-label={props.shellConfinement.state === "unavailable" && props.onShellUnavailable ? "Why the agent has no shell" : "Sandbox rules and refusals"}
+        onClick={() => (props.shellConfinement.state === "unavailable" && props.onShellUnavailable ? props.onShellUnavailable() : setOpen((was) => !was))}
         className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
       >
         <ConfinementLock verdict={props.shellConfinement} surface="shell" grants={props.shellGrants} />
@@ -348,9 +350,15 @@ export function ModelBar(props: ModelBarProps) {
 
       {props.shellConfinement && props.onGetSandboxRules && <SandboxRulesControl {...props} shellConfinement={props.shellConfinement} />}
       {props.shellConfinement && !props.onGetSandboxRules && (
-        <span className="ml-auto">
-          <ConfinementLock verdict={props.shellConfinement} surface="shell" grants={props.shellGrants} />
-        </span>
+        props.shellConfinement.state === "unavailable" && props.onShellUnavailable ? (
+          <button type="button" aria-label="Why the agent has no shell" onClick={props.onShellUnavailable} className="ml-auto rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400">
+            <ConfinementLock verdict={props.shellConfinement} surface="shell" grants={props.shellGrants} />
+          </button>
+        ) : (
+          <span className="ml-auto">
+            <ConfinementLock verdict={props.shellConfinement} surface="shell" grants={props.shellGrants} />
+          </span>
+        )
       )}
 
       <button

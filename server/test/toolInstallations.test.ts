@@ -244,6 +244,8 @@ describe("MSYS2 folders", () => {
     const searchPath = [gitUsr, strawberry, system32].join(";");
     assert.deepEqual(msysFolders(searchPath, disk), [gitUsr]);
     assert.equal(withoutMsysFolders(searchPath, disk), [strawberry, system32].join(";"));
+    // Named once however often the PATH repeats it, whatever its case or trailing slash.
+    assert.deepEqual(msysFolders([gitUsr, strawberry, gitUsr.toLowerCase(), `${gitUsr}\\`].join(";"), disk), [gitUsr]);
   });
 
   // openlore: scenario=AnMsysProgramNamedDirectlyIsExplained spec=sandbox-runner-bash

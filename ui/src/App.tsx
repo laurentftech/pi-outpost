@@ -39,6 +39,7 @@ import {
 import { Composer } from "./components/Composer";
 import { ExtensionDialog } from "./components/ExtensionDialog";
 import { SandboxGrantDialog } from "./components/SandboxGrantDialog";
+import { ShellUnavailableDialog, shellNoticeKey, shellNoticeSeen } from "./components/ShellUnavailableDialog";
 import { ExtensionNotifications } from "./components/ExtensionNotifications";
 import { ExtensionWidgets } from "./components/ExtensionWidgets";
 import { FileViewer } from "./components/FileViewer";
@@ -271,6 +272,15 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     setPendingUploads([]);
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [boundKey]);
+  // A shell the server chose and found it cannot confine here: said once per cause, as a dialog.
+  const shellVerdict = state.confinement?.bash;
+  const unavailableShell = shellVerdict?.state === "unavailable" ? shellVerdict : undefined;
+  const [shellNoticeOpen, setShellNoticeOpen] = useState(false);
+  const shellNotice = unavailableShell ? shellNoticeKey(unavailableShell) : undefined;
+  useEffect(() => {
+    if (shellNotice !== undefined && !shellNoticeSeen(shellNotice)) setShellNoticeOpen(true);
+    if (shellNotice === undefined) setShellNoticeOpen(false);
+  }, [shellNotice]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMounted, setSidebarMounted] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -1906,6 +1916,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 {grant && <SandboxGrantDialog key={grant.id} request={grant} onRespond={respondToGrant} />}
               </div>
             )}
+            {unavailableShell && shellNoticeOpen && <ShellUnavailableDialog verdict={unavailableShell} onClose={() => setShellNoticeOpen(false)} />}
             {/* Keep the composer mounted so an unanswered question cannot erase a draft. */}
             <div className="mx-auto max-w-3xl" hidden={!!(question || grant)}>
               <ExtensionWidgets widgets={state.widgets} placement="aboveEditor" controls={widgetControls} />
@@ -1942,6 +1953,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                 isStreaming={state.isStreaming}
                 contextUsage={state.contextUsage}
                 shellConfinement={state.confinement?.bash}
+                {...(unavailableShell ? { onShellUnavailable: () => setShellNoticeOpen(true) } : {})}
                 shellGrants={state.sandboxGrants?.active}
                 {...(state.sandboxGrants
                   ? {
