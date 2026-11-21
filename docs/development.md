@@ -42,9 +42,11 @@ developers.
 
 `npm run dev:sandbox` does the same with
 [`pi-outpost.config.dev-sandbox.json`](../pi-outpost.config.dev-sandbox.json): the agent's
-shell is PowerShell confined by MXC, and `allowedHosts: []` sends every connection through
+shell is PowerShell 7 confined by MXC, and `allowedHosts: []` sends every connection through
 the proxy, so each host is asked about — the way to try grants and network questions by hand.
-It needs Windows 11 with MXC (see [sandboxing](sandboxing.md)); stop `npm run dev` first, both
+PowerShell 7 rather than Windows PowerShell 5.1: models write `&&` and `||`, which only 7 parses.
+It needs Windows 11 with MXC (see [sandboxing](sandboxing.md)) and PowerShell 7 installed where
+its installer puts it (`winget install Microsoft.PowerShell`); stop `npm run dev` first, both
 listen on 3142. Settings you apply there are written back to that file: `git restore` it after.
 
 Both restart the server when a file under `server/src`, `shared/src`, `office/src` or
