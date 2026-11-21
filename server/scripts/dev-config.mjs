@@ -13,27 +13,49 @@
  *
  * Usage: node scripts/dev-config.mjs <name>   (dev, dev-sandbox)
  */
-import { copyFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, constants, copyFileSync, fstatSync, ftruncateSync, openSync, readFileSync, writeSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Returns what was done: "created", "refreshed" or "kept". */
+/**
+ * Returns what was done: "created", "refreshed" or "kept".
+ *
+ * Each file is checked through the descriptor it is then read or written through, never by name
+ * first and opened after: what is compared is what is used.
+ */
 export function prepareDevConfig(committed, local) {
-  if (!existsSync(local)) {
-    copyFileSync(committed, local);
-    return "created";
-  }
-  if (statSync(committed).mtimeMs <= statSync(local).mtimeMs) return "kept";
-  const base = JSON.parse(readFileSync(committed, "utf8"));
-  let mine = {};
   try {
-    mine = JSON.parse(readFileSync(local, "utf8"));
-  } catch {
-    // An unreadable copy is replaced by the committed file, nothing kept.
+    copyFileSync(committed, local, constants.COPYFILE_EXCL);
+    return "created";
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
   }
-  const merged = { ...base };
-  for (const [key, value] of Object.entries(mine)) if (!(key in base)) merged[key] = value;
-  writeFileSync(local, `${JSON.stringify(merged, null, 2)}\n`);
+  const committedFd = openSync(committed, "r");
+  let base;
+  let committedTime;
+  try {
+    committedTime = fstatSync(committedFd).mtimeMs;
+    base = JSON.parse(readFileSync(committedFd, "utf8"));
+  } finally {
+    closeSync(committedFd);
+  }
+  const localFd = openSync(local, "r+");
+  try {
+    if (committedTime <= fstatSync(localFd).mtimeMs) return "kept";
+    let mine = {};
+    try {
+      mine = JSON.parse(readFileSync(localFd, "utf8"));
+    } catch {
+      // An unreadable copy is replaced by the committed file, nothing kept.
+    }
+    const merged = { ...base };
+    for (const [key, value] of Object.entries(mine)) if (!(key in base)) merged[key] = value;
+    ftruncateSync(localFd, 0);
+    writeSync(localFd, `${JSON.stringify(merged, null, 2)}
+`, 0);
+  } finally {
+    closeSync(localFd);
+  }
   return "refreshed";
 }
 
