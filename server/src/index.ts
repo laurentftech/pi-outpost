@@ -78,6 +78,7 @@ import { runCliProviderLogin, runCliProviderLogout, type CliAccountRuntime } fro
 import { CliError, helpText, parseCli, readSecret, runInit } from "./cli.ts";
 import { readFileSafely } from "./readFileSafely.ts";
 import { createBtwExtension } from "./btwExtension.ts";
+import { createImageLimitExtension } from "./modelImageLimit.ts";
 import { COMMAND_NOT_AVAILABLE, offeredCommands, refusesPrompt, type CommandPolicy } from "./commandPolicy.ts";
 import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
@@ -1599,6 +1600,9 @@ const makeCreateRuntime =
         // pi-outpost's own, like its tools, so not dropped under noExtensions (which keeps
         // out extension code found on disk). Replaceable: a `btw` the user installs wins.
         { name: "btw", factory: createBtwExtension(), replaceable: true },
+        // The images a request may carry, as the active model declares them: pi reads the
+        // limit but does not apply it, and a gateway that does refuses the whole turn (#526).
+        { name: "image-limit", factory: createImageLimitExtension() },
         // The Pi CLI loads these built-ins itself; SDK sessions do not. Keep the
         // embedded runtime's extension set in step with the CLI, including MCP's
         // codemode/tool_search activation when configured servers need them.

@@ -84,6 +84,16 @@ describe("pdf_render", () => {
     assert.match(text(content), /pages="9-10"/);
   });
 
+  // openlore: scenario=AToolNeverReturnsMoreImagesThanTheModelTakes spec=pdf-documents
+  test("a model taking 3 images per request gets 3 pages, and the range of the rest", async () => {
+    const model = { id: "small", inputLimits: { images: { maxPerRequest: 3 } } };
+    const result = await (
+      tool.execute as unknown as (id: string, params: unknown, signal: undefined, onUpdate: undefined, ctx: unknown) => Promise<{ content: Content[] }>
+    )("call-2", { path: "pdf-long.pdf" }, undefined, undefined, { model });
+    assert.equal(images(result.content).length, 3);
+    assert.match(text(result.content), /Pages 1, 2, 3 are below; 7 more were not drawn \(at most 3 per call: the active model accepts at most 3 images per request\)\. Ask for them with pages="4-10"\./);
+  });
+
   test("NoOfficeApplicationNeeded: the tool has no way to reach a converter", () => {
     // A PDF needs no conversion before it can be drawn, and this is what makes that
     // observable rather than asserted: the tool's options carry no renderer settings

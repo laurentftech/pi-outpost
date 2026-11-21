@@ -141,6 +141,23 @@ describe("what travels, and what is said about the rest", () => {
     assert.match(chosen.notes[0], new RegExp(`starting at ${MAX_PICTURES_PER_CALL + 1}\\.$`));
   });
 
+  // openlore: scenario=AToolNeverReturnsMoreImagesThanTheModelTakes spec=pdf-documents
+  test("a model taking fewer images lowers the count cap, and the answer says why", () => {
+    const found = Array.from({ length: 6 }, (_, i) => picture(i + 1, 10));
+    const chosen = selectPictures(found, "all", 2);
+    assert.deepEqual(chosen.returned.map((p) => p.number), [1, 2]);
+    assert.match(chosen.notes[0], /^4 further pictures did not fit this answer \(at most 2 pictures and 4 MB per call: the active model accepts at most 2 images per request\)\. Ask for them by number, starting at 3\.$/);
+  });
+
+  test("when the bytes stop the pictures, the model's limit is not given as the reason", () => {
+    // Found in the running app: two 2 MB scans, a model taking 4 — the 4 MB budget bit, not the 4.
+    const each = Math.floor(MAX_PICTURE_BYTES_PER_CALL * 0.6);
+    const chosen = selectPictures([picture(1, each), picture(2, each), picture(3, each)], ["1", "2", "3"], 4);
+    assert.deepEqual(chosen.returned.map((p) => p.number), [1]);
+    assert.match(chosen.notes[0], /\(at most 4 pictures and 4 MB per call\)\. Ask for fewer at a time, starting at 2\.$/);
+    assert.doesNotMatch(chosen.notes[0], /active model/);
+  });
+
   test("the per-call byte cap holds even when the count would allow more", () => {
     // Each under the per-picture ceiling, so only the per-call total can stop them:
     // three of these are 4.5 MB against a 4 MB budget.

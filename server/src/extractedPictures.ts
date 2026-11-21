@@ -149,7 +149,11 @@ export interface PictureSelection {
  * than was asked for: a caller that mistyped a number should learn it, not read an
  * answer that looks complete.
  */
-export function selectPictures(pictures: FoundPicture[], request: PictureRequest): PictureSelection {
+export function selectPictures(
+  pictures: FoundPicture[],
+  request: PictureRequest,
+  maxPictures: number = MAX_PICTURES_PER_CALL,
+): PictureSelection {
   if (request === "none") return { returned: [], notes: [] };
 
   let wanted: FoundPicture[];
@@ -181,6 +185,8 @@ export function selectPictures(pictures: FoundPicture[], request: PictureRequest
   const tooBig: number[] = [];
   let bytesSoFar = 0;
   let cappedAt: number | undefined;
+  // Whether the count stopped one, as opposed to the bytes: only then is the model's limit the reason.
+  let cappedByCount = false;
 
   for (const picture of wanted) {
     if (picture.bytes === undefined) continue; // Its marker already says why.
@@ -197,8 +203,9 @@ export function selectPictures(pictures: FoundPicture[], request: PictureRequest
         tooBig.push(picture.number);
         continue;
       }
-      if (returned.length >= MAX_PICTURES_PER_CALL || bytesSoFar + picture.bytes.length > MAX_PICTURE_BYTES_PER_CALL) {
+      if (returned.length >= maxPictures || bytesSoFar + picture.bytes.length > MAX_PICTURE_BYTES_PER_CALL) {
         cappedAt ??= picture.number;
+        if (returned.length >= maxPictures) cappedByCount = true;
         continue;
       }
     }
@@ -217,7 +224,8 @@ export function selectPictures(pictures: FoundPicture[], request: PictureRequest
     const left = wanted.filter((picture) => picture.bytes !== undefined && !returned.includes(picture) && !tooBig.includes(picture.number));
     notes.push(
       `${left.length} further picture${left.length === 1 ? "" : "s"} did not fit this answer ` +
-        `(at most ${MAX_PICTURES_PER_CALL} pictures and ${Math.round(MAX_PICTURE_BYTES_PER_CALL / (1024 * 1024))} MB per call). ` +
+        `(at most ${maxPictures} pictures and ${Math.round(MAX_PICTURE_BYTES_PER_CALL / (1024 * 1024))} MB per call` +
+        (cappedByCount && maxPictures < MAX_PICTURES_PER_CALL ? `: the active model accepts at most ${maxPictures} images per request). ` : `). `) +
         // The advice has to differ by case. Telling a caller that already named its
         // pictures to "ask by number" sends it round the loop it is standing in.
         (named
@@ -273,8 +281,9 @@ export async function pictureContentFor(
   pictures: FoundPicture[],
   request: PictureRequest,
   rasterizeSvg?: SvgRasteriser,
+  maxPictures: number = MAX_PICTURES_PER_CALL,
 ): Promise<{ blocks: PictureContent[]; notes: string[] }> {
-  const { returned, notes } = selectPictures(pictures, request);
+  const { returned, notes } = selectPictures(pictures, request, maxPictures);
   const blocks: PictureContent[] = [];
   const failed: number[] = [];
   for (const picture of returned) {
@@ -338,6 +347,25 @@ const RGBA_32BPP = 3;
  * `null` when there is no canvas, or the bitmap is not one of those three kinds — the
  * caller marks the picture and says so rather than returning something wrong.
  */
+/**
+ * The format `encodeBitmap` would give this bitmap, without encoding it, or `null` where
+ * it would give none.
+ *
+ * For a picture only named, not returned: the marker says "JPEG 2480×3508" either way,
+ * and encoding a full-page scan only to throw the bytes away is what put a scanned
+ * document's extraction past its budget (#527). Keep the two in step.
+ */
+export function encodedFormatOf(bitmap: Bitmap, canvas: CanvasModule | null): "JPEG" | "PNG" | null {
+  if (canvas === null) return null;
+  const { width, height, kind, data } = bitmap;
+  if (width <= 0 || height <= 0) return null;
+  const pixels = width * height;
+  if (kind === RGBA_32BPP) return data.length < pixels * 4 ? null : "PNG";
+  if (kind === RGB_24BPP) return data.length < pixels * 3 ? null : "JPEG";
+  if (kind === GRAYSCALE_1BPP) return data.length < ((width + 7) >> 3) * height ? null : "PNG";
+  return null;
+}
+
 export async function encodeBitmap(bitmap: Bitmap, canvas: CanvasModule | null): Promise<{ bytes: Buffer; mimeType: string } | null> {
   if (canvas === null) return null;
   const { width, height, kind, data } = bitmap;

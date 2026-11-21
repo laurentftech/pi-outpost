@@ -15,7 +15,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { loadCanvas, type CanvasModule } from "./canvas.ts";
-import { encodeBitmap, pictureMarker, type Bitmap, type FoundPicture } from "./extractedPictures.ts";
+import { encodeBitmap, encodedFormatOf, pictureMarker, pictureNumberOf, type Bitmap, type FoundPicture, type PictureRequest } from "./extractedPictures.ts";
 import { renderSpans, struckThroughNotice, STRIKE, type Span } from "./markdownSpans.ts";
 import { escapeCell } from "@pi-outpost/office/markdownTable.ts";
 import { commentsNotice, commentsOf, renderComments, UNREADABLE_COMMENTS } from "./pdfComments.ts";
@@ -54,7 +54,16 @@ export interface PdfExtractOptions {
   full?: boolean;
   maxPages?: number;
   maxChars?: number;
+  /**
+   * The whole budget. Omitted: `DEFAULT_TIMEOUT_MS` plus `PER_PAGE_TIMEOUT_MS` for each
+   * page asked for, so a long range is not held to what one short call may spend.
+   */
   timeoutMs?: number;
+  /**
+   * The pictures whose bytes the caller will return. Every picture is still named in the
+   * text; only these are encoded. Omitted means all, as before.
+   */
+  pictures?: PictureRequest;
 }
 
 export interface PdfExtraction {
@@ -84,6 +93,20 @@ export const ABSOLUTE_MAX_CHARS = 400_000;
 
 /** What one document may spend being parsed. Loading pdf.js is not charged to it. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
+/**
+ * What each page asked for adds to that budget. A scanned page with an OCR layer costs
+ * about a second here (measured: ten A4 300 dpi pages, 10.4 s with every picture encoded),
+ * and a slower machine several times that: a flat 30 s held a ten-page range of such a
+ * document past its ceiling (#527).
+ */
+export const PER_PAGE_TIMEOUT_MS = 5_000;
+/** The most a single call may spend, however many pages it asks for. */
+export const MAX_TIMEOUT_MS = 10 * 60_000;
+
+/** The budget for a call over `pages` pages: a base, a share per page, and a ceiling. */
+export function extractionBudget(pages: number): number {
+  return Math.min(MAX_TIMEOUT_MS, DEFAULT_TIMEOUT_MS + PER_PAGE_TIMEOUT_MS * Math.max(0, pages));
+}
 
 /* ── Geometry ───────────────────────────────────────────────────────────────── */
 
@@ -1021,7 +1044,7 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
   const full = options.full === true;
   const maxPages = options.maxPages ?? (full ? Number.POSITIVE_INFINITY : DEFAULT_MAX_PAGES);
   const maxChars = options.maxChars ?? (full ? ABSOLUTE_MAX_CHARS : DEFAULT_MAX_CHARS);
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const encodes = pictureFilter(options.pictures ?? "all");
 
   // The clock starts once the parser is in hand: the budget bounds this
   // document, not the one-time cost of loading pdf.js.
@@ -1032,10 +1055,14 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
   // `null` is an answer every picture already has to handle.
   const canvas = loadCanvas();
 
-  const { doc, destroy } = await openDocument(bytes, timeoutMs);
+  const { doc, destroy } = await openDocument(bytes, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   try {
     const pageCount = doc.numPages;
     const requested = options.pages ? parsePageRange(options.pages, pageCount) : rangeTo(pageCount);
+    // Known only now: the budget follows the pages this call will read, not a flat figure.
+    const timeoutMs = options.timeoutMs ?? extractionBudget(Math.min(requested.length, maxPages));
+    /** Why the budget stopped the call, for the error or the truncation note. */
+    let outOfTime: string | undefined;
 
     const sections: string[] = [];
     const covered: number[] = [];
@@ -1046,6 +1073,30 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
     let commentCount = 0;
     let characters = 0;
     let nextPage: number | undefined;
+
+    /** One page's reads, each charged to what is left of the call's budget. */
+    const readPage = async (pageNumber: number) => {
+      const left = (step: string) => {
+        const ms = timeoutMs - (Date.now() - started);
+        if (ms <= 0) throw new PdfError("budget", `${step} exceeded the ${timeoutMs} ms budget`);
+        return ms;
+      };
+      // The time left is taken before each read starts, never as its argument after it: a
+      // read started and then abandoned by a budget already spent would reject unwatched
+      // once the document is destroyed.
+      const opening = left(`opening page ${pageNumber}`);
+      const page = await withDeadline(doc.getPage(pageNumber), opening, `opening page ${pageNumber}`);
+      const reading = left(`reading the text of page ${pageNumber}`);
+      const content = await withDeadline(page.getTextContent(), reading, `reading the text of page ${pageNumber}`);
+      // Recomputed, not reused: the reads share one page's budget rather than getting
+      // one each, or a single page could spend twice what it is allowed.
+      const drawn = await pageDrawings(page, pdfjs.OPS as unknown as Record<string, number>, left(`reading the drawing of page ${pageNumber}`), pageNumber);
+      const pieces = toPieces(content.items);
+      const lines = buildLines(markStruckPieces(pieces, drawn.shapes));
+      const pagePictures = await resolvePagePictures(page, drawn.images, pictures, canvas, left(`reading the pictures on page ${pageNumber}`), encodes);
+      const annotations = await pageAnnotations(page, left(`reading the comments on page ${pageNumber}`), pageNumber);
+      return { pieces, lines, pagePictures, annotations };
+    };
 
     for (const [index, pageNumber] of requested.entries()) {
       if (index >= maxPages || characters >= maxChars) {
@@ -1061,20 +1112,23 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
         nextPage = pageNumber;
         break;
       }
-      const remaining = timeoutMs - (Date.now() - started);
-      if (remaining <= 0) throw new PdfError("budget", `extraction exceeded the ${timeoutMs} ms budget`);
-
-      const page = await withDeadline(doc.getPage(pageNumber), remaining, `reading page ${pageNumber}`);
-      const content = await withDeadline(page.getTextContent(), remaining, `reading page ${pageNumber}`);
-      // Recomputed, not reused: the two reads share one page's budget rather than
-      // getting one each, or a single page could spend twice what it is allowed.
-      const left = timeoutMs - (Date.now() - started);
-      if (left <= 0) throw new PdfError("budget", `extraction exceeded the ${timeoutMs} ms budget`);
-      const drawn = await pageDrawings(page, pdfjs.OPS as unknown as Record<string, number>, left, pageNumber);
-      const pieces = toPieces(content.items);
-      const lines = buildLines(markStruckPieces(pieces, drawn.shapes));
-      const pagePictures = await resolvePagePictures(page, drawn.images, pictures, canvas, timeoutMs - (Date.now() - started));
-      const annotations = await pageAnnotations(page, timeoutMs - (Date.now() - started), pageNumber);
+      const picturesBefore = pictures.length;
+      let read: Awaited<ReturnType<typeof readPage>>;
+      try {
+        read = await readPage(pageNumber);
+      } catch (error) {
+        if (!(error instanceof PdfError && error.reason === "budget")) throw error;
+        // The page that ran out leaves nothing behind: its pictures were numbered for a
+        // section that will not be written.
+        pictures.length = picturesBefore;
+        outOfTime = error.message;
+        // What was read is returned, with the page to start again from — unless the
+        // caller asked for everything, where an answer that stops short looks complete.
+        if (full || covered.length === 0) break;
+        nextPage = pageNumber;
+        break;
+      }
+      const { pieces, lines, pagePictures, annotations } = read;
       const comments = annotations === null ? null : commentsOf(annotations, pieces);
       commentCount += comments?.count ?? 0;
       // `tables` mode returns tables; comments are counted for the notice, not listed.
@@ -1119,9 +1173,25 @@ export async function extractPdf(bytes: Uint8Array, options: PdfExtractOptions =
     } else if (withoutText.length > 0) {
       notes.push(`> No text layer on page${withoutText.length === 1 ? "" : "s"} ${describePages(withoutText)}. ${look}`);
     }
+    if (outOfTime !== undefined && nextPage === undefined) {
+      // Nothing to hand back, or the caller wanted the whole document: say where the time
+      // went and what to ask for instead, not only that it ran out.
+      const reached = covered.length === 0 ? "before the first page was read" : `after pages ${describePages(covered)}`;
+      throw new PdfError(
+        "budget",
+        `${outOfTime}, ${reached}. This document is slow to read (scanned pages are). ` +
+          (covered.length === 0
+            ? `Ask for fewer pages at a time, e.g. pages="${requested[0]}".`
+            : `Ask for it in ranges, e.g. pages="${requested[0]}-${covered[covered.length - 1]}", then the next.`),
+      );
+    }
     if (nextPage !== undefined) {
+      const last = requested[requested.length - 1];
       notes.push(
-        `> Truncated: pages ${describePages(covered)} of ${pageCount} shown. Call again with pages="${nextPage}-${pageCount}" for the rest.`,
+        outOfTime === undefined
+          ? `> Truncated: pages ${describePages(covered)} of ${pageCount} shown. Call again with pages="${nextPage}-${pageCount}" for the rest.`
+          : `> Truncated: the ${timeoutMs} ms budget ran out at page ${nextPage}; pages ${describePages(covered)} are shown. ` +
+              `Call again with pages="${nextPage}-${last}" for the rest.`,
       );
     }
 
@@ -1203,6 +1273,7 @@ async function resolvePagePictures(
   pictures: FoundPicture[],
   canvas: CanvasModule | null,
   timeoutMs: number,
+  encodes: (number: number) => boolean = () => true,
 ): Promise<PagePicture[]> {
   const markers: PagePicture[] = [];
   for (const image of drawn) {
@@ -1212,6 +1283,19 @@ async function resolvePagePictures(
     let found: FoundPicture;
     if (bitmap === null) {
       found = { number, format: "image", ...size, unavailable: "its bitmap is not in the page's object store" };
+    } else if (!encodes(number)) {
+      // Named, not returned: its format is known without encoding it, and encoding a
+      // full-page scan only to drop the bytes is what spent a scanned document's budget.
+      const format = encodedFormatOf(bitmap, canvas);
+      found =
+        format === null
+          ? {
+              number,
+              format: "image",
+              ...size,
+              unavailable: canvas === null ? "no image encoder is installed here" : "its encoding could not be turned into a viewable picture",
+            }
+          : { number, format, ...size };
     } else {
       const encoded = await encodeBitmap(bitmap, canvas);
       found =
@@ -1297,4 +1381,12 @@ async function bitmapFor(page: PdfJsPage, image: DrawnImage, timeoutMs: number):
     // As above.
   }
   return null;
+}
+
+/** Which picture numbers a request returns, so only those are encoded. */
+function pictureFilter(request: PictureRequest): (number: number) => boolean {
+  if (request === "all") return () => true;
+  if (request === "none") return () => false;
+  const wanted = new Set(request.map(pictureNumberOf).filter((number): number is number => number !== undefined));
+  return (number) => wanted.has(number);
 }
