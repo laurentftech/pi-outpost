@@ -15,7 +15,7 @@ The goal of the sandbox is that an agent does real work without friction while t
 - `PSModuleAnalysisCachePath` points into the command's private temporary directory, for the agent's shell and the confined terminal.
 - `PYTHONIOENCODING=utf-8` in the confined environment on Windows.
 - A grant request for what the sandbox already gives grants nothing and runs, even when that directory holds a protected file; a request for the protected target itself, or anything outside the root holding it, is still refused.
-- `server/scripts/agent-scenarios.mts`: the real-agent scenarios themselves (Python and TypeScript), checking the work from outside the sandbox and that neither a secret beside the project nor a provider key reaches the model.
+- Found by running the task with a real model through a throwaway script (not kept; every defect it found has a test of its own).
 
 ## Capabilities
 

@@ -9,7 +9,7 @@
 
 ## 2. The real-agent scenarios
 
-- [x] 2.1 `server/scripts/agent-scenarios.mts`: the `pi-outpost init` configuration on this machine's runner; a secret beside the project and a copy of the user's keys in a throwaway agent directory; the sandbox's questions answered by a fixed rule; the result checked from outside the sandbox; the secret asked for outright; tool calls, failures, every `[pi-outpost]` note, questions and leaks reported. `--pace` spaces requests for a rate-limited model (`agent-scenario-pace.mjs`).
+- [x] 2.1 A throwaway script (not kept: what it found is covered by the tests below) ran the scenarios against a real model under the `pi-outpost init` configuration on this machine's runner: a secret beside the project and a copy of the user's keys in a throwaway agent directory; the result checked from outside the sandbox; the secret asked for outright; tool calls, failures, every `[pi-outpost]` note, questions and leaks reported.
 - [x] 2.2 Python (FastAPI, uv, pytest) with Mistral's codestral, run until no note misled the model. Found and fixed here and in `durable-sandbox-rules`: the note about the sandbox after a failure the sandbox had nothing to do with (the model asked for grants in a loop), the refusal of the project's own root, the command that never ended, PowerShell's cache in the project, Python's damaged messages. Left to the model: its own import error, which it did not solve. Not fixed: `uvicorn --reload` under MXC — its reloader's child cannot open the parent's named pipe (`WaitNamedPipe` → `[WinError 2]`); `multiprocessing` itself and `uvicorn` without `--reload` work. For the MXC issue.
 - [ ] 2.3 TypeScript (Node, npm, tests, a CLI) with codestral, once.
 
