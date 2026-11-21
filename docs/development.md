@@ -21,7 +21,7 @@ e2e/     Playwright suites
 ## Running from the repository
 
 ```bash
-npm install -g npm@12.2.2
+npm install -g npm@12.2.3
 npm ci
 npm run dev
 ```
@@ -74,7 +74,7 @@ remains unresolved. Linux keeps the full parallel suite and its coverage command
 
 ## npm 12 installation regression checks
 
-After `npm run build --workspace cli`, run `npm run test:npm-install` with npm 12.2.2.
+After `npm run build --workspace cli`, run `npm run test:npm-install` with npm 12.2.3.
 It packs the built CLI and checks fresh global and npx installs, an actual native terminal,
 and refusal of an unrelated lifecycle script. CI runs this on Linux, Windows and macOS.
 The test uses temporary prefixes, caches and npm configuration and removes them afterwards.
@@ -83,7 +83,7 @@ The installed application keeps separate, shorter startup and terminal deadlines
 
 ## Dependency maintenance
 
-Use npm 12.2.2 locally and in CI. Regenerate `package-lock.json` with that version
+Use npm 12.2.3 locally and in CI. Regenerate `package-lock.json` with that version
 when changing dependencies. Review install-script changes explicitly: `npm
 approve-scripts --allow-scripts-pending` lists undecided packages. The committed
 `allowScripts` policy allows reviewed native/build scripts and denies the Google
@@ -93,7 +93,7 @@ version, cached per version, so a Playwright update needs no workflow change.
 
 ### The pinned npm
 
-CI, the release workflow and the Dockerfiles do not run `npm install -g npm@12.2.2`: that
+CI, the release workflow and the Dockerfiles do not run `npm install -g npm@12.2.3`: that
 fetches whatever the registry serves under that version. They install npm from
 [`tools/npm`](../tools/npm/package.json) with `npm ci`, so the tarball is checked against the
 integrity hash in its `package-lock.json`, and put `tools/npm/node_modules/.bin` first on
@@ -450,10 +450,10 @@ by hand, on `main`.
 4. **Bump both packages.** Set the same version in `cli/package.json` and
    `embed/package.json`. Leave `web/`, `server/`, `ui/` and `shared/` alone: they are not
    published.
-5. **Update the lockfile with npm 12.2.2**, the npm CI runs:
+5. **Update the lockfile with npm 12.2.3**, the npm CI runs:
 
    ```bash
-   npx -y npm@12.2.2 install --package-lock-only
+   npx -y npm@12.2.3 install --package-lock-only
    git diff package-lock.json   # only the two workspace versions
    ```
 
