@@ -29,6 +29,7 @@ import { DEFERRED_TOOLS, deferOnDemandTools, TOOL_SEARCH_TOOL } from "./document
 import { registerPendingWriteHooks } from "./pendingWrites.ts";
 import { registerPosterPictureHooks } from "./posterPictureHooks.ts";
 import { createBtwExtension } from "./btwExtension.ts";
+import { createImageLimitExtension } from "./modelImageLimit.ts";
 import { createDocxExtractToolDefinition } from "./docxTool.ts";
 import { createDrawioCheckToolDefinition } from "./drawioTool.ts";
 import { createPosterCheckToolDefinition } from "./posterCheckTool.ts";
@@ -179,4 +180,5 @@ export default async function (pi: ExtensionAPI): Promise<void> {
   registerPosterPictureHooks(pi);
   registerPendingWriteHooks(pi);
   createBtwExtension()(pi);
+  createImageLimitExtension()(pi);
 }

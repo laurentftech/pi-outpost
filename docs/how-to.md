@@ -178,6 +178,22 @@ only appears when no model can answer. Write the endpoint into
 That file holds a key: keep it readable by you alone (`chmod 600`). Restart, and the
 model appears in the switcher.
 
+**A model that accepts few images per request.** Some gateways refuse a whole turn when a
+request carries more images than the model allows — LiteLLM in front of vLLM answers
+`At most 4 image(s) may be provided in one prompt`. Declare the limit on the model, and
+pi-outpost keeps to it: `pdf_render` and the extractors return no more pictures than that
+in one result (and say which to ask for next), and each request keeps the newest images,
+leaving a line where an older one was.
+
+```json
+"models": [{ "id": "gemma-4", "input": ["text", "image"],
+             "inputLimits": { "images": { "maxPerRequest": 4 } } }]
+```
+
+For a built-in model, or one you did not declare yourself, set it in that provider's
+`modelOverrides`, keyed by the model's id: `"modelOverrides": { "gemma-4": { "inputLimits":
+{ "images": { "maxPerRequest": 4 } } } }`.
+
 On a machine that cannot reach the public model catalogs, add `"offline": true` —
 otherwise every credential change waits 20 s for a fetch that will never arrive.
 Locally declared models are unaffected.
@@ -493,6 +509,11 @@ There is no OCR. A scanned PDF has no text layer, and its words are not searchab
 the page *is* an image, so `pdf_extract` returns it at the resolution the file holds and
 the agent can read it by looking. For a page carrying neither text nor an image — an
 export drawn as vectors, a map, a plot — `pdf_render` draws the pages as pictures.
+
+A scanned PDF is also slow to read, OCR layer or not: every page's full-resolution scan is
+decoded. `pdf_extract` gives each call 30 s plus 5 s per page it reads (at most 10 minutes),
+and when that runs out part-way through a range it returns the pages it read and names the
+page to start again from.
 
 A PDF that has been reviewed carries its review as annotations, outside the text. `pdf_extract`
 lists them after each page's content under "Comments on page N": notes, highlights, suggested
@@ -867,6 +888,7 @@ conversation tree as a single branch. See [Agent runtimes](configuration.md#agen
 | The setup screen keeps coming back | No provider can answer. `pi-outpost config` shows which `agentDir` it reads. Built-in provider credentials live in `<agentDir>/auth.json`; custom provider declarations and keys live in `<agentDir>/models.json` |
 | A bare `fetch failed` | A TLS-inspecting proxy. `export NODE_EXTRA_CA_CERTS=/path/to/corp-ca.pem` |
 | Every turn fails on your own endpoint | The compatibility flags. Untick both, or set `compat` in `models.json` |
+| `At most N image(s) may be provided in one prompt` | The model takes few images per request and does not say so. Declare `inputLimits.images.maxPerRequest` on it ([how](#use-a-local-or-self-hosted-model)) |
 | Each credential change hangs ~20 s | Remote model catalogs are unreachable. `"offline": true` |
 | Starting, or **+ new**, takes a long time | A new session builds the agent again: extensions loaded, MCP servers restarted. Past 2 s the server log says where the time went — `new session took 8.3s — previous session shutdown 2.1s, session and extension load 6.2s, extension bind 1.0s` (`agent runtime built in …` at startup). A late `extensions bound after …` names the extensions' own start |
 | A remote browser cannot connect | The origin is not allowed. Add the exact origin you type to `server.allowedOrigins`; the log line names it |

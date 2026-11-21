@@ -10,7 +10,8 @@
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { imagesParameter, pictureContentFor, type PictureRequest } from "./extractedPictures.ts";
+import { MAX_PICTURES_PER_CALL, imagesParameter, pictureContentFor, type PictureRequest } from "./extractedPictures.ts";
+import { picturesPerResult } from "./modelImageLimit.ts";
 import { assertWritableDestination, excerptOf, extractionSummary, writeExtraction } from "./extractionOutput.ts";
 import { PptxError, extractPptx } from "./pptx.ts";
 import { rasterizeSvg } from "./presentationRender.ts";
@@ -80,7 +81,7 @@ export function createPptxExtractToolDefinition(options: PptxToolOptions): ToolD
       "When the user asks for a presentation to be saved or converted to a file, give the extraction tool an output_path instead of returning the content and writing it afterwards.",
     ],
     parameters,
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const {
         path: target,
         slides,
@@ -127,7 +128,7 @@ export function createPptxExtractToolDefinition(options: PptxToolOptions): ToolD
 
       // Pictures are selected before the answer is assembled, so an identifier that
       // names nothing is refused instead of returning text that looks complete.
-      const pictures = await pictureContentFor(extraction.pictures, images, rasterizeSvg);
+      const pictures = await pictureContentFor(extraction.pictures, images, rasterizeSvg, picturesPerResult(ctx?.model, MAX_PICTURES_PER_CALL));
 
       if (destination === undefined) {
         // A very large answer is the moment output_path becomes worth knowing about:

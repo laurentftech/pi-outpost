@@ -9,7 +9,8 @@
 import path from "node:path";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { imagesParameter, pictureContentFor, type PictureRequest } from "./extractedPictures.ts";
+import { MAX_PICTURES_PER_CALL, imagesParameter, pictureContentFor, type PictureRequest } from "./extractedPictures.ts";
+import { picturesPerResult } from "./modelImageLimit.ts";
 import { assertWritableDestination, excerptOf, extractionSummary, writeExtraction } from "./extractionOutput.ts";
 import { extractPdf, parsePageRange, PdfError, type PdfMode } from "./pdf.ts";
 import { rasterizePdf } from "./presentationRender.ts";
@@ -87,7 +88,7 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
       "When the user asks for a document to be saved or converted to a file, give the extraction tool an output_path instead of returning the content and writing it afterwards.",
     ],
     parameters,
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const {
         path: target,
         pages,
@@ -126,6 +127,8 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
           ...(pages === undefined ? {} : { pages }),
           ...(mode === undefined ? {} : { mode }),
           ...(wholeDocument ? { full: true } : {}),
+          // Only the pictures this call returns are encoded; the rest are named for free.
+          pictures: images,
         });
       } catch (error) {
         // The reason is the useful part: "password-protected" and "not a PDF"
@@ -136,7 +139,7 @@ export function createPdfExtractToolDefinition(options: PdfToolOptions): ToolDef
 
       // Images are selected before the answer is assembled, so an identifier that
       // names nothing is refused instead of returning text that looks complete.
-      const pictures = await pictureContentFor(extraction.pictures, images);
+      const pictures = await pictureContentFor(extraction.pictures, images, undefined, picturesPerResult(ctx?.model, MAX_PICTURES_PER_CALL));
 
       if (destination === undefined) {
         // A very large answer is the moment output_path becomes worth knowing about:
@@ -202,11 +205,13 @@ export function createPdfRenderToolDefinition(options: PdfToolOptions): ToolDefi
     parameters: Type.Object({
       path: Type.String({ description: "Path to the PDF file (relative to the workspace root, or absolute)" }),
       pages: Type.Optional(
-        Type.String({ description: `Pages to draw, e.g. "3" or "2-5,8". Omit for the first ${MAX_DRAWN_PAGES}.` }),
+        Type.String({
+          description: `Pages to draw, e.g. "3" or "2-5,8". Omit for the first ${MAX_DRAWN_PAGES}, or fewer when the model accepts fewer images.`,
+        }),
       ),
     }),
     executionMode: "sequential",
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { path: target, pages } = params as { path: string; pages?: string };
 
       const resolved = await realResolve(path.resolve(options.cwd, target));
@@ -229,14 +234,17 @@ export function createPdfRenderToolDefinition(options: PdfToolOptions): ToolDefi
         );
       }
       const wanted = pages === undefined ? rangeUpTo(drawn.pageCount) : parsePageRange(pages, drawn.pageCount);
-      const drawnPages = wanted.slice(0, MAX_DRAWN_PAGES);
+      // Never more than the active model takes in one request: a gateway that enforces its
+      // limit refuses the whole turn, and the pages drawn are lost with it (#526).
+      const perCall = picturesPerResult(ctx?.model, MAX_DRAWN_PAGES);
+      const drawnPages = wanted.slice(0, perCall);
       const raster = await rasterizePdf(bytes, drawnPages, DRAWN_PAGE_WIDTH);
 
       const lines = [`Drew ${raster?.images.length ?? 0} of ${drawn.pageCount} page(s) of \`${target}\`.`];
       if (wanted.length > drawnPages.length) {
         lines.push(
           `Pages ${drawnPages.join(", ")} are below; ${wanted.length - drawnPages.length} more were not drawn ` +
-            `(at most ${MAX_DRAWN_PAGES} per call). Ask for them with pages="${wanted[drawnPages.length]}-${wanted[wanted.length - 1]}".`,
+            `(at most ${perCall} per call${perCall < MAX_DRAWN_PAGES ? ": the active model accepts at most " + perCall + " images per request" : ""}). Ask for them with pages="${wanted[drawnPages.length]}-${wanted[wanted.length - 1]}".`,
         );
       }
       const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
