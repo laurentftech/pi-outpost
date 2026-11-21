@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
-import { confinedBashOperations, POWERSHELL_SCRIPT_ARGS, powerShellScript } from "../src/confinedBash.ts";
+import { confinedBashOperations, POWERSHELL_COMMAND_FILE, POWERSHELL_SCRIPT_ARGS, powerShellCommandFile, powerShellScript } from "../src/confinedBash.ts";
 import { shellIsConfined } from "../src/confinementStatus.ts";
 import { canaryScript, expectedAttempts, prepareBait, readCanary, runCanary, secretVariables, victimCommand } from "../src/confinementCanary.ts";
 
@@ -174,7 +174,8 @@ describe("a PowerShell that confines nothing", { skip: POWERSHELLS.length === 0 
 
   test("every attempt is reported through the agent's shell: a .ps1 script", unconfined(async (shell, command, root) => {
     const script = path.join(root, "command.ps1");
-    await writeFile(script, powerShellScript(command));
+    await writeFile(script, powerShellScript());
+    await writeFile(path.join(root, POWERSHELL_COMMAND_FILE), powerShellCommandFile(command));
     return output(shell, [...POWERSHELL_SCRIPT_ARGS, script], root);
   }));
 

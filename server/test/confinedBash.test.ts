@@ -83,6 +83,26 @@ describe("confinedBashOperations", () => {
     return { output, exitCode: result.exitCode };
   }
 
+  // openlore: scenario=ACommandGivenNoTimeoutStillEnds spec=sandbox-runner-bash
+  test("ACommandGivenNoTimeoutStillEnds: stopped at the default limit, saying why and what to do, and nothing about the sandbox", async () => {
+    // A dev server started to check it answers never ends: the turn waited on one for an hour.
+    const ops = operations({ defaultTimeout: 2 });
+    const started = Date.now();
+    let output = "";
+    await assert.rejects(
+      () => ops.exec(`console.log("listening"); setInterval(() => {}, 1000);`, root, { onData: (data) => void (output += data.toString()) }),
+      /^Error: timeout:2$/,
+    );
+    assert.ok(Date.now() - started < 20_000, "it was stopped");
+    assert.match(output, /listening/);
+    assert.match(output, /It was stopped after 2 seconds, the limit for a command given no timeout: it had not ended\. .*such as a server, needs a timeout of its own/);
+    assert.doesNotMatch(output, /sandbox|diagnose/i, "a timeout is not a refusal");
+    // A timeout of its own is the command's: it runs to it, and no note is added.
+    let own = "";
+    await assert.rejects(() => ops.exec(`setInterval(() => {}, 1000);`, root, { onData: (data) => void (own += data.toString()), timeout: 3 }), /^Error: timeout:3$/);
+    assert.doesNotMatch(own, /It was stopped after/);
+  });
+
   // openlore: scenario=OutputAndExitStatusComeBack spec=sandbox-runner-bash
   test("both outputs and the exit status come back, through the runner, with the terminal's policy", async () => {
     const { output, exitCode } = await exec(`process.stdout.write("to-out "); process.stderr.write("to-err"); process.exit(3);`);

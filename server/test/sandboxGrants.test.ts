@@ -76,6 +76,23 @@ describe("TheAgentDirectoryIsNeverGranted", () => {
 
 // openlore: scenario=BroadOrLocalTargetsAreRefused spec=sandbox-approved-grants
 describe("BroadOrLocalTargetsAreRefused", () => {
+  // openlore: scenario=AskingForWhatTheSandboxGivesRunsWithoutAGrant spec=sandbox-approved-grants
+  test("the project's root, which holds the configuration file, is already given — not refused for holding it", async () => {
+    // `pi-outpost init` writes the configuration into the project: a model asking for the folder it
+    // works in was told "the configuration file says what the sandbox is", run after run.
+    const withConfigInRoot = { ...context, allowWrite: true, configFile: path.join(context.root, "pi-outpost.config.json") };
+    for (const access of ["read", "write"] as const) {
+      const check = await checkGrantRequest({ directories: [{ path: context.root, access }] }, withConfigInRoot);
+      assert.ok(check.ok, `${access}: ${check.ok ? "" : check.refusals.map((r) => r.why).join("; ")}`);
+      assert.deepEqual(check.grant.directories, [], "nothing to grant: the sandbox gives it already");
+    }
+    // The file itself, and anything beside the root holding it, are still refused.
+    const file = await checkGrantRequest({ directories: [{ path: withConfigInRoot.configFile, access: "read" }] }, withConfigInRoot);
+    assert.equal(file.ok, false);
+    const parent = await checkGrantRequest({ directories: [{ path: path.dirname(context.root), access: "read" }] }, withConfigInRoot);
+    assert.equal(parent.ok, false, "a folder above the root holding the configuration is not given, and is refused");
+  });
+
   test("the home directory itself, a drive's root and a .pi directory are refused", async () => {
     const elsewhere = { ...context, agentDir: undefined, configFile: undefined };
     const refused = async (asked: string) => {

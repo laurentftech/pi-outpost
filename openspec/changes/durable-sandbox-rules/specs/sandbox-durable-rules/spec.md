@@ -33,7 +33,7 @@ What the sandbox refuses a command of the agent's confined shell SHALL be record
 
 ### Requirement: TheAgentIsToldWhatWasRefused
 
-On a runner that reports refusals as they happen (landstrip outside Windows, MXC on macOS), a confined command's output SHALL end with a note naming what the sandbox refused it, so the agent can ask for exactly that. On a runner that reports them only on demand (MXC on Windows), a failed command's output SHALL end with a note saying so and naming the shell tool's `diagnose` option. That option SHALL NOT be used by pi-outpost on its own.
+Where the runner reports refusals as they happen (landstrip outside Windows, MXC on macOS), a command's output SHALL end naming what the sandbox refused it. Where it reports them on demand (MXC on Windows), a failure whose output reports an access denied SHALL end naming the `diagnose` option, which pi-outpost SHALL NOT use on its own. A note about the sandbox SHALL speak of the sandbox only, where the output shows it may have refused something.
 
 #### Scenario: TheOutputNamesTheRefusedDirectory
 - **GIVEN** a confined shell on a runner that reports refusals as they happen
@@ -44,6 +44,18 @@ On a runner that reports refusals as they happen (landstrip outside Windows, MXC
 - **GIVEN** a confined shell under MXC on Windows
 - **WHEN** a command fails because a directory beside the root was refused
 - **THEN** the command ran once, without capture, and its output ends with a note naming the `diagnose` option
+
+#### Scenario: AFailureWithoutAnAccessDeniedIsOfferedNothing
+- **GIVEN** a confined shell under MXC on Windows
+- **WHEN** a command fails without reporting an access denied, such as a program that is not installed
+- **THEN** its output carries no note about the sandbox
+- **AND** a diagnosis of it may still be asked for, and runs
+
+#### Scenario: ACommandThatWouldNotParseIsOfferedNothing
+- **GIVEN** a confined Windows PowerShell 5.1 under MXC on Windows
+- **WHEN** a command fails because PowerShell would not parse it, such as `which uv || echo "uv not found"`
+- **THEN** its output is PowerShell's own error, with no note about the sandbox, and a diagnosis of it is not run
+- **AND** a script that did run and fails, even on a parse error raised inside it, is still offered the diagnosis
 
 ### Requirement: ADiagnosisIsANarrowerRerun
 

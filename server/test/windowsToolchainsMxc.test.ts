@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -108,6 +108,33 @@ describe("toolchains under MXC's real executor", { skip }, () => {
     const tmpDir = /^TMPDIR=(.+)$/m.exec(output)?.[1]?.trim();
     assert.ok(temp && tmpDir && temp.toLowerCase().startsWith(tmpDir.toLowerCase()), `TEMP ${temp} is not inside ${tmpDir}`);
     assert.match(output, /\.tmp$/m, "GetTempFileName returned a file");
+  });
+
+  // openlore: scenario=PowerShellLeavesNothingInTheProject spec=sandbox-runner-bash
+  test("PowerShellLeavesNothingInTheProject: a command running long enough for PowerShell's module cache writes none in the root", async () => {
+    // PowerShell writes the cache some seconds after starting: a dev server started by the agent
+    // left `Microsoft\Windows\PowerShell\ModuleAnalysisCache` in the user's project (a real session).
+    const dir = "module-cache-probe";
+    await mkdir(path.join(root, dir), { recursive: true });
+    // A name PowerShell cannot resolve at once makes it analyse the modules (to load one that might
+    // hold it), and the cache follows. Inside the container Windows names no local application data:
+    // [Environment]::GetFolderPath('LocalApplicationData') is "", so the cache went to the working directory.
+    const { output } = await ps("nosuchcommand-pi-outpost 2>$null; Start-Sleep -Seconds 15; 'slept'", dir);
+    assert.match(output, /slept/, output);
+    assert.equal(existsSync(path.join(root, dir, "Microsoft")), false, "PowerShell wrote its module cache into the project");
+    assert.deepEqual(await readdir(path.join(root, dir)), [], "nothing was left in the working directory");
+  });
+
+  // openlore: scenario=PythonsMessagesComeBackUndamaged spec=sandbox-runner-bash
+  test("PythonsMessagesComeBackUndamaged: a Windows error Python prints reaches the agent as written", { skip: onPath("python") ? false : "no python on the search path" }, async () => {
+    // Python writes to a pipe in the ANSI code page: the model read "Le fichier sp�cifi� est introuvable".
+    const dir = "python-encoding-probe";
+    await mkdir(path.join(root, dir), { recursive: true });
+    await writeFile(path.join(root, dir, "fails.py"), 'import _winapi\n_winapi.WaitNamedPipe(r"\\\\.\\pipe\\nowhere-pi-outpost", 1)\n');
+    // UTF-8 mode off, as on a default install (this machine's may have it on): the code page decides.
+    const { output } = await ps("python -X utf8=0 fails.py", dir);
+    assert.match(output, /FileNotFoundError: \[WinError 2\] /, output);
+    assert.doesNotMatch(output, /�/, `the message came back damaged: ${output}`);
   });
 
   // openlore: scenario=OnWindowsTheTerminalHasAWritableTemp spec=terminal
