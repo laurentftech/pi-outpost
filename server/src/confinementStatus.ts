@@ -221,7 +221,7 @@ const ATTEMPT_WORDS: Record<string, string> = {
 };
 
 /** The way back to an unconfined shell, named in every refusal of an `"auto"` one. */
-export const UNCONFINED_ESCAPE = `To run commands unconfined meanwhile, set "sandbox.bashRunner": "none" in the configuration file: they then run with every right of your account.`;
+export const UNCONFINED_ESCAPE = `To run commands unconfined instead, run "pi-outpost config --unconfine" (it sets "sandbox.bashRunner": "none" in the configuration file), then restart pi-outpost: commands then run with every right of your account.`;
 
 /**
  * Why an `"auto"` runner may not run the agent's shell, from its verdict; undefined once the canary
@@ -259,7 +259,7 @@ export function windowsUpdateRefusal(remedy: ConfinementRemedy): string {
   return (
     `The agent's shell is unavailable on this machine: this Windows (build ${remedy.build}) lacks ${remedy.update} (build ${remedy.needed}), ` +
     `without which MXC cannot confine a command, and no command runs unconfined. ` +
-    `Install it with Windows Update, then restart pi-outpost. ${UNCONFINED_ESCAPE}`
+    `Update Windows to build ${remedy.needed} or later, then restart pi-outpost. ${UNCONFINED_ESCAPE}`
   );
 }
 

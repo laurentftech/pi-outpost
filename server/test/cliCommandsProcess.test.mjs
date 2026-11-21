@@ -126,6 +126,17 @@ describe("one-shot CLI commands, run as a process", () => {
     assert.equal(readFileSync(file, "utf8"), text);
   });
 
+  test("config --unconfine sets the runner to none in the file, and says what that costs", async () => {
+    const project = await mkdtemp(path.join(dir, "unconfine-"));
+    const file = path.join(project, "pi-outpost.config.json");
+    await writeFile(file, '{\n  "sandbox": { "allowWrite": true, "allowBash": true, "bashRunner": "auto" }\n}\n');
+    const { code, out } = await cli(["config", "--unconfine"], { cwd: project });
+    assert.equal(code, 0, out);
+    assert.match(out, /"sandbox\.bashRunner": "auto" → "none"/);
+    assert.match(out, /every right of your account/);
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).sandbox.bashRunner, "none");
+  });
+
   describe("login and logout", () => {
     test("login without a provider is refused with how to name one", async () => {
       const { code, out } = await cli(["login", "--agent-dir", agentDir], { cwd: dir });

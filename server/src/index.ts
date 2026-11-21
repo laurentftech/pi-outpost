@@ -84,7 +84,7 @@ import { bindFailureMessage, holdConsoleIfOwned } from "./startupFailure.ts";
 import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
 import { LoginRelay } from "./loginRelay.ts";
-import { confineConfiguration } from "./confineCommand.ts";
+import { confineConfiguration, unconfineConfiguration } from "./confineCommand.ts";
 import {
   autoShown,
   autoUnavailableRefusal,
@@ -415,6 +415,17 @@ if (cli.command === "update") {
 
 // Before the configuration is loaded: it reads and rewrites the file itself, and with no file it
 // says what the default would do rather than the server's "no configuration" refusal.
+if (cli.command === "config" && cli.config.unconfine) {
+  try {
+    const result = await unconfineConfiguration({ launchDir: LAUNCH_DIR, flags: cli.flags });
+    for (const line of result.lines) (result.exitCode === 0 ? console.log : console.error)(line);
+    process.exit(result.exitCode);
+  } catch (error) {
+    complain(error);
+    process.exit(1);
+  }
+}
+
 if (cli.command === "config" && cli.config.confine) {
   try {
     const agentDir = (() => {
@@ -2945,7 +2956,7 @@ if (config.terminal?.sandbox) {
   void checkRunner(runner).then((result) => {
     terminalRunner = result;
     if (!result.ok && config.terminal?.enabled) {
-      const fix = result.remedy?.kind === "windows-update" ? ` Install ${result.remedy.update} with Windows Update, then restart pi-outpost.` : "";
+      const fix = result.remedy?.kind === "windows-update" ? ` It needs ${result.remedy.update} (build ${result.remedy.needed}): update Windows, then restart pi-outpost.` : "";
       console.warn(`[terminal] No terminal opens: ${result.reason}.${fix}`);
     }
   });

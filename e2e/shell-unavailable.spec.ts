@@ -22,8 +22,9 @@ test("AMachineThatCannotConfineIsSaidOnce: the dialog names the update, closes, 
     const dialog = page.getByRole("alertdialog", { name: "The agent has no shell on this machine" });
     await expect(dialog).toBeVisible({ timeout: 60_000 });
     await expect(dialog).toContainText("This Windows (build 26100.6584) lacks the August 2026 cumulative update (KB5120998)");
-    await expect(dialog).toContainText("install the update with Windows Update (build 26100.9278 or later), then restart pi-outpost");
-    await expect(dialog).toContainText('"sandbox.bashRunner": "none"');
+    await expect(page.getByTestId("shell-unavailable-update")).toContainText("Update Windows to build 26100.9278 or later, then restart pi-outpost");
+    await expect(page.getByTestId("shell-unavailable-unconfine")).toContainText("If you cannot update Windows, run commands unconfined");
+    await expect(page.getByTestId("shell-unavailable-unconfine")).toContainText("pi-outpost config --unconfine");
     await expect(page.getByTestId("shell-unavailable-windows-update")).toHaveAttribute("href", "ms-settings:windowsupdate");
 
     // The padlock under it says the cause too.
@@ -77,6 +78,37 @@ test("monkey: rapid padlock clicks open one dialog, a reload before closing show
     await other.goto(server.base);
     await expect(other.getByTestId("shell-confinement")).toContainText("Windows update needed", { timeout: 60_000 });
     await expect(other.getByRole("alertdialog")).toHaveCount(0);
+  } finally {
+    await server.stop();
+  }
+});
+
+// openlore: scenario=AWindowsBefore24H2IsToldBothWays spec=sandbox-defaults
+test("AWindowsBefore24H2IsToldBothWays: 23H2 is told to move to 24H2, and beside it the command to run unconfined, which copies", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const root = await makeWorkspace({ "README.md": "# 23H2\n" });
+  const server = await startServer(
+    root,
+    { sandbox: { root, allowWrite: true, allowBash: true, bashRunner: "auto" } },
+    { env: { ...OLD_WINDOWS, PI_OUTPOST_TEST_WINDOWS_BUILD: "22631.4890" } },
+  );
+  try {
+    await page.goto(`${server.base}/?token=${server.token}`);
+    const dialog = page.getByRole("alertdialog", { name: "The agent has no shell on this machine" });
+    await expect(dialog).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId("shell-unavailable-cause")).toContainText(
+      "This Windows (build 22631.4890) lacks Windows 11 24H2 or later, with the August 2026 cumulative update (KB5120998)",
+    );
+    await expect(page.getByTestId("shell-unavailable-update")).toContainText("Update Windows to build 26100.9278 or later");
+    const unconfine = page.getByTestId("shell-unavailable-unconfine");
+    await expect(unconfine).toContainText("If you cannot update Windows, run commands unconfined");
+    await expect(unconfine).toContainText("every right of your account");
+    await page.getByTestId("shell-unavailable-copy").click();
+    await expect(page.getByTestId("shell-unavailable-copy")).toHaveText("copied");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("pi-outpost config --unconfine");
+    // Nothing in the page loosens the sandbox: the copy is all it does.
+    await expect(dialog.getByRole("button", { name: /unconfine|none/i })).toHaveCount(0);
+    await expect(page.getByTestId("shell-confinement")).toContainText("Windows update needed");
   } finally {
     await server.stop();
   }

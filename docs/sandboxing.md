@@ -40,7 +40,7 @@ fail (an [older Windows](#older-windows), a Docker container without user namesp
 
 | You want | Write |
 | --- | --- |
-| An unconfined shell (a machine nothing can confine yet) | `"bashRunner": "none"` in `sandbox` — in the file only, never from Settings. With `"bashShell": "powershell.exe"` the agent gets its `powershell` tool, otherwise `bash` |
+| An unconfined shell (a machine nothing can confine yet) | `"bashRunner": "none"` in `sandbox` — in the file only, never from Settings; `pi-outpost config --unconfine` writes it. With `"bashShell": "powershell.exe"` the agent gets its `powershell` tool, otherwise `bash` |
 | No sandbox at all, as before this default | `"sandbox": false` — the shell's lock is shown open, saying the sandbox is turned off, and highlighted with `pi-outpost config --confine` when this machine can confine; there is none when the agent has no `bash` tool, or under the `rpc` runtime, whose child shell pi-outpost does not judge |
 | Another runner, a shell, allowed hosts | see [Recommended setup](#recommended-setup) |
 
@@ -562,12 +562,13 @@ environment is the container's own. Limits, all the backend's:
 ## Older Windows
 
 Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cannot run git
-(landstrip/landstrip#204), and MXC's lower tiers hit the same wall. Two ways out, neither easy:
+(landstrip/landstrip#204), and MXC's lower tiers hit the same wall. The interface says so once, in a
+dialog naming your build, what it lacks, and the ways out below; the shell's refusal and the console say
+the same.
 
 - **Update Windows**, then the setup above. This is the supported path. MXC's process container needs
-  one of these builds or later (`winver` shows yours); below them the interface says so once, in a
-  dialog naming your build and the update to install (with a button to open Windows Update), and the
-  shell's refusal and the console say the same:
+  one of these builds or later (`winver` shows yours). Windows 11 23H2 and earlier must first move to
+  24H2 or later — no cumulative update brings it to 23H2:
 
   | Windows 11 | Build | Update |
   | --- | --- | --- |
@@ -575,8 +576,17 @@ Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cann
   | 25H2 | 26200.9278 | August 2026 (KB5120998) |
   | 26H2 | 26300.9550 | September 2026 (KB5124010) |
   | 26H1 | 28000.2804 | August 2026 (KB5120996) |
-- **Until then, `"bashRunner": "none"`** gives the agent its shell back, unconfined. Once the update is
-  installed, the lock says so; `pi-outpost config --confine` switches back.
+- **If you cannot update Windows, run commands unconfined.** On that machine, run
+
+  ```sh
+  pi-outpost config --unconfine
+  ```
+
+  then restart pi-outpost. It sets `"sandbox.bashRunner": "none"` in the configuration file (with the
+  same `--config` or `--profile` you start pi-outpost with) and changes nothing else: the agent's file
+  tools stay limited to the project, but **its commands run with every right of your account** — they
+  can read, change and delete any file you can, outside the project too, and reach any host. Once
+  Windows is updated, `pi-outpost config --confine` checks MXC and confines the shell again.
 - **Run pi-outpost inside WSL** with the [Linux setup](#linux-landstrip). WSL mounts every drive
   read-write and can start any Windows program, unconfined, so this holds only after closing those doors
   (`[interop] enabled = false`, `appendWindowsPath = false`, `[automount] enabled = false` in

@@ -10,7 +10,7 @@ import path from "node:path";
 import { describe, test } from "node:test";
 import type { ConfinementVerdict } from "@pi-outpost/shared";
 import { parseCli } from "../src/cli.ts";
-import { confineConfiguration, serializeLike } from "../src/confineCommand.ts";
+import { confineConfiguration, serializeLike, unconfineConfiguration } from "../src/confineCommand.ts";
 
 const verified: ConfinementVerdict = { state: "verified", runner: "/r", checkedAt: "2026-11-01T10:00:00Z", refused: ["agent-directory"], notChecked: [] };
 const leaking: ConfinementVerdict = { state: "leaking", runner: "/r", checkedAt: "2026-11-01T10:00:00Z", reached: ["agent-directory"], refused: [] };
@@ -220,5 +220,77 @@ describe("pi-outpost config --confine", () => {
 
   test("serializeLike keeps tabs, LF and a missing final newline", () => {
     assert.equal(serializeLike('{\n\t"a": 1\n}', { a: 1, b: 2 }), '{\n\t"a": 1,\n\t"b": 2\n}');
+  });
+});
+
+describe("pi-outpost config --unconfine", () => {
+  const unconfine = (dir: string, file: string | undefined) =>
+    unconfineConfiguration({ launchDir: dir, flags: file ? { config: file } : {}, env: { XDG_CONFIG_HOME: path.join(dir, "xdg"), APPDATA: path.join(dir, "xdg"), PATH: process.env.PATH ?? process.env.Path ?? "" } });
+
+  test("--unconfine belongs to config, and not beside --confine", () => {
+    assert.equal(parseCli(["config", "--unconfine"]).config.unconfine, true);
+    assert.equal(parseCli(["config"]).config.unconfine, false);
+    assert.throws(() => parseCli(["--unconfine"]), /"--unconfine" belongs to "pi-outpost config"/);
+    assert.throws(() => parseCli(["config", "--confine", "--unconfine"]), /opposite things/);
+  });
+
+  // openlore: scenario=UnconfiningIsOneCommandThatSaysWhatItCosts spec=sandbox-defaults
+  test("UnconfiningIsOneCommandThatSaysWhatItCosts: \"auto\" → \"none\", one key, the layout kept, the cost said, and --confine as the way back", async () => {
+    const original = CRLF_CONFIG.replace('"allowWrite": true', '"allowWrite": true,\r\n        "bashRunner": "auto"');
+    await inDir(original, async (dir, file) => {
+      const result = await unconfine(dir, file);
+      assert.equal(result.exitCode, 0);
+      assert.equal(await readFile(file, "utf8"), original.replace('"bashRunner": "auto"', '"bashRunner": "none"'), "one value changed, CRLF and four spaces kept");
+      const said = result.lines.join("\n");
+      assert.match(said, /"sandbox\.bashRunner": "auto" → "none"/);
+      assert.match(said, /every right of your account: they can read, change and delete any file you can,\noutside the project too/);
+      assert.match(said, /file tools stay limited to the project/);
+      assert.match(said, /Restart pi-outpost.*"pi-outpost config --confine" confines the shell again/);
+      assert.deepEqual((await readdir(dir)).filter((name) => name.endsWith(".tmp")), [], "no candidate left behind");
+    });
+  });
+
+  test("a file without a section — the default sandbox — gets it written out, but for its runner", async () => {
+    await inDir('{\n  "port": 4000\n}\n', async (dir, file) => {
+      const result = await unconfine(dir, file);
+      assert.equal(result.exitCode, 0);
+      assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { port: 4000, sandbox: { allowWrite: true, allowBash: true, bashRunner: "none" } });
+    });
+  });
+
+  test("nothing to loosen leaves the file byte for byte: already none, no runner, no shell, the extension's shell, sandbox false", async () => {
+    for (const [text, said] of [
+      ['{ "sandbox": { "allowBash": true, "bashRunner": "none" } }\n', /already unconfined/],
+      ['{ "sandbox": { "allowBash": true } }\n', /already unconfined/],
+      ['{ "sandbox": { "allowBash": false, "bashRunner": "auto" } }\n', /has no shell/],
+      ['{ "sandbox": { "allowBash": true, "bashFrom": "npm:pi-landstrip" } }\n', /extension's/],
+      ['{ "sandbox": false }\n', /nothing is confined/],
+    ] as const) {
+      await inDir(text, async (dir, file) => {
+        const result = await unconfine(dir, file);
+        assert.equal(result.exitCode, 0, text);
+        assert.match(result.lines.join("\n"), /unchanged/);
+        assert.match(result.lines.join("\n"), said);
+        assert.equal(await readFile(file, "utf8"), text);
+      });
+    }
+  });
+
+  test("an explicit runner is replaced too, named in what is printed", async () => {
+    await inDir('{ "sandbox": { "allowBash": true, "bashRunner": "mxc" } }', async (dir, file) => {
+      const result = await unconfine(dir, file);
+      assert.equal(result.exitCode, 0);
+      assert.match(result.lines[0], /"sandbox\.bashRunner": "mxc" → "none"/);
+      assert.equal(JSON.parse(await readFile(file, "utf8")).sandbox.bashRunner, "none");
+    });
+  });
+
+  test("no file: refused, naming init, nothing created", async () => {
+    await inDir(undefined, async (dir) => {
+      const result = await unconfine(dir, undefined);
+      assert.equal(result.exitCode, 1);
+      assert.match(result.lines.join("\n"), /pi-outpost init/);
+      assert.deepEqual(await readdir(dir), []);
+    });
   });
 });
