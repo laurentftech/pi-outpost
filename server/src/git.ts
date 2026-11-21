@@ -19,6 +19,7 @@
 import { execFile, spawn } from "node:child_process";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
+import { devNull } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { isWithin, realResolve } from "./sandbox.ts";
@@ -156,16 +157,70 @@ export class GitError extends Error {}
  * does mutate it, and a snapshot taken at import would hand git an environment that
  * stopped being this process's some time ago.
  */
-const gitEnv = () => ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" });
+const baseGitEnv = () => ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" });
+
+/**
+ * SECURITY: the repository's own configuration runs nothing here.
+ *
+ * This process runs git unconfined, in projects whose `.git/config` the agent can write: a
+ * confined command writes anywhere in its root. Git runs the commands that configuration names
+ * — `core.fsmonitor` on every status, a filter's `clean` or `process` when status hashes a
+ * changed file, a diff driver's `textconv` or `command` in log and show — so a line written
+ * there by a confined command ran outside the sandbox at the next refresh of the Files badges.
+ *
+ * Git cannot be told to ignore a repository's configuration, but configuration given in the
+ * environment (`GIT_CONFIG_COUNT`, the scope of `-c`) wins over it, included files and all. So
+ * the keys that name a command are set to nothing: the fixed ones, and every filter and diff
+ * driver the repository defines, listed first — reading configuration runs nothing. Log and show
+ * also pass `--no-textconv` and `--no-ext-diff`. What the server shows is git's own reading.
+ */
+const DRIVER_COMMAND = /^(?:filter|diff)\..+\.(?:clean|smudge|process|textconv|command)$/i;
+
+export async function neutralizingConfig(cwd: string): Promise<[string, string][]> {
+  const fixed: [string, string][] = [
+    ["core.fsmonitor", "false"],
+    ["core.hooksPath", devNull],
+    ["diff.external", ""],
+  ];
+  let names: string[] = [];
+  try {
+    const { stdout } = await execFileAsync(gitBinary, ["config", "--name-only", "--get-regexp", "^(filter|diff)\\."], {
+      cwd,
+      timeout: GIT_TIMEOUT_MS,
+      encoding: "utf8",
+      env: baseGitEnv(),
+      windowsHide: true,
+    });
+    names = stdout.split(/\r?\n/).filter((name) => DRIVER_COMMAND.test(name));
+  } catch {
+    // Exit 1: no such key. Not a repository: nothing for git to run either.
+  }
+  return [...fixed, ...names.map((name): [string, string] => [name, ""])];
+}
+
+/** The environment git runs with here: no optional locks, and the configuration above. */
+async function gitEnv(cwd: string): Promise<NodeJS.ProcessEnv> {
+  const env: NodeJS.ProcessEnv = baseGitEnv();
+  const parsed = Number.parseInt(env.GIT_CONFIG_COUNT ?? "0", 10);
+  let at = Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+  for (const [key, value] of await neutralizingConfig(cwd)) {
+    env[`GIT_CONFIG_KEY_${at}`] = key;
+    env[`GIT_CONFIG_VALUE_${at}`] = value;
+    at += 1;
+  }
+  env.GIT_CONFIG_COUNT = String(at);
+  return env;
+}
 
 async function runGit(root: string, args: string[]): Promise<string> {
   try {
+    const env = await gitEnv(root);
     const { stdout } = await execFileAsync(gitBinary, args, {
       cwd: root,
       timeout: GIT_TIMEOUT_MS,
       maxBuffer: GIT_MAX_BUFFER,
       encoding: "utf8",
-      env: gitEnv(),
+      env,
       // Without this, every git call opens a console window on Windows — and the
       // repository questions are asked constantly: on each workspace switch, each
       // tree listing, each status check. The result is a machine that flashes a
@@ -448,12 +503,13 @@ export const UNTRACKED_LISTING_LIMIT = 2000;
  * reports them; pathspecs are literal, so a directory named `:x` or `[a]` is
  * itself and nothing else.
  */
-export function listUntrackedBounded(cwd: string, pathspecs: string[], limit: number, extra: string[] = []): Promise<string[]> {
+export async function listUntrackedBounded(cwd: string, pathspecs: string[], limit: number, extra: string[] = []): Promise<string[]> {
+  const env = await gitEnv(cwd);
   return new Promise((resolve, reject) => {
     const args = ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", ...extra, "-z", "--", ...pathspecs];
     const child = spawn(gitBinary, args, {
       cwd,
-      env: gitEnv(),
+      env,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -713,6 +769,8 @@ export async function gitLog(repo: GitRepo, limit: number): Promise<GitCommitLog
   const n = Math.max(1, Math.min(100, Math.floor(limit)));
   const out = await runGit(repo.cwd, [
     "log",
+    "--no-textconv",
+    "--no-ext-diff",
     "--parents",
     "--date-order",
     "--decorate-refs=refs/heads",
@@ -847,7 +905,7 @@ function parseFileLog(out: string): RawFileLogEntry[] {
  * `rev` is always a commit id this module produced, never client input.
  */
 async function fullHistoryPass(root: string, rev: string | null, relPath: string, limit: number): Promise<RawFileLogEntry[]> {
-  const args = ["log", "--full-history", "-z", "--numstat", LOG_FORMAT, "-n", String(limit)];
+  const args = ["log", "--no-textconv", "--no-ext-diff", "--full-history", "-z", "--numstat", LOG_FORMAT, "-n", String(limit)];
   if (rev !== null) args.push(rev);
   args.push("--", relPath);
   return parseFileLog(await runGit(root, args));
@@ -861,7 +919,7 @@ async function fullHistoryPass(root: string, rev: string | null, relPath: string
  * path lies outside the pathspec git was handed.
  */
 async function renameSourceAt(root: string, toplevel: string, sha: string, relPath: string): Promise<string | null> {
-  const args = ["log", "--follow", "-z", "--numstat", LOG_FORMAT, "-n", "1", sha, "--", relPath];
+  const args = ["log", "--no-textconv", "--no-ext-diff", "--follow", "-z", "--numstat", LOG_FORMAT, "-n", "1", sha, "--", relPath];
   const [entry] = parseFileLog(await runGit(root, args));
   if (entry?.renamedFrom === undefined) return null;
   const source = toRootRelative(root, toplevel, entry.renamedFrom);
@@ -957,7 +1015,7 @@ export async function gitShow(repo: GitRepo, sha: string): Promise<{ patch: stri
   if (!SHA_PATTERN.test(sha)) throw new GitError("Invalid commit id");
   // SECURITY: ^{commit} peels annotated tags but makes git refuse blob/tree ids —
   // `show <blob> -- .` would ignore the pathspec and print content outside the root
-  const out = await runGit(repo.cwd, ["show", "--format=%h %an %aI%n%s%n", "--patch", `${sha}^{commit}`, "--", "."]);
+  const out = await runGit(repo.cwd, ["show", "--no-textconv", "--no-ext-diff", "--format=%h %an %aI%n%s%n", "--patch", `${sha}^{commit}`, "--", "."]);
   const bytes = Buffer.from(out, "utf8");
   if (bytes.byteLength > MAX_PATCH_BYTES) {
     // Byte-accurate cap; strip the replacement char a split code point leaves behind
