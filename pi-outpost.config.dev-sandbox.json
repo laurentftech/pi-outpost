@@ -11,7 +11,7 @@
     "allowWrite": true,
     "allowBash": true,
     "bashRunner": "mxc",
-    "bashShell": "powershell.exe",
+    "bashShell": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
     "allowedHosts": []
   }
 }
