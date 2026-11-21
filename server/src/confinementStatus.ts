@@ -7,9 +7,9 @@ import { mxcSdk, runThroughSdk, sdkRequest } from "./mxcSdk.ts";
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
-import type { ConfinementVerdict } from "@pi-outpost/shared";
+import type { ConfinementRemedy, ConfinementVerdict } from "@pi-outpost/shared";
 import { CONFINE_SUGGESTION, platformRunner, type PlatformRunner } from "./autoRunner.ts";
-import { cachedCheck, confinedBashOperations, isPowerShell } from "./confinedBash.ts";
+import { cachedCheck, confinedBashOperations, isPowerShell, reasonOf, remedyOf } from "./confinedBash.ts";
 import { runCanary } from "./confinementCanary.ts";
 import { agentBashOptions } from "./sandbox.ts";
 import type { SandboxConfig } from "./config.ts";
@@ -116,7 +116,8 @@ export async function agentShellVerdict(sandbox: SandboxConfig, neverReadable: {
       },
     });
   } catch (error) {
-    return { state: "failed", runner, checkedAt: new Date().toISOString(), reason: (error as Error).message };
+    const remedy = remedyOf(error);
+    return { state: "failed", runner, checkedAt: new Date().toISOString(), reason: reasonOf(error), ...(remedy ? { remedy } : {}) };
   }
 }
 
@@ -178,6 +179,9 @@ const verdictKey = (sandbox: SandboxConfig, neverReadable: { agentDir?: string; 
 /** Called whenever a shared verdict settles, a retry's included: what the interface shows follows it. */
 export function onShellVerdictSettled(listener: (verdict: ConfinementVerdict) => void): () => void {
   settleListeners.add(listener);
+  // A verdict that settled before anyone listened is told now: a check that fails at once — a Windows
+  // without the update MXC needs — settled during startup, and the console never said the shell was refused.
+  for (const verdict of settledVerdicts.values()) listener(verdict);
   return () => settleListeners.delete(listener);
 }
 
@@ -217,7 +221,7 @@ const ATTEMPT_WORDS: Record<string, string> = {
 };
 
 /** The way back to an unconfined shell, named in every refusal of an `"auto"` one. */
-export const UNCONFINED_ESCAPE = `To run the shell unconfined instead, set "sandbox.bashRunner": "none" in the configuration file.`;
+export const UNCONFINED_ESCAPE = `To run commands unconfined meanwhile, set "sandbox.bashRunner": "none" in the configuration file: they then run with every right of your account.`;
 
 /**
  * Why an `"auto"` runner may not run the agent's shell, from its verdict; undefined once the canary
@@ -242,12 +246,26 @@ export function autoVerdictRefusal(verdict: ConfinementVerdict): string | undefi
     }
   })();
   if (why === undefined) return undefined;
-  return `The agent's shell is unavailable: ${verdict.runner ? `${path.basename(verdict.runner)} ` : ""}cannot confine it on this machine — ${why}. ${UNCONFINED_ESCAPE}`;
+  const remedy = "remedy" in verdict ? verdict.remedy : undefined;
+  if (remedy?.kind === "windows-update") return windowsUpdateRefusal(remedy);
+  return `The agent's shell is unavailable: ${verdict.runner ? `${path.basename(verdict.runner)} ` : ""}cannot confine it on this machine — ${why}. No command runs unconfined. ${UNCONFINED_ESCAPE}`;
+}
+
+/**
+ * The refusal when Windows lacks the update MXC's process container needs: what is missing, what it
+ * means, and what to do first — the update — before the way round it and what that costs.
+ */
+export function windowsUpdateRefusal(remedy: ConfinementRemedy): string {
+  return (
+    `The agent's shell is unavailable on this machine: this Windows (build ${remedy.build}) lacks ${remedy.update} (build ${remedy.needed}), ` +
+    `without which MXC cannot confine a command, and no command runs unconfined. ` +
+    `Install it with Windows Update, then restart pi-outpost. ${UNCONFINED_ESCAPE}`
+  );
 }
 
 /** The refusal of an `"auto"` shell whose platform has no runner at all. */
 export function autoUnavailableRefusal(reason: string): string {
-  return `The agent's shell is unavailable: nothing can confine it on this machine — ${reason}. ${UNCONFINED_ESCAPE}`;
+  return `The agent's shell is unavailable: nothing can confine it on this machine — ${reason}. No command runs unconfined. ${UNCONFINED_ESCAPE}`;
 }
 
 /** The gate an `"auto"` runner's commands wait at: the shared verdict, read as a refusal or nothing. */
@@ -265,7 +283,8 @@ export async function autoShellRefusal(
  */
 export function autoShown(verdict: ConfinementVerdict): ConfinementVerdict {
   if (verdict.state === "verified" || verdict.state === "checking") return verdict;
-  return { state: "unavailable", runner: verdict.runner ?? "", reason: autoVerdictRefusal(verdict) ?? "" };
+  const remedy = "remedy" in verdict ? verdict.remedy : undefined;
+  return { state: "unavailable", runner: verdict.runner ?? "", reason: autoVerdictRefusal(verdict) ?? "", ...(remedy ? { remedy } : {}) };
 }
 
 /**

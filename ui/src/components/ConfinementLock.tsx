@@ -107,7 +107,12 @@ export function ConfinementLock({ verdict, surface, root, grants }: { verdict: C
         : verdict.state === "failed"
           ? { icon: "⚠", text: "confinement unchecked", tone: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200" }
           : verdict.state === "unavailable"
-          ? { icon: "⛔", text: "unavailable", tone: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200" }
+          ? {
+              icon: "⛔",
+              // The cause in the pill itself when it is one to act on: a tooltip is not where a user looks.
+              text: verdict.remedy?.kind === "windows-update" ? "unavailable — Windows update needed" : "unavailable",
+              tone: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200",
+            }
           : verdict.state === "unconfined"
           ? verdict.available
             // The nudge: this machine could confine the shell, and the lock says how.

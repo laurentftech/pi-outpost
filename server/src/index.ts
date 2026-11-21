@@ -88,6 +88,7 @@ import { confineConfiguration } from "./confineCommand.ts";
 import {
   autoShown,
   autoUnavailableRefusal,
+  autoVerdictRefusal,
   buildTerminalConfinement,
   confineSuggestion,
   sharedShellVerdict,
@@ -2943,7 +2944,10 @@ if (config.terminal?.sandbox) {
   const runner = config.terminal.sandbox;
   void checkRunner(runner).then((result) => {
     terminalRunner = result;
-    if (!result.ok && config.terminal?.enabled) console.warn(`[terminal] ${result.reason}`);
+    if (!result.ok && config.terminal?.enabled) {
+      const fix = result.remedy?.kind === "windows-update" ? ` Install ${result.remedy.update} with Windows Update, then restart pi-outpost.` : "";
+      console.warn(`[terminal] No terminal opens: ${result.reason}.${fix}`);
+    }
   });
 }
 
@@ -3008,7 +3012,12 @@ function confinementOf(workspace: Workspace): SessionSnapshot["confinement"] {
  */
 onShellVerdictSettled((verdict) => {
   if (verdict.state === "leaking") console.warn(`[sandbox] ${verdict.runner} does not confine: ${verdict.reached.join(", ")} reached by the canary`);
-  if (verdict.state === "failed") console.warn(`[sandbox] could not check ${verdict.runner}'s confinement: ${verdict.reason}`);
+  if (verdict.state === "failed") {
+    // For a runner the server chose, a failed check is the verdict: every command is refused. Say that,
+    // with what to do, rather than "could not check", which reads as a hiccup.
+    const refusal = config.sandbox?.autoRunner ? autoVerdictRefusal(verdict) : undefined;
+    console.warn(refusal ? `[sandbox] ${refusal}` : `[sandbox] could not check ${verdict.runner}'s confinement: ${verdict.reason}`);
+  }
   for (const open of workspaces.all()) {
     const confinement = confinementOf(open);
     if (confinement) broadcast(open, { type: "confinement", confinement });
@@ -7006,14 +7015,14 @@ if (config.sandbox) {
           config.sandbox.autoRunner?.unavailable !== undefined
             ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (REFUSED: "auto" found no runner — ${config.sandbox.autoRunner.unavailable})`
             : config.sandbox.bashRunner
-            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`}${networkSummary(config.sandbox, process.platform, msysFolders(process.env.PATH)) ? `, ${networkSummary(config.sandbox, process.platform, msysFolders(process.env.PATH))}` : ""})`
+            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (${config.sandbox.autoRunner ? `checking ${config.sandbox.bashRunner}, chosen automatically: no command runs until it shows it confines` : `confined by ${config.sandbox.bashRunner}`}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`}${networkSummary(config.sandbox, process.platform, msysFolders(process.env.PATH)) ? `, ${networkSummary(config.sandbox, process.platform, msysFolders(process.env.PATH))}` : ""})`
             : config.sandbox.bashFrom
               ? `bash (from ${config.sandbox.bashFrom})`
               : "bash (UNCONFINED)",
         ]
       : []),
   ].join(", ");
-  console.log(`[pi] sandbox ${config.sandbox.root} · ${extras}${config.sandbox.autoRunner && config.sandbox.bashRunner ? " — chosen automatically, used once its confinement check passes" : ""}`);
+  console.log(`[pi] sandbox ${config.sandbox.root} · ${extras}`);
   // An unconfined shell this machine could confine: say so now, not only in the interface.
   if (shellIsUnconfined(config.sandbox)) void askUnconfined();
 }

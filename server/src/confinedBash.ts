@@ -17,7 +17,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
-import type { SandboxGrantOutcome } from "@pi-outpost/shared";
+import type { ConfinementRemedy, SandboxGrantOutcome } from "@pi-outpost/shared";
 import { startEgressProxy, type EgressProxy, type EgressProxyOptions } from "./egressProxy.ts";
 import { EMPTY_GRANT, forbiddenHost, isApproved, isEmptyGrant, mergeGrants, type Grant } from "./sandboxGrants.ts";
 import { RUN_WITH_GRANT_TOOL } from "./sandboxGrantTool.ts";
@@ -468,7 +468,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     if (refusal !== undefined) throw new Error(refusal);
     if (signal?.aborted) throw new Error("aborted");
     const check = await (options.check ?? cachedCheck)(options.runner);
-    if (!check.ok) throw new Error(`bash is confined by ${options.runner}, which cannot run it: ${check.reason}`);
+    if (!check.ok) throw new RunnerCannotConfine(`bash is confined by ${options.runner}, which cannot run it: ${check.reason}`, check.remedy, check.reason);
     if (!shell) {
       throw new Error(
         `bash is confined by ${options.runner}, but "sandbox.bashShell" names no shell. On Windows, Git Bash cannot start in a sandbox: name powershell.exe, or busybox-w32's sh.exe.`,
@@ -1036,4 +1036,27 @@ function killTree(child: ChildProcess, windows: boolean): void {
   } catch {
     child.kill("SIGKILL");
   }
+}
+
+/** A runner that cannot confine on this machine, with what the user can do about it when that is known. */
+export class RunnerCannotConfine extends Error {
+  constructor(
+    message: string,
+    readonly remedy?: ConfinementRemedy,
+    /** The runner's own reason, bare: what a verdict says, rather than this error's wrapping of it. */
+    readonly why: string = message,
+  ) {
+    super(message);
+    this.name = "RunnerCannotConfine";
+  }
+}
+
+/** What a verdict should say of an error: a runner's own reason when it is one, else the error's message. */
+export function reasonOf(error: unknown): string {
+  return error instanceof RunnerCannotConfine ? error.why : (error as Error).message;
+}
+
+/** The remedy an error carries, when it is a runner's refusal that knows one. */
+export function remedyOf(error: unknown): ConfinementRemedy | undefined {
+  return error instanceof RunnerCannotConfine ? error.remedy : undefined;
 }

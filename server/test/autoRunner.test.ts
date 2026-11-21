@@ -289,6 +289,8 @@ describe("the lock follows a retry", () => {
     ];
     const heard: string[] = [];
     const stop = onShellVerdictSettled((verdict) => heard.push(verdict.state));
+    // What earlier tests settled is told on registration (see the next test): only this sandbox's from here.
+    heard.length = 0;
     try {
       const fake = async () => answers.shift()!;
       assert.equal(settledShellVerdict(box, {}), undefined, "nothing reached yet: the lock says checking");
@@ -302,5 +304,19 @@ describe("the lock follows a retry", () => {
     } finally {
       stop();
     }
+  });
+
+  // openlore: scenario=AMachineThatCannotConfineIsSaidOnce spec=sandbox-defaults
+  test("a verdict settled before anyone listened is told to a listener registered after it", async () => {
+    // A check that fails at once settled during startup, before the server listened: the console
+    // never said the shell was refused.
+    const box: SandboxConfig = { root: path.join(tmpdir(), "settled-early"), allowWrite: true, allowBash: true, bashRunner: "/early", autoRunner: { label: "MXC" }, readExceptions: [] };
+    const early: ConfinementVerdict = { state: "failed", runner: "/early", checkedAt: "2026-11-01T10:00:00Z", reason: "no tier 1 here" };
+    await autoShellRefusal(box, {}, async () => early);
+    await new Promise((resolve) => setImmediate(resolve));
+    const heard: ConfinementVerdict[] = [];
+    const stop = onShellVerdictSettled((verdict) => heard.push(verdict));
+    stop();
+    assert.ok(heard.some((verdict) => verdict.state === "failed" && verdict.runner === "/early"), JSON.stringify(heard));
   });
 });

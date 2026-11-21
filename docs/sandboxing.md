@@ -565,8 +565,9 @@ Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cann
 (landstrip/landstrip#204), and MXC's lower tiers hit the same wall. Two ways out, neither easy:
 
 - **Update Windows**, then the setup above. This is the supported path. MXC's process container needs
-  one of these builds or later (`winver` shows yours); below them the shell's refusal names your build and
-  the update to install:
+  one of these builds or later (`winver` shows yours); below them the interface says so once, in a
+  dialog naming your build and the update to install (with a button to open Windows Update), and the
+  shell's refusal and the console say the same:
 
   | Windows 11 | Build | Update |
   | --- | --- | --- |
@@ -772,7 +773,8 @@ The verdict is shown next to the context indicator for the agent's shell, and as
 | 🔓 `not confined`, in red | anything else got through; the tooltip names which. The configuration is left as it is: fix the runner or its host, or stop relying on it |
 | `checking confinement` | the canary is running |
 | ⚠ `confinement unchecked` | the canary could not answer; the tooltip says why |
-| ⛔ `shell unavailable` | a runner `"auto"` chose did not pass, or there is none: every command is refused, and the tooltip says why |
+| ⛔ `shell unavailable` | a runner `"auto"` chose did not pass, or there is none: every command is refused. The first time, a dialog says why and what to do; clicking the lock opens it again |
+| ⛔ `shell unavailable — Windows update needed` | the same, because Windows lacks the update MXC needs: the dialog names it |
 | 🔓 `shell not confined`, highlighted | no runner, yet this machine's passes its self-check: the tooltip says to run `pi-outpost config --confine` |
 | 🔓 `shell not confined`, grey | no runner, and none can confine here: the tooltip says why |
 | nothing | no shell (`allowBash` off), or the shell is an extension's |

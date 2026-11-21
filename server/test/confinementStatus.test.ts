@@ -50,7 +50,7 @@ describe("autoVerdictRefusal", () => {
   });
 
   test("a platform with no runner at all says why, and the way back", () => {
-    assert.equal(autoUnavailableRefusal("no runner for freebsd"), `The agent's shell is unavailable: nothing can confine it on this machine — no runner for freebsd. ${UNCONFINED_ESCAPE}`);
+    assert.equal(autoUnavailableRefusal("no runner for freebsd"), `The agent's shell is unavailable: nothing can confine it on this machine — no runner for freebsd. No command runs unconfined. ${UNCONFINED_ESCAPE}`);
   });
 });
 
