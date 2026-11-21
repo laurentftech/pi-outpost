@@ -46,7 +46,9 @@ const { once } = require('node:events');
       await new Promise(resolve => setTimeout(resolve,100));
     }
     await new Promise((resolve, reject) => {
-      socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+      // The server's token: none is configured, so it generated one in its agent directory.
+      const token = fs.readFileSync(path.join(workspace, '.pi-agent', 'outpost-token'), 'utf8').trim();
+      socket = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}`);
       let output = '';
       let sent = false;
       let exiting = false;

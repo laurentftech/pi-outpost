@@ -16,7 +16,8 @@ test.beforeAll(async () => {
   server = await startServer(root, {
     server: { host: "0.0.0.0", token, tls: { certFile, keyFile } },
     updateCheck: false, changelogNotice: false,
-  }, { ca: await readFile(certFile), env: { ANTHROPIC_API_KEY: "sk-ant-not-a-real-key" } });
+  }, // Its own token, from the file: the e2e servers' shared one in the environment would win.
+  { ca: await readFile(certFile), env: { ANTHROPIC_API_KEY: "sk-ant-not-a-real-key", PI_OUTPOST_TOKEN: undefined } });
 });
 test.afterAll(async () => { await server?.stop(); });
 

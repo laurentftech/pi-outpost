@@ -5,7 +5,7 @@
  * tests of the pure functions cannot see.
  */
 import { spawn, execSync } from "node:child_process";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import net from "node:net";
 import https from "node:https";
 import { tmpdir } from "node:os";
@@ -203,13 +203,26 @@ async function startServerOn(root, config, options, port) {
     await new Promise((r) => setTimeout(r, 250));
   }
 
+  // Every server has a token (serverToken.ts): the one configured, or the one it
+  // generated in its throwaway agent directory — read back, as an operator would.
+  // The environment wins over the file, as it does in the server (applyRuntime).
+  const token = env.PI_OUTPOST_TOKEN ?? config.server?.token ?? (full.agentDir ? (await readFile(path.join(full.agentDir, "outpost-token"), "utf8")).trim() : undefined);
+
   return {
     port,
     base,
     root,
+    /** The token this server requires. */
+    token,
+    /** `Authorization` for an HTTP request to this server. */
+    authHeaders: token ? { Authorization: `Bearer ${token}` } : {},
     /** The config the server loaded — for tests that make it unwritable. */
     configFile: configPath,
-    wsUrl: (token) => `${secure ? "wss" : "ws"}://127.0.0.1:${port}/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`,
+    /** The WebSocket URL with this server's token; another token to try that, `null` for none. */
+    wsUrl: (supplied) => {
+      const sent = supplied === undefined ? token : supplied;
+      return `${secure ? "wss" : "ws"}://127.0.0.1:${port}/ws${sent ? `?token=${encodeURIComponent(sent)}` : ""}`;
+    },
     log: () => log,
     async stop() {
       // Signal the *group* (negative pid): tsx does not forward signals to the node

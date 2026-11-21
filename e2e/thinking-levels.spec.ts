@@ -16,7 +16,7 @@ test("a real model requiring reasoning clamps an off preference to low and never
     expect(hello.model).toBe("anthropic/claude-opus-5-5");
     expect(hello.thinkingLevel).toBe("low");
     expect(hello.thinkingLevels).toEqual(["low", "medium", "high", "xhigh"]);
-    await page.goto(server.base);
+    await page.goto(`${server.base}/?token=${encodeURIComponent(server.token)}`);
     const button = page.getByTitle("thinking level");
     await expect(button).toHaveText(/\blow\b/);
     await button.click();

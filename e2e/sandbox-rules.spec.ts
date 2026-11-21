@@ -85,7 +85,7 @@ async function start(steps: Steps, before?: (paths: { root: string; beside: stri
 test("always allow from the dialog: the rule is listed under the shell's lock, the next request is not asked, and it is revoked there", async ({ page }) => {
   const app = await start(({ beside }) => [grantStep(beside), grantStep(beside), bashStep]);
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
 
     // Before anything: the panel opens on no rule, and closes on Escape.
@@ -128,7 +128,7 @@ test("a recorded refusal becomes a rule from the panel, and the agent directory 
     await store.record({ kind: "directory", target: path.join(root, ".pi-agent"), access: "read", command: "cat auth.json" });
   });
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await page.getByTestId("sandbox-rules-toggle").click();
     const refusals = page.getByTestId("sandbox-refusals-list");
     await expect(refusals).toContainText(`reading ${app.beside}`);
@@ -154,7 +154,7 @@ test("break it: two clients answer at once, a rule's directory is deleted, a rev
     await store.record({ kind: "host", target: "elsewhere.example.com", command: "curl https://elsewhere.example.com" });
   });
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
     // The panel is open before anything happens, and stays open throughout.
     await page.getByTestId("sandbox-rules-toggle").click();
@@ -206,7 +206,7 @@ test("break it: a rule on a directory deleted since does not stop the next comma
     await rm(beside, { recursive: true, force: true });
   });
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await app.go();
     const [result] = await app.results();
     expect(result).toMatch(/ran/);
@@ -225,7 +225,7 @@ test("break it: a rule revoked while a command runs holds for that command and i
     await store.setRule({ kind: "directory", target: beside, access: "read", decision: "allow" });
   });
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
     await page.getByTestId("sandbox-rules-toggle").click();
     await expect(page.getByTestId("sandbox-rules-list")).toContainText(app.beside);

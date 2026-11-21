@@ -252,14 +252,14 @@ test("a connection names the project it binds to, and an unknown one falls back"
 
   // This is the embed's whole binding mechanism: the host names the project on
   // the upgrade, because that is the only moment the binding is decided.
-  const named = connect(`${server.wsUrl()}?workspace=${encodeURIComponent(beta)}`);
+  const named = connect(`${server.wsUrl()}&workspace=${encodeURIComponent(beta)}`);
   t.after(() => named.close());
   const boundToBeta = await named.waitFor((m) => m.type === "hello");
   assert.equal(boundToBeta.workspace.root, beta, "the named project is the one served");
 
   // A project closed server-side must leave a working widget rather than a dead
   // socket, so an unknown root is served the default instead of being refused.
-  const stale = connect(`${server.wsUrl()}?workspace=${encodeURIComponent(path.join(root, "gone"))}`);
+  const stale = connect(`${server.wsUrl()}&workspace=${encodeURIComponent(path.join(root, "gone"))}`);
   t.after(() => stale.close());
   const fellBack = await stale.waitFor((m) => m.type === "hello");
   assert.equal(fellBack.workspace.root, root, "an unknown root falls back to the default project");
@@ -277,7 +277,7 @@ test("a workspace name spelled differently from the registry key still binds, no
   // registered under its `fs.realpath()`'d root. A trailing separator — trivial for an
   // integrator to add by accident, on every platform — must not read as "unknown project"
   // and silently serve the wrong one.
-  const spelled = connect(`${server.wsUrl()}?workspace=${encodeURIComponent(beta + path.sep)}`);
+  const spelled = connect(`${server.wsUrl()}&workspace=${encodeURIComponent(beta + path.sep)}`);
   t.after(() => spelled.close());
   const hello = await spelled.waitFor((m) => m.type === "hello");
   assert.equal(hello.workspace.root, beta, "the differently-spelled root still resolves to the open project");

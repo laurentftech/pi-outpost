@@ -794,11 +794,13 @@ const profiles = await startServer(
   { env: { ...onlyOneFakeProvider(), FAKE_PI_RPC_CONFIG: profilesConfig } },
 );
 
-const link = (server: string) => `${host.url}/?server=${encodeURIComponent(server)}&theme=light`;
+// Each server requires its token (server/src/serverToken.ts): the host page hands it to the widget.
+const link = (server: { base: string; token: string }) =>
+  `${host.url}/?server=${encodeURIComponent(server.base)}&token=${encodeURIComponent(server.token)}&theme=light`;
 console.log("\n  embed bench — the widget inside a host page that fights it\n");
-console.log(`  settings, files, sessions   ${link(plain.base)}`);
+console.log(`  settings, files, sessions   ${link(plain)}`);
 console.log(
-  `  compacted conversation      ${link(plain.base)}   sessions → "Braking, twelve turns and a compaction"`,
+  `  compacted conversation      ${link(plain)}   sessions → "Braking, twelve turns and a compaction"`,
 );
 console.log(`                              (seeded at ${compactedSessionFile})`);
 console.log(`  workspace                   ${root}`);
@@ -807,18 +809,18 @@ console.log(
     ? "  live: the agent is real — ask it for a figure and watch the file land"
     : "  offline: no model (BENCH_LIVE=1 npm run bench to talk to a real one)",
 );
-console.log(`  seeded transcript           ${link(diagrams.base)}   (diagrams + table)`);
-console.log(`  tool progress bar           ${link(progress.base)}   (send any prompt, watch the tool card)`);
-console.log(`  agent question panel        ${link(question.base)}   (send any prompt; the panel holds until answered)`);
-console.log(`  project profiles            ${link(profiles.base)}   (statements beside each table, then the rules register and the rule patterns; edit ${profilesRoot}/profiles/requirements.json and reload)`);
-console.log(`  model-aware thinking slider ${link(thinking.base)}   (🧠: low..xhigh, no off; switch to Plain Mini — declared off-only — and watch it settle)`);
+console.log(`  seeded transcript           ${link(diagrams)}   (diagrams + table)`);
+console.log(`  tool progress bar           ${link(progress)}   (send any prompt, watch the tool card)`);
+console.log(`  agent question panel        ${link(question)}   (send any prompt; the panel holds until answered)`);
+console.log(`  project profiles            ${link(profiles)}   (statements beside each table, then the rules register and the rule patterns; edit ${profilesRoot}/profiles/requirements.json and reload)`);
+console.log(`  model-aware thinking slider ${link(thinking)}   (🧠: low..xhigh, no off; switch to Plain Mini — declared off-only — and watch it settle)`);
 if (grants) {
-  console.log(`  sandbox grants (MXC)        ${link(grants.base)}   ask it to fetch https://example.com/, or to write in ${grantsBeside}`);
+  console.log(`  sandbox grants (MXC)        ${link(grants)}   ask it to fetch https://example.com/, or to write in ${grantsBeside}`);
 }
 console.log("\n  embed workspace controls — the same widget under each policy\n");
-console.log(`  settings (the default)      ${link(plain.base)}   no header control; the root lives in Settings`);
-console.log(`  root                        ${link(rootMode.base)}   one root, moved from the header`);
-console.log(`  projects                    ${link(projectsMode.base)}   open, switch and close, with a second project already open`);
+console.log(`  settings (the default)      ${link(plain)}   no header control; the root lives in Settings`);
+console.log(`  root                        ${link(rootMode)}   one root, moved from the header`);
+console.log(`  projects                    ${link(projectsMode)}   open, switch and close, with a second project already open`);
 console.log("\n  ctrl-c to stop\n");
 
 let stopping = false;

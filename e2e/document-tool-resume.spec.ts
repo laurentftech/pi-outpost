@@ -58,7 +58,7 @@ test("Reuse the tool after four exchanges and a session reload extracts the pres
         }
       }),
     );
-    await page.goto(server.base);
+    await page.goto(`${server.base}/?token=${encodeURIComponent(server.token)}`);
     await expect(page.getByTitle("connected", { exact: true })).toBeVisible();
     const composer = page.getByRole("textbox", { name: /message pi/i });
     async function send(text: string) {

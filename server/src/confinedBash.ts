@@ -71,6 +71,8 @@ export interface ConfinedBashOptions {
    * hosts it refuses while a command runs are named after the command's output.
    */
   networkProxy?: Pick<EgressProxy, "url" | "watchRefusals">;
+  /** `sandbox.hostLoopback`: MXC on Windows only, without a proxy (see `mxcTerminalConfig`). */
+  hostLoopback?: boolean;
   /** `sandbox.allowedHosts` itself, which a command's own proxy starts from. */
   allowedHosts?: readonly string[];
   /**
@@ -546,6 +548,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
           readOnlyFiles,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
+          ...(options.hostLoopback === undefined ? {} : { hostLoopback: options.hostLoopback }),
         });
         if (diagnose) reportDir = await mkdtemp(path.join(tmpdir(), "pi-outpost-diagnosis-"));
         const sent = reportDir === undefined

@@ -42,7 +42,7 @@ for (const decision of ["Refuse", "Allow once"] as const) {
     try {
       await client.waitFor("hello", 30_000);
       await page.setViewportSize(decision === "Refuse" ? { width: 390, height: 740 } : { width: 1440, height: 900 });
-      await page.goto(server.base);
+      await page.goto(`${server.base}/?token=${encodeURIComponent(server.token)}`);
       await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
       client.send({ type: "prompt", text: "/grant-context" });
       await expect(page.getByText("Evidence 1: review these figures before granting access.", { exact: true })).toBeAttached();

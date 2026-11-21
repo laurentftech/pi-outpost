@@ -106,6 +106,13 @@ export interface SandboxConfig {
    */
   allowedHosts?: string[];
   /**
+   * MXC's process container on Windows, without `allowedHosts`: whether a command reaches the
+   * host's loopback. Windows blocks a process's connection to itself otherwise, and with it
+   * `socket.socketpair()` and every Python asyncio loop (microsoft/mxc#1261). Absent: `true`.
+   * The server still refuses a command without its token (serverToken.ts).
+   */
+  hostLoopback?: boolean;
+  /**
    * Whether the agent's confined shell may ask the user for a grant — named hosts or
    * directories beyond the sandbox, for one command or the session (`sandboxGrants.ts`).
    * Absent: `"ask"`. `"never"`: no grant tool. Read from the file only; Settings carry it over.
@@ -1077,6 +1084,8 @@ export function loadConfig(
     if (bashRunner !== undefined && bashFrom !== undefined) {
       fail(`"sandbox.bashRunner" and "sandbox.bashFrom" both say who runs bash: keep one`);
     }
+    const hostLoopback = sandbox.hostLoopback;
+    if (hostLoopback !== undefined && typeof hostLoopback !== "boolean") fail(`"sandbox.hostLoopback" must be true or false`);
     const allowedHosts = optionalStringArray(sandbox, "allowedHosts");
     if (allowedHosts !== undefined) {
       // MXC's process container, Seatbelt, or landstrip on Linux (its seccomp supervisor) closes
@@ -1163,6 +1172,7 @@ export function loadConfig(
       ...(autoRunner === undefined ? {} : { autoRunner }),
       ...(bashImage === undefined ? {} : { bashImage }),
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
+      ...(hostLoopback === undefined ? {} : { hostLoopback }),
       ...(grants === undefined ? {} : { grants: grants as SandboxGrantsMode }),
       ...(readOnlyPaths === undefined ? {} : { readOnlyPaths: readOnlyPaths.map(resolve) }),
       readExceptions: [
@@ -1581,11 +1591,10 @@ export function requireSecureTransport(config: AppConfig): void {
 
 /**
  * Off loopback, the agent's bash and edit tools are reachable by anything that can
- * route to the host. The WebSocket accepts connections with no Origin header (a
- * local process already has shell access, so the check would be theatre), and an
- * unset token makes every request valid — so a bind address alone must not be able
- * to hand an unauthenticated LAN the agent. Now that `--host` and PI_OUTPOST_HOST
- * exist, that address is one word away; the token stops being advice.
+ * route to the host, so the token must be one the operator chose. A server without
+ * one generates its own (serverToken.ts) — after this check, on purpose: a secret
+ * printed on a console is not a decision to expose the agent to a network. Now that
+ * `--host` and PI_OUTPOST_HOST exist, that address is one word away.
  */
 export function requireTokenOffLoopback(config: AppConfig): void {
   if (LOOPBACK.has(config.host) || config.token) return;

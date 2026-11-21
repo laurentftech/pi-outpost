@@ -35,7 +35,8 @@ describe("cross-origin responses", () => {
     await guarded?.stop();
   });
 
-  const get = (path, headers = {}) => fetch(`${server.base}${path}`, { headers });
+  // Every server has a token: authenticated, so each route answers as it does for the interface.
+  const get = (path, headers = {}) => fetch(`${server.base}${path}`, { headers: { ...server.authHeaders, ...headers } });
 
   // openlore: {"domain":"api","requirement":"CrossOriginResponses","scenario":"AllowedOriginReadsTheResponse","specFile":"openspec/changes/add-cors-for-allowed-origins/specs/api/spec.md"}
   test("an allowed origin is echoed back, with Vary", async () => {

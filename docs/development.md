@@ -29,6 +29,12 @@ npm run dev
 - Web UI: http://localhost:5173 (Vite dev server, proxies `/ws`, `/branding`, `/health`)
 - Agent server: ws://127.0.0.1:3142/ws
 
+The server requires its token on the loopback too. The dev configuration sets none, so the server
+generates one in your agent directory (`~/.pi/agent/outpost-token`) and prints
+`[server] http://127.0.0.1:3142/?token=…` at start. Open the Vite UI once with that token —
+`http://localhost:5173/?token=<the same value>` — or paste it into the token screen; the browser
+keeps it for that origin.
+
 `npm run dev` passes the repository's committed
 [`pi-outpost.config.dev.json`](../pi-outpost.config.dev.json) — the same code path and the
 same "no config, no start" rule as any other deployment, with no special case for

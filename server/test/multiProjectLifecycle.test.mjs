@@ -275,7 +275,7 @@ test("a client that leaves while its project is starting does not keep it alive"
   // The close handler has already forgotten this socket by the time the build
   // finishes; a bind that ran anyway would leave a dead client watching beta, and
   // a workspace nobody is looking at would count as watched forever.
-  const leaving = connect(`${server.wsUrl()}?workspace=${encodeURIComponent(beta)}`);
+  const leaving = connect(`${server.wsUrl()}&workspace=${encodeURIComponent(beta)}`);
   // Open first — closing a socket mid-handshake is a different race, and not the
   // one this is about — then leave immediately, while the session is still being
   // built behind the upgrade.

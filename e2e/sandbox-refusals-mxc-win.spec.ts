@@ -101,7 +101,7 @@ async function start(steps?: (beside: string) => Array<{ tool: string; args: Rec
 test("under MXC on Windows: a refused read offers a diagnosis, the diagnosis names the directory, the lock lists it, and an always-allow made there opens it to the next command", async ({ page }) => {
   const app = await start();
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
 
     // Before any command: nothing recorded, and the sentence that this runner reports on demand.
@@ -151,7 +151,7 @@ test("under MXC on Windows: diagnose asked at once is ignored — the command co
   const command = "(Invoke-WebRequest https://example.com -UseBasicParsing -TimeoutSec 30).StatusCode";
   const app = await start(() => [{ tool: "powershell", args: { command, diagnose: true } }]);
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
     await rm(path.join(app.root, "results.json"), { force: true });
     app.client.send({ type: "prompt", text: "Go." });
@@ -174,7 +174,7 @@ test("under MXC on Windows: diagnose asked at once is ignored — the command co
 test("break it under MXC on Windows: always allow clicked twice, the directory deleted under its rule, the panel open across turns", async ({ page }) => {
   const app = await start();
   try {
-    await page.goto(app.server.base);
+    await page.goto(`${app.server.base}/?token=${encodeURIComponent(app.server.token)}`);
     await expect(page.getByRole("textbox", { name: /message pi/i })).toBeEnabled();
     // The panel is open before the first refusal exists, and stays open.
     await page.getByTestId("sandbox-rules-toggle").click();

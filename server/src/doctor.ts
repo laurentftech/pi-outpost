@@ -209,7 +209,7 @@ export function settingsCheck(loaded: LoadOutcome): Check | undefined {
     `agent runtime: ${config.agentRuntime.mode}${
       config.agentRuntime.mode === "rpc" ? ` (${config.agentRuntime.executable ?? "no executable set"})` : ""
     }`,
-    `auth token: ${config.token === undefined ? "none (loopback only)" : "set"}`,
+    `auth token: ${config.token === undefined ? "generated, in the agent directory (loopback only)" : "set"}`,
     `terminal: ${config.terminal.enabled ? "enabled" : "disabled"}`,
   );
 }

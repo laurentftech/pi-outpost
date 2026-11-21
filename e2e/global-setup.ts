@@ -86,6 +86,8 @@ function serveHostPage(): Promise<{ url: string; close: () => Promise<void> }> {
 function onlyOneFakeProvider(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {};
   for (const name of Object.keys(process.env)) {
+    // The server's own access token is not a provider's: every e2e server shares it (see globalSetup).
+    if (name === "PI_OUTPOST_TOKEN") continue;
     if (name.includes("API_KEY") || name.includes("AUTH_TOKEN") || name.endsWith("_TOKEN")) env[name] = undefined;
   }
   env.ANTHROPIC_API_KEY = "sk-ant-not-a-real-key";
@@ -176,6 +178,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     });
     await assertFresh(file, sources, command);
   }
+
+  // Every server requires a token (server/src/serverToken.ts). One for all of them, through
+  // the environment the harness hands each server — the workers inherit it, so a server a
+  // spec starts has it too — and stored for the browser in every server's origin below.
+  process.env.PI_OUTPOST_TOKEN = E2E_SERVER_TOKEN;
 
   const host = await serveHostPage();
 
@@ -405,7 +412,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       server: { allowedOrigins: [host.url], token: E2E_TOKEN },
       branding: { title: "guarded smoke" },
     },
-    { env: onlyOneFakeProvider() },
+    // Its own token, from its configuration: the shared one in the environment would win.
+    { env: { ...onlyOneFakeProvider(), PI_OUTPOST_TOKEN: undefined } },
   );
 
   // A dedicated server with terminal: { enabled: true }
@@ -861,6 +869,15 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.PI_E2E_PACKAGES_ROOT = packagesRoot;
   process.env.PI_E2E_PACKAGES_AGENT_DIR = packagesFixture.agentDir;
 
+  // The browser holds the shared token in every origin it opens, as it would after following
+  // the startup URL once (ui/src/authToken.ts). The guarded server is left out: its tests are
+  // about meeting the token screen.
+  const origins = [host.url, ...Object.entries(process.env).filter(([name, value]) => name.startsWith("PI_E2E_") && name.endsWith("_URL") && value?.startsWith("http")).map(([, value]) => value!)]
+    .map((url) => new URL(url).origin)
+    .filter((origin) => origin !== new URL(guarded.base).origin);
+  await mkdir(path.dirname(E2E_STORAGE_STATE), { recursive: true });
+  await writeFile(E2E_STORAGE_STATE, JSON.stringify({ cookies: [], origins: [...new Set(origins)].map((origin) => ({ origin, localStorage: [{ name: "pi-outpost:token", value: E2E_SERVER_TOKEN }] })) }));
+
   return async () => {
     await packages.stop();
     for (const teardown of packageTeardowns) await teardown();
@@ -897,3 +914,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
 /** Not a secret: a literal the guarded test server checks against. */
 const E2E_TOKEN = "e2e-smoke-token";
+/** Not a secret: the token every other test server requires. */
+const E2E_SERVER_TOKEN = "e2e-server-token";
+/** Where the browser's storage starts from (playwright.config.ts names the same file). */
+const E2E_STORAGE_STATE = path.join(HERE, ".auth", "storage-state.json");

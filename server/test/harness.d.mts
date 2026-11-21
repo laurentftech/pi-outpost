@@ -17,7 +17,12 @@ export interface HarnessServer {
   root: string;
   /** The config file the server loaded. */
   configFile: string;
-  wsUrl(token?: string): string;
+  /** The token this server requires: the one configured, or the one it generated. */
+  token: string;
+  /** `Authorization` for an HTTP request to this server. */
+  authHeaders: Record<string, string>;
+  /** The WebSocket URL with this server's token; another token to try that, `null` for none. */
+  wsUrl(token?: string | null): string;
   /** Everything the server printed so far. */
   log(): string;
   /** Stop the server's whole process group and remove its workspace. */

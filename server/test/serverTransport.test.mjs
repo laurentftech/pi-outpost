@@ -45,7 +45,7 @@ test("HttpsAndWss", async () => {
     assert.ok((await client.waitFor("hello", 15000)).sessionId);
     assert.match(client.ws._socket.getProtocol(), /^TLSv1\.[23]$/);
   } finally { client.close(); }
-  for (const supplied of [undefined, "wrong"]) {
+  for (const supplied of [null, "wrong"]) {
     const denied = connect(server.wsUrl(supplied), { ca });
     assert.equal(await denied.waitForClose(), 4401);
     assert.deepEqual(denied.received, []);
@@ -98,4 +98,14 @@ test("InvalidTlsFailsClosed at startup even when HTTP was explicitly allowed", a
       });
     } finally { await rm(root, { recursive: true, force: true }); }
   }
+});
+
+// openlore: scenario=RemoteStillRequiresToken spec=server-transport
+test("RemoteStillRequiresToken: a generated token does not open a listener off loopback", async () => {
+  const root = await makeWorkspace({ ".pi-agent/outpost-token": "a".repeat(64) + "\n" });
+  await assert.rejects(
+    startServer(root, { server: { host: "0.0.0.0", allowInsecureHttp: true }, updateCheck: false }),
+    /without an auth token/,
+  );
+  await rm(root, { recursive: true, force: true });
 });

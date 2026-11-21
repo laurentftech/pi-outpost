@@ -53,7 +53,7 @@ describe("GET /files/raw", () => {
   });
 
   test("serves an image with its content type", async () => {
-    const res = await fetch(`${open.base}/files/raw?path=plot.png`);
+    const res = await fetch(`${open.base}/files/raw?path=plot.png`, { headers: open.authHeaders });
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "image/png");
     assert.equal(res.headers.get("x-content-type-options"), "nosniff");
@@ -62,7 +62,7 @@ describe("GET /files/raw", () => {
 
   test("refuses to escape the workspace", async () => {
     for (const target of ["../secret.txt", "..%2F..%2Fetc%2Fhosts", "/etc/hosts", secretPath]) {
-      const res = await fetch(`${open.base}/files/raw?path=${encodeURIComponent(target)}`);
+      const res = await fetch(`${open.base}/files/raw?path=${encodeURIComponent(target)}`, { headers: open.authHeaders });
       assert.equal(res.status, 404, `${target} must not resolve`);
       const body = await res.text();
       assert.ok(!body.includes("SECRET"), `${target} leaked content`);
@@ -70,7 +70,7 @@ describe("GET /files/raw", () => {
   });
 
   test("refuses a non-image file over the 1 MiB cap", async () => {
-    const res = await fetch(`${open.base}/files/raw?path=big.txt`);
+    const res = await fetch(`${open.base}/files/raw?path=big.txt`, { headers: open.authHeaders });
     assert.equal(res.status, 413);
     assert.equal((await res.json()).limit, 1_048_576);
   });
@@ -80,7 +80,7 @@ describe("GET /files/raw", () => {
       ["big.png", "image/png", PNG_BYTES.length + 2_000_000],
       ["photo.jpg", "image/jpeg", 2_000_003],
     ]) {
-      const res = await fetch(`${open.base}/files/raw?path=${name}`);
+      const res = await fetch(`${open.base}/files/raw?path=${name}`, { headers: open.authHeaders });
       assert.equal(res.status, 200, name);
       assert.equal(res.headers.get("content-type"), type);
       assert.equal(Buffer.from(await res.arrayBuffer()).length, length);
@@ -88,47 +88,47 @@ describe("GET /files/raw", () => {
   });
 
   test("ImageOverThePdfLimit: an image over the configured PDF ceiling is refused, naming that ceiling", async () => {
-    const res = await fetch(`${tightPdf.base}/files/raw?path=big.png`);
+    const res = await fetch(`${tightPdf.base}/files/raw?path=big.png`, { headers: tightPdf.authHeaders });
     assert.equal(res.status, 413);
     assert.equal((await res.json()).limit, 1_048_576);
   });
 
   test("serves a PDF above the 1 MB cap, under the PDF ceiling", async () => {
-    const res = await fetch(`${open.base}/files/raw?path=big.pdf`);
+    const res = await fetch(`${open.base}/files/raw?path=big.pdf`, { headers: open.authHeaders });
     assert.equal(res.status, 200);
     assert.equal(Buffer.from(await res.arrayBuffer()).length, 2_000_009);
   });
 
   test("a PDF over the configured PDF ceiling is still refused", async () => {
-    const res = await fetch(`${tightPdf.base}/files/raw?path=big.pdf`);
+    const res = await fetch(`${tightPdf.base}/files/raw?path=big.pdf`, { headers: tightPdf.authHeaders });
     assert.equal(res.status, 413);
   });
 
   test("a PDF is a download too — the browser's own viewer never runs it here", async () => {
-    const res = await fetch(`${open.base}/files/raw?path=big.pdf`);
+    const res = await fetch(`${open.base}/files/raw?path=big.pdf`, { headers: open.authHeaders });
     assert.equal(res.headers.get("content-type"), "application/octet-stream");
     assert.equal(res.headers.get("content-disposition"), "attachment");
   });
 
   test("non-image files are downloads, never renderable on our origin", async () => {
-    const res = await fetch(`${open.base}/files/raw?path=report.html`);
+    const res = await fetch(`${open.base}/files/raw?path=report.html`, { headers: open.authHeaders });
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "application/octet-stream");
     assert.equal(res.headers.get("content-disposition"), "attachment");
   });
 
   test("SVG is served with scripts disabled", async () => {
-    const res = await fetch(`${open.base}/files/raw?path=img.svg`);
+    const res = await fetch(`${open.base}/files/raw?path=img.svg`, { headers: open.authHeaders });
     assert.equal(res.headers.get("content-type"), "image/svg+xml");
     assert.match(res.headers.get("content-security-policy") ?? "", /default-src 'none'/);
   });
 
   test("missing path is a 400, missing file a 404", async () => {
-    assert.equal((await fetch(`${open.base}/files/raw`)).status, 400);
-    assert.equal((await fetch(`${open.base}/files/raw?path=nope.png`)).status, 404);
+    assert.equal((await fetch(`${open.base}/files/raw`, { headers: open.authHeaders })).status, 400);
+    assert.equal((await fetch(`${open.base}/files/raw?path=nope.png`, { headers: open.authHeaders })).status, 404);
   });
 
-  test("a token-less server refuses a foreign Host (DNS rebinding)", async () => {
+  test("a server with a generated token refuses a foreign Host (DNS rebinding)", async () => {
     // fetch() forbids overriding Host, so speak HTTP directly — a rebound
     // attacker page reaches 127.0.0.1 but the browser still sends *its* Host
     const status = (host) =>
@@ -138,7 +138,7 @@ describe("GET /files/raw", () => {
             host: "127.0.0.1",
             port: open.port,
             path: "/files/raw?path=plot.png",
-            headers: { host },
+            headers: { host, ...open.authHeaders },
           },
           (res) => {
             res.resume();
@@ -211,7 +211,7 @@ describe("GET /files/raw with several projects open", () => {
   }
 
   const raw = (relPath, workspace) =>
-    fetch(`${server.base}/files/raw?path=${encodeURIComponent(relPath)}${workspace === undefined ? "" : `&workspace=${encodeURIComponent(workspace)}`}`);
+    fetch(`${server.base}/files/raw?path=${encodeURIComponent(relPath)}${workspace === undefined ? "" : `&workspace=${encodeURIComponent(workspace)}`}`, { headers: server.authHeaders });
 
   // openlore: scenario=ServeFromTheNamedProject spec=api
   test("ServeFromTheNamedProject: a named project's image is read from that project's root", async () => {

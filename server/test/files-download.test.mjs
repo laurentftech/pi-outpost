@@ -61,7 +61,7 @@ describe("GET /files/download", () => {
   });
 
   test("DownloadAWorkspaceFile: the exact bytes, as an attachment under its own name", async () => {
-    const res = await fetch(url(open, "reports/q3 résumé.pdf"));
+    const res = await fetch(url(open, "reports/q3 résumé.pdf"), { headers: open.authHeaders });
 
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "application/octet-stream");
@@ -74,7 +74,7 @@ describe("GET /files/download", () => {
   });
 
   test("DownloadAFolderAsAZip: entries under the folder's name, bytes intact, empty folders kept", async () => {
-    const res = await fetch(url(open, "reports"));
+    const res = await fetch(url(open, "reports"), { headers: open.authHeaders });
 
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "application/zip");
@@ -87,7 +87,7 @@ describe("GET /files/download", () => {
   });
 
   test("DownloadSeveralEntriesAsOneZip: one archive with each entry at its top level, clashing names told apart", async () => {
-    const res = await fetch(url(open, ["a.txt", "reports/deep", "img/logo.png", "reports/notes.md", "other/notes.md"]));
+    const res = await fetch(url(open, ["a.txt", "reports/deep", "img/logo.png", "reports/notes.md", "other/notes.md"]), { headers: open.authHeaders });
 
     assert.equal(res.status, 200);
     assert.match(res.headers.get("content-disposition"), /filename="files\.zip"/);
@@ -102,7 +102,7 @@ describe("GET /files/download", () => {
 
   test("AnEscapingLinkIsLeftOut: the archive holds no outside byte and says how many were left out", async (t) => {
     if (!symlinksAvailable) return t.skip("symlinks unavailable on this platform");
-    const res = await fetch(url(open, "reports"));
+    const res = await fetch(url(open, "reports"), { headers: open.authHeaders });
     const bytes = Buffer.from(await res.arrayBuffer());
 
     assert.equal(res.headers.get("x-pi-outpost-skipped"), "1");
@@ -123,10 +123,10 @@ describe("GET /files/download", () => {
     assert.equal(await ok.text(), "a");
   });
 
-  test("DownloadIsAuthenticated: a token-less server refuses a foreign Host", async () => {
+  test("DownloadIsAuthenticated: a server with a generated token refuses a foreign Host", async () => {
     const status = (host) =>
       new Promise((resolve, reject) => {
-        const req = httpRequest({ host: "127.0.0.1", port: open.port, path: "/files/download?path=a.txt", headers: { host } }, (res) => {
+        const req = httpRequest({ host: "127.0.0.1", port: open.port, path: "/files/download?path=a.txt", headers: { host, ...open.authHeaders } }, (res) => {
           res.resume();
           resolve(res.statusCode);
         });
@@ -140,22 +140,22 @@ describe("GET /files/download", () => {
   test("DownloadIsConfined: traversal, absolute, escaping link and missing paths are refused", async () => {
     const targets = ["../secret.txt", secretPath, "missing.txt", ...(symlinksAvailable ? ["reports/escape.txt"] : [])];
     for (const target of targets) {
-      const res = await fetch(url(open, target));
+      const res = await fetch(url(open, target), { headers: open.authHeaders });
       assert.ok(res.status === 403 || res.status === 404, `${target} answered ${res.status}`);
       assert.ok(!(await res.text()).includes("SECRET"), `${target} leaked content`);
     }
-    const mixed = await fetch(url(open, ["a.txt", "../secret.txt"]));
+    const mixed = await fetch(url(open, ["a.txt", "../secret.txt"]), { headers: open.authHeaders });
     assert.equal(mixed.status, 403, "one escaping path refuses the whole archive");
   });
 
   test("DownloadAReadOnlyFile: a file outside the writable zone is served", async () => {
-    const res = await fetch(url(sandboxed, "reference.txt"));
+    const res = await fetch(url(sandboxed, "reference.txt"), { headers: sandboxed.authHeaders });
     assert.equal(res.status, 200);
     assert.equal(await res.text(), "read-only");
   });
 
   test("a request without a path is refused", async () => {
-    const res = await fetch(`${open.base}/files/download`);
+    const res = await fetch(`${open.base}/files/download`, { headers: open.authHeaders });
     assert.equal(res.status, 400);
   });
 });

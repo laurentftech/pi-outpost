@@ -523,6 +523,20 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  // openlore: scenario=HostLoopbackMustBeABoolean spec=sandbox-runner-bash
+  test("HostLoopbackMustBeABoolean: sandbox.hostLoopback is kept when a boolean, refused otherwise", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      const write = (hostLoopback: unknown) => writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", hostLoopback } }));
+      await write(false);
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.hostLoopback, false);
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe" } }));
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.hostLoopback, undefined, "absent: the request decides (open)");
+      await write("yes");
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox.hostLoopback" must be true or false/);
+    });
+  });
+
   // openlore: scenario=AnAllowlistNeedsMxcWithoutAnImage spec=sandbox-runner-bash
   test("AnAllowlistNeedsMxcWithoutAnImage: allowed hosts are kept with MXC, refused without it, beside an image, or malformed", async () => {
     await withTempDir(async (dir) => {

@@ -693,7 +693,7 @@ describe("mxcTerminalConfig", () => {
     assert.deepEqual(config.filesystem.deniedPaths, ["C:\\Users\\me\\.ssh", "C:\\Users\\me\\AppData", "C:\\Users\\other", "C:\\mxc-lab", base.agentDir, base.configFile]);
     assert.equal(config.containment, "processcontainer");
     assert.equal(config.ui.disable, false, "PowerShell and git need Win32k");
-    assert.deepEqual(config.network, { egress: { default: "allow" } }, "the terminal keeps the network, as the user's shell does");
+    assert.deepEqual(config.network, { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } }, "the terminal keeps the network, as the user's shell does, its own loopback included");
   });
 
   // openlore: scenario=TheRequestKeepsTheDesktopOutOfReach spec=terminal
@@ -706,12 +706,31 @@ describe("mxcTerminalConfig", () => {
   // openlore: scenario=NoAllowlistKeepsTheNetwork spec=sandbox-runner-bash
   test("NoAllowlistKeepsTheNetwork: without a proxy the network is open and none is set; with one, closed but for it", () => {
     const open = mxcTerminalConfig(base);
-    assert.deepEqual(open.network, { egress: { default: "allow" } });
+    assert.deepEqual(open.network, { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } });
     assert.equal(open.runtimeConfig, undefined);
     const closed = mxcTerminalConfig({ ...base, networkProxy: "http://127.0.0.1:4567" });
     assert.deepEqual(closed.network, { egress: { default: "deny" }, ingress: { default: "allow", hostLoopback: "allow" } });
     assert.deepEqual(closed.runtimeConfig, { networkProxy: "http://127.0.0.1:4567" });
     assert.deepEqual(closed.filesystem, open.filesystem, "the file limits are the same either way");
+  });
+
+  // openlore: scenario=UnderMxcOnWindowsACommandReachesItsOwnLoopback spec=sandbox-runner-bash
+  test("UnderMxcOnWindowsACommandReachesItsOwnLoopback: the host's loopback is open by default, inbound from the network denied", () => {
+    for (const config of [mxcTerminalConfig(base), mxcTerminalConfig({ ...base, hostLoopback: true })]) {
+      assert.deepEqual(config.network, { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } });
+    }
+  });
+
+  // openlore: scenario=AClosedLoopbackKeepsHostServicesOut spec=sandbox-runner-bash
+  test("AClosedLoopbackKeepsHostServicesOut: hostLoopback false asks for the network alone, as before", () => {
+    assert.deepEqual(mxcTerminalConfig({ ...base, hostLoopback: false }).network, { egress: { default: "allow" } });
+  });
+
+  test("under allowedHosts the proxy's shape holds whatever hostLoopback says", () => {
+    for (const hostLoopback of [true, false]) {
+      const closed = mxcTerminalConfig({ ...base, networkProxy: "http://127.0.0.1:4567", hostLoopback });
+      assert.deepEqual(closed.network, { egress: { default: "deny" }, ingress: { default: "allow", hostLoopback: "allow" } });
+    }
   });
 
   test("the whole root writable, or nothing but the temp when writes are off", () => {

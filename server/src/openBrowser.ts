@@ -73,6 +73,17 @@ export function browsableUrl(address: { address: string; port: number; family?: 
 }
 
 /**
+ * The interface's address with the server's token, for the startup line and the browser it
+ * opens: the page stores the token and strips it from the address bar.
+ */
+export function withToken(url: string, token: string | undefined): string {
+  if (token === undefined) return url;
+  const withQuery = new URL(url);
+  withQuery.searchParams.set("token", token);
+  return withQuery.href;
+}
+
+/**
  * Browsers that can present a window of its own, in the order they are tried.
  *
  * This is the one place that names a browser, and it reverses what the rest of

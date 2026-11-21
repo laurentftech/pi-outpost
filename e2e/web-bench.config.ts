@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+/** Written by global-setup.ts: the servers' shared token, in each server's origin (as playwright.config.ts). */
+const E2E_STORAGE_STATE = path.join(HERE, ".auth", "storage-state.json");
 
 /**
  * Browser compatibility gate for the main app, assistant-rendered content and
@@ -23,6 +25,8 @@ export default defineConfig({
   use: {
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    // Every server requires its token: the browsers hold it as after following the startup address.
+    storageState: E2E_STORAGE_STATE,
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
