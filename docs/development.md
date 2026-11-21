@@ -47,6 +47,11 @@ the proxy, so each host is asked about — the way to try grants and network que
 It needs Windows 11 with MXC (see [sandboxing](sandboxing.md)); stop `npm run dev` first, both
 listen on 3142. Settings you apply there are written back to that file: `git restore` it after.
 
+Both restart the server when a file under `server/src`, `shared/src`, `office/src` or
+`posters/src` is written (`server/scripts/dev-watch.mjs`), and only then: not when one is
+merely read, which `node --watch` takes for a change on Windows wherever NTFS keeps
+last-access times. A change under `node_modules` — after an install — needs a manual restart.
+
 `npm run start` builds `web/dist` once and serves everything from a single process, using
 *your* configuration rather than the dev one. There is no hot reload in that mode: rebuild
 (`npm run build --workspace web`) and restart after a UI change.
