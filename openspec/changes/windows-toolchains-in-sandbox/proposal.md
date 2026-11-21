@@ -61,10 +61,8 @@ redirected — gcc, cmake, `cargo test`, `go test`/`go build` (a module download
   directory handle (`NtSetInformationFile`, `FileRenameInformation[Ex]` with `RootDirectory`) fails with
   `STATUS_INVALID_HANDLE` inside the container while the same rename by absolute path succeeds — bun
   reports `EBADF accessing temporary directory`. A confined command failing that way ends with a note
-  naming the cause; the fixes go upstream: an MXC issue with the reproduction, and a bun change that
-  retries the rename by absolute path on `STATUS_INVALID_HANDLE` (as it already retries on FAT's
-  `STATUS_INVALID_PARAMETER`). bun's install cache joins the sandbox cache (`BUN_INSTALL_CACHE_DIR`), so it
-  works the day either fix lands.
+  naming the cause; the fix goes upstream, an MXC issue with the reproduction. bun's install cache joins
+  the sandbox cache (`BUN_INSTALL_CACHE_DIR`), so it works the day MXC's fix lands.
 
 ## Capabilities
 

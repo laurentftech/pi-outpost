@@ -23,7 +23,7 @@
 
 - [x] 4.1 Drop search-path folders holding `msys-2.0.dll` from the confined command's and terminal's `PATH`, say them on the startup line, and add the `0xC0000142` note for a command naming one. Verify with unit tests (fake reader) and real-MXC `OnWindowsPerlIsTheNativeOne` and `AnMsysProgramNamedDirectlyIsExplained`.
 - [x] 4.2 bun's install cache in the sandbox cache (`BUN_INSTALL_CACHE_DIR`, `BUN_TMPDIR`), and the note after bun's `EBADF accessing temporary directory`. Verify with unit tests on the note and real-MXC `OnWindowsBunRunsAndTests` and `BunInstallsFailureIsExplained` (skipped below bun 1.4.5).
-- [ ] 4.3 Draft the MXC issue (the rename reproduction: `scripts/probes/` gets the probe) and the bun change (retry by absolute path on `STATUS_INVALID_HANDLE`, with a test), and show both to the user before posting anything. Verify by the drafts' text in the change folder and the user's answer.
+- [x] 4.3 Draft the MXC issue (the rename reproduction: `scripts/probes/` gets the probe) and the bun change (retry by absolute path on `STATUS_INVALID_HANDLE`, with a test), and show both to the user before posting anything. Verify by the drafts' text in the change folder and the user's answer. Done: `upstream-mxc-issue.md` and `scripts/probes/mxc-handle-relative-rename.ps1`; the user's answer (2026-11-21): no bun issue, the MXC one posted later after their review.
 
 ## 5. Running app and documentation
 
@@ -36,6 +36,8 @@
 - [ ] 6.1 Write `scenario-coverage.md` for every scenario of this change, all `covered`; run `node scripts/check-scenario-coverage.mjs --change windows-toolchains-in-sandbox`, `npm run lint`, `npm run typecheck` and `openspec validate windows-toolchains-in-sandbox --strict`.
 
 ## Workflow follow-up
+
+- Post `upstream-mxc-issue.md` to microsoft/mxc once the user has reviewed it.
 
 - Archive `windows-tool-installations` before this change, since this one builds on its requirements.
 - Archive this change after review.

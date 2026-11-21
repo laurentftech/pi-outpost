@@ -90,10 +90,9 @@ pass confined; 1.3.14 failed with `CouldntReadCurrentDirectory` (oven-sh/bun#348
 | absolute `\??\C:\…` name (Ex and legacy) | success | success |
 
 No location of cache or temporary directory avoids it. Node, Go, Rust and .NET rename by absolute path
-(`MoveFileEx`) and are unaffected. The note matches bun's own message; the reproduction goes to MXC, and a
-bun change retrying with the absolute path on `STATUS_INVALID_HANDLE` (beside its existing retry on FAT's
-`STATUS_INVALID_PARAMETER` in `move_opened_file_at`) is offered upstream. Both drafts are shown to the user
-before anything is posted.
+(`MoveFileEx`) and are unaffected. The note matches bun's own message; the reproduction goes to MXC
+(`upstream-mxc-issue.md`, posted after the user's review). A bun change retrying by absolute path was
+drafted and dropped at the user's decision: the defect is MXC's.
 
 **The sandbox cache must not be the user's.** `sandbox.cacheDir` is refused when it is or contains the
 home directory, the agent directory, the configuration, or lies inside the sandbox root (where the agent
