@@ -103,6 +103,9 @@ describe("a diagnosis under MXC, run in process through its SDK", { skip }, () =
       await operations([]).diagnose!(command, root, { onData: (data) => void (diagnosed += data.toString()) });
       assert.doesNotMatch(diagnosed, /\[pi-outpost\] diagnosis:/, "no diagnosis ran");
     }
+    // An error the parser finds at the end of the command points into the command, not past it.
+    const open = await run("exec", "if (");
+    assert.match(open.output, /ParserError: line 1, column \d+: /, `the place is the command's: ${open.output}`);
     // A failure that reports no access denied is not the sandbox's to speak of: the real session's
     // "program not found" (a package not installed) sent a model after grants, run after run.
     const same = operations([]);

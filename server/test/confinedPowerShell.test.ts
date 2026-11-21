@@ -110,7 +110,7 @@ describe("a confined PowerShell", () => {
     assert.deepEqual([...record.command.subarray(0, 3)], [0xef, 0xbb, 0xbf], "so does the command's file");
     assert.ok(record.command.toString("utf8").includes("Write-Output 'héllo'"), "the command is in its file, in UTF-8");
     const text = record.script.toString("utf8");
-    assert.ok(text.indexOf("$ProgressPreference = 'SilentlyContinue'") < text.indexOf(". ([ScriptBlock]::Create($global:PiOutpostCommand))"), "progress is off before the command runs");
+    assert.ok(text.indexOf("$ProgressPreference = 'SilentlyContinue'") < text.indexOf(". ([ScriptBlock]::Create($global:PiOutpostCommand"), "progress is off before the command runs");
     // The same policy a confined bash gets.
     assert.ok(record.policy.filesystem.allowWrite.some((p) => p.replaceAll("\\", "/").endsWith("app/out")), "the writable zone is the sandbox's");
     const denied = record.policy.filesystem.denyRead.map((p) => p.replaceAll("\\", "/"));
@@ -118,19 +118,19 @@ describe("a confined PowerShell", () => {
   });
 
   test("the exit trailer stands on its own lines, after a command ending in a comment", () => {
-    // The command is on the first line of its own file, so PowerShell's line numbers are its own.
-    const lines = powerShellCommandFile("Get-Date # a trailing comment").split("\n");
-    assert.equal(lines[0], "﻿Get-Date # a trailing comment");
-    // The command's status, taken on its own line right after it, and the trailer reading it.
-    assert.equal(lines.slice(1).find((line) => line.trim() !== ""), "$global:PiOutpostCommandOk = $?", "the status was swallowed by the comment");
-    assert.ok(powerShellScript().split("\n").some((line: string) => line.startsWith("if (-not $global:PiOutpostCommandOk)")), "the script reads the status");
+    // The command alone in its own file, so PowerShell's line numbers point into it.
+    assert.equal(powerShellCommandFile("Get-Date # a trailing comment"), "﻿Get-Date # a trailing comment");
+    // Its status is taken on a line of its own after it, where a trailing comment cannot reach.
+    const script = powerShellScript();
+    assert.ok(script.includes("$global:PiOutpostCommand + \"`n`n\" + '$global:PiOutpostCommandOk = $?'"), "the status line follows the command on its own line");
+    assert.ok(script.split(/\r?\n/).some((line: string) => line.startsWith("if (-not $global:PiOutpostCommandOk)")), "the script reads the status");
     assert.deepEqual(POWERSHELL_SCRIPT_ARGS.at(-1), "-File");
   });
 
   test("the web cmdlets default to the sandbox's proxy when one is set, before the command runs", () => {
     const script = powerShellScript();
     const proxyLine = script.indexOf("if ($env:HTTPS_PROXY) {");
-    assert.ok(proxyLine > 0 && proxyLine < script.indexOf(". ([ScriptBlock]::Create($global:PiOutpostCommand))"), "the default is set before the command");
+    assert.ok(proxyLine > 0 && proxyLine < script.indexOf(". ([ScriptBlock]::Create($global:PiOutpostCommand"), "the default is set before the command");
     assert.match(script, /\$PSDefaultParameterValues\['Invoke-WebRequest:Proxy'\] = \$env:HTTPS_PROXY/);
     assert.match(script, /\$PSDefaultParameterValues\['Invoke-RestMethod:Proxy'\] = \$env:HTTPS_PROXY/);
   });

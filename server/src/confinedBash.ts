@@ -388,7 +388,7 @@ export function powerShellScript(): string {
     "  exit 1",
     "}",
     ". {",
-    ". ([ScriptBlock]::Create($global:PiOutpostCommand))",
+    `. ([ScriptBlock]::Create($global:PiOutpostCommand + "\`n\`n" + '${POWERSHELL_STATUS_LINE}'))`,
     "} | Out-Default",
     "if (-not $global:PiOutpostCommandOk) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }",
     "exit 0",
@@ -402,13 +402,20 @@ export const POWERSHELL_COMMAND_FILE = "command-body.ps1";
 export const COMMAND_UNPARSED = "command-unparsed";
 
 /**
- * The command's own file: the command, then its status taken on its own line right after it, so a
- * comment ending the command cannot swallow it. With a byte-order mark, as the script: Windows
- * PowerShell 5.1 reads UTF-8 without one in the ANSI code page.
+ * The command's own file: the command and nothing else, so its parse errors point into it — with the
+ * status line in the file, a parenthesis left open was reported on the status line, "line 4", quoting
+ * an empty one. The script adds that line when it builds the block (`POWERSHELL_STATUS_LINE`). With a
+ * byte-order mark, as the script: Windows PowerShell 5.1 reads UTF-8 without one in the ANSI code page.
  */
 export function powerShellCommandFile(command: string): string {
-  return ["﻿" + command, "", "$global:PiOutpostCommandOk = $?", ""].join("\n");
+  return "﻿" + command;
 }
+
+/**
+ * Appended to the command when the script builds the block: its status, taken on its own line right
+ * after it, so a comment ending the command cannot swallow it.
+ */
+export const POWERSHELL_STATUS_LINE = "$global:PiOutpostCommandOk = $?";
 
 export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBashOperations {
   const platform = options.platform ?? process.platform;
