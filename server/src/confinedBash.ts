@@ -41,6 +41,8 @@ import {
   type MxcMacConfig,
   type RunnerCheck,
   type WindowsToolchains,
+  msysNote,
+  msysProgramNamed,
 } from "./terminalSandbox.ts";
 
 export interface ConfinedBashOptions {
@@ -671,6 +673,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         // The directories refused while it ran, gathered at the end where the agent reads last.
         const directoriesNote = diagnose ? undefined : refusedDirectoriesNote(refusals.all());
         if (directoriesNote !== undefined) onData(Buffer.from(`\n${directoriesNote}\n`));
+        // An MSYS2 program named by its path: it died at start, and nothing here can make it run.
+        const msys = diagnosable && (exitCode === STATUS_DLL_INIT_FAILED || exitCode === STATUS_DLL_INIT_FAILED_UNSIGNED) ? msysProgramNamed(command, process.env.PATH) : undefined;
+        if (msys !== undefined) onData(Buffer.from(`\n${msysNote(msys)}\n`));
         // Last, so the agent reads it after everything else: what it can do about a failure here.
         // Not when the proxy already named a refused host — that is what failed, and a diagnosis
         // runs without network: it would contradict "do not retry".
@@ -821,6 +826,10 @@ function isInside(candidate: string, root: string): boolean {
   const relative = path.relative(root, candidate);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
+
+/** `0xC0000142`, a program's DLL failing to initialise: how every MSYS2 program ends in MXC's container. */
+const STATUS_DLL_INIT_FAILED = -1073741502;
+const STATUS_DLL_INIT_FAILED_UNSIGNED = 0xc0000142;
 
 /** Signal numbers for the 128 + n convention, where Node names a signal but gives no code. */
 const SIGNAL_NUMBERS: Record<string, number> = { SIGHUP: 1, SIGINT: 2, SIGKILL: 9, SIGTERM: 15 };

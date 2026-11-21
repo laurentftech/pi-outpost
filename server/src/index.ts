@@ -99,7 +99,7 @@ import {
   unconfinedShellVerdict,
 } from "./confinementStatus.ts";
 import { readPrompt, runPrintTurn } from "./printMode.ts";
-import { checkRunner, type RunnerCheck } from "./terminalSandbox.ts";
+import { checkRunner, msysFolders, type RunnerCheck } from "./terminalSandbox.ts";
 import { isPowerShell } from "./confinedBash.ts";
 import { browsableUrl, withToken, openBrowser, shouldOpenBrowser } from "./openBrowser.ts";
 import { listenerTls } from "./serverTransport.ts";
@@ -7000,7 +7000,7 @@ if (config.sandbox) {
           config.sandbox.autoRunner?.unavailable !== undefined
             ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (REFUSED: "auto" found no runner — ${config.sandbox.autoRunner.unavailable})`
             : config.sandbox.bashRunner
-            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`}${networkSummary(config.sandbox) ? `, ${networkSummary(config.sandbox)}` : ""})`
+            ? `${isPowerShell(config.sandbox.bashShell) ? "powershell" : "bash"} (confined by ${config.sandbox.bashRunner}, ${config.sandbox.bashImage ? `WSLC image ${config.sandbox.bashImage}` : `shell ${config.sandbox.bashShell ?? "/bin/bash"}`}${networkSummary(config.sandbox, process.platform, msysFolders(process.env.PATH)) ? `, ${networkSummary(config.sandbox, process.platform, msysFolders(process.env.PATH))}` : ""})`
             : config.sandbox.bashFrom
               ? `bash (from ${config.sandbox.bashFrom})`
               : "bash (UNCONFINED)",

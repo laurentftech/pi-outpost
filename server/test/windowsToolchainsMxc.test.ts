@@ -226,6 +226,30 @@ describe("toolchains under MXC's real executor", { skip }, () => {
     assert.match(output, /^Python 3\.\d+/m);
   });
 
+  const gitUsrBin = path.join(process.env.ProgramFiles ?? String.raw`C:\Program Files`, "Git", "usr", "bin");
+  const strawberryPerl = String.raw`C:\Strawberry\perl\bin\perl.exe`;
+
+  // openlore: scenario=OnWindowsPerlIsTheNativeOne spec=sandbox-runner-bash
+  test("OnWindowsPerlIsTheNativeOne: with Git's usr\\bin first on PATH, perl is Strawberry's", { skip: existsSync(path.join(gitUsrBin, "msys-2.0.dll")) && existsSync(strawberryPerl) ? false : "needs Git for Windows' usr\\bin and Strawberry Perl" }, async () => {
+    const saved = process.env.PATH;
+    process.env.PATH = [gitUsrBin, path.dirname(strawberryPerl), saved].join(";");
+    try {
+      const { output, exitCode } = await ps(`perl -e "print qq(native perl \\n)"; (Get-Command perl).Source`);
+      assert.equal(exitCode, 0, output);
+      assert.match(output, /^native perl\s*$/m);
+      assert.match(output, /Strawberry\\perl\\bin\\perl\.exe/i);
+    } finally {
+      process.env.PATH = saved;
+    }
+  });
+
+  // openlore: scenario=AnMsysProgramNamedDirectlyIsExplained spec=sandbox-runner-bash
+  test("AnMsysProgramNamedDirectlyIsExplained: an MSYS2 perl named by its path fails, and the note says why", { skip: existsSync(path.join(gitUsrBin, "perl.exe")) ? false : "no Git for Windows' usr\\bin\\perl.exe" }, async () => {
+    const { output, exitCode } = await ps(`& "${path.join(gitUsrBin, "perl.exe")}" -e 1`);
+    assert.notEqual(exitCode, 0);
+    assert.match(output, /MSYS2 program.*none of them can start in this sandbox/s, output);
+  });
+
   // openlore: scenario=OnWindowsGccCompiles spec=sandbox-runner-bash
   test("OnWindowsGccCompiles: gcc compiles and the program runs", { skip: onPath("gcc") ? false : "no gcc on the search path" }, async () => {
     await mkdir(path.join(root, "c"), { recursive: true });

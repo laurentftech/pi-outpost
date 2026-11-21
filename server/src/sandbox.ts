@@ -659,7 +659,7 @@ export function asksAboutHosts(sandbox: SandboxConfig): boolean {
  * loopback is: open, services on it are reachable; closed, Python's asyncio cannot start
  * (microsoft/mxc#1261).
  */
-export function networkSummary(sandbox: SandboxConfig, platform: NodeJS.Platform = process.platform): string | undefined {
+export function networkSummary(sandbox: SandboxConfig, platform: NodeJS.Platform = process.platform, msys: readonly string[] = []): string | undefined {
   const parts: string[] = [];
   if (sandbox.allowedHosts !== undefined) {
     const asks = asksAboutHosts(sandbox);
@@ -674,6 +674,8 @@ export function networkSummary(sandbox: SandboxConfig, platform: NodeJS.Platform
     );
     // Where confined commands' tools keep their downloads, so the operator knows what grows, and where.
     parts.push(`sandbox cache ${sandbox.cacheDir ?? defaultSandboxCache()}`);
+    // MSYS2 programs cannot start in the container: their folders are left out of the shell's PATH.
+    if (msys.length > 0) parts.push(`MSYS2 folders left out of PATH: ${msys.join(", ")}`);
   }
   return parts.length === 0 ? undefined : parts.join(", ");
 }

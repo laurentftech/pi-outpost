@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { mxcTerminalConfig, toolInstallations, windowsToolchains, type ToolInstallationReader } from "../src/terminalSandbox.ts";
+import { msysFolders, msysNote, msysProgramNamed, mxcTerminalConfig, toolInstallations, windowsToolchains, withoutMsysFolders, type ToolInstallationReader } from "../src/terminalSandbox.ts";
 
 const HOME = "C:\\Users\\me";
 const ROOT = "L:\\Python\\isai_oper";
@@ -217,5 +217,29 @@ describe("windowsToolchains", () => {
       assert.deepEqual(refused.readable, [], rustupHome);
       assert.equal(refused.env.RUSTUP_HOME, undefined, rustupHome);
     }
+  });
+});
+
+describe("MSYS2 folders", () => {
+  const gitUsr = String.raw`C:\Program Files\Git\usr\bin`;
+  const msys64 = String.raw`C:\msys64\usr\bin`;
+  const strawberry = String.raw`C:\Strawberry\perl\bin`;
+  const system32 = String.raw`C:\Windows\System32`;
+  const disk = fakeDisk({ files: { [String.raw`${gitUsr}\msys-2.0.dll`]: "", [String.raw`${msys64}\msys-2.0.dll`]: "" } });
+
+  // openlore: scenario=OnWindowsPerlIsTheNativeOne spec=sandbox-runner-bash
+  test("a search-path folder holding msys-2.0.dll is left out, the native folders kept in order", () => {
+    const searchPath = [gitUsr, strawberry, system32].join(";");
+    assert.deepEqual(msysFolders(searchPath, disk), [gitUsr]);
+    assert.equal(withoutMsysFolders(searchPath, disk), [strawberry, system32].join(";"));
+  });
+
+  // openlore: scenario=AnMsysProgramNamedDirectlyIsExplained spec=sandbox-runner-bash
+  test("an MSYS2 program named by its path is recognised, a native one is not, and the note says what to use", () => {
+    assert.equal(msysProgramNamed(String.raw`& "${gitUsr}\perl.exe" -e 1`, gitUsr, disk), String.raw`${gitUsr}\perl.exe`);
+    assert.equal(msysProgramNamed("C:/msys64/usr/bin/bash.exe -lc true", "", disk), String.raw`${msys64}\bash.exe`, "a folder holding msys-2.0.dll, on PATH or not");
+    assert.equal(msysProgramNamed(String.raw`& ${strawberry}\perl.exe -e 1`, gitUsr, disk), undefined);
+    assert.equal(msysProgramNamed("perl -e 1", gitUsr, disk), undefined, "a bare name finds no MSYS2 folder: they left the PATH");
+    assert.match(msysNote(String.raw`${strawberry}\perl.exe`), /MSYS2 program.*none of them can start in this sandbox.*mxc#1061.*native program/);
   });
 });

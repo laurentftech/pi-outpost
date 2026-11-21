@@ -81,6 +81,12 @@ describe("networkSummary", () => {
     assert.equal(networkSummary({ ...mxc, hostLoopback: false }, "win32"), `loopback closed: Python's asyncio cannot start in the shell${cache}`);
   });
 
+  test("under MXC on Windows the line names the MSYS2 folders left out of PATH, and nothing when there are none", () => {
+    const gitUsr = String.raw`C:\Program Files\Git\usr\bin`;
+    assert.ok(networkSummary(mxc, "win32", [gitUsr])!.endsWith(`, MSYS2 folders left out of PATH: ${gitUsr}`));
+    assert.doesNotMatch(networkSummary(mxc, "win32", [])!, /MSYS2/);
+  });
+
   test("under MXC on Windows an open loopback says what it reaches; elsewhere nothing is added", () => {
     assert.equal(networkSummary(mxc, "win32"), `loopback open: services listening on this machine are reachable${cache}`);
     assert.equal(networkSummary({ ...mxc, hostLoopback: true }, "win32"), `loopback open: services listening on this machine are reachable${cache}`);

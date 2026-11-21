@@ -643,6 +643,46 @@ const diskReader: ToolInstallationReader = {
   },
 };
 
+/**
+ * The search-path folders of MSYS2 programs: those holding `msys-2.0.dll` (Git's `usrin`, an MSYS2
+ * install's `usrin`). None of their programs can start in MXC's container — the MSYS2 runtime
+ * creates named objects in the global namespace a container may not use, and dies with `0xC0000142`
+ * (microsoft/mxc#1061) — so they are left out of a confined command's search path, where they would
+ * only shadow the native program of the same name (`perl`, `bash`, `find`).
+ */
+export function msysFolders(searchPath: string | undefined, reader: Pick<ToolInstallationReader, "isFile"> = diskReader): string[] {
+  return (searchPath ?? "").split(";").filter((entry) => entry && path.win32.isAbsolute(entry) && reader.isFile(path.win32.join(entry, "msys-2.0.dll")));
+}
+
+/**
+ * The MSYS2 program a command names by its path, if any: an `.exe` in a folder holding `msys-2.0.dll`,
+ * or one in a search-path folder that does. For the note after its `0xC0000142`.
+ */
+export function msysProgramNamed(command: string, searchPath: string | undefined, reader: Pick<ToolInstallationReader, "isFile"> = diskReader): string | undefined {
+  const folders = msysFolders(searchPath, reader).map((entry) => entry.toLowerCase().replace(/[\\/]+$/, ""));
+  for (const match of command.matchAll(/[A-Za-z]:[\\/][^"'`<>|\r\n]*?\.exe\b/gi)) {
+    const program = match[0].replaceAll("/", "\\");
+    const folder = path.win32.dirname(program);
+    if (folders.includes(folder.toLowerCase()) || reader.isFile(path.win32.join(folder, "msys-2.0.dll"))) return program;
+  }
+  return undefined;
+}
+
+/** What ends a command whose MSYS2 program could not start (`0xC0000142`). */
+export function msysNote(program: string): string {
+  return (
+    `[pi-outpost] ${program} is an MSYS2 program (Git Bash's usr\\bin, MSYS2): none of them can start in this sandbox — ` +
+    `their runtime needs named objects a container may not create (microsoft/mxc#1061). Use the native program instead: ` +
+    `PowerShell or cmd for the shell, a native Perl (Strawberry) for perl, git itself for git.`
+  );
+}
+
+/** A Windows search path without its MSYS2 folders (`msysFolders`). */
+export function withoutMsysFolders(searchPath: string, reader: Pick<ToolInstallationReader, "isFile"> = diskReader): string {
+  const dropped = new Set(msysFolders(searchPath, reader).map((entry) => entry.toLowerCase()));
+  return searchPath.split(";").filter((entry) => !dropped.has(entry.toLowerCase())).join(";");
+}
+
 /** The sandbox cache's place when `sandbox.cacheDir` names none: beside the user's local data, the sandbox's own. */
 export function defaultSandboxCache(env: NodeJS.ProcessEnv = process.env): string {
   return path.win32.join(env.LOCALAPPDATA || path.win32.join(homedir(), "AppData", "Local"), "pi-outpost", "sandbox-cache");
@@ -1362,7 +1402,11 @@ export function confinedEnvironment(
     env.USERPROFILE = options.tmp;
     env.TEMP = options.tmp;
     env.TMP = options.tmp;
-    if (options.containerProfileInTmp) env.LOCALAPPDATA = options.tmp;
+    if (options.containerProfileInTmp) {
+      env.LOCALAPPDATA = options.tmp;
+      // No MSYS2 program starts in MXC's container: their folders would only shadow native ones.
+      if (env.PATH) env.PATH = withoutMsysFolders(env.PATH);
+    }
   }
   return env;
 }
