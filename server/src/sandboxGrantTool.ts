@@ -18,6 +18,7 @@ import type { SandboxGrantOutcome } from "@pi-outpost/shared";
 import { grantLogLine, type SandboxGrantBroker } from "./sandboxGrantBroker.ts";
 import { checkGrantRequest, describeGrant, isEmptyGrant, type Grant, type GrantContext } from "./sandboxGrants.ts";
 import { directoryDecision, type SandboxRule } from "./sandboxRules.ts";
+import { isWithin } from "./sandbox.ts";
 
 export const RUN_WITH_GRANT_TOOL = "run_with_grant";
 
@@ -40,7 +41,7 @@ type Params = { command: string; reason: string; directories?: Array<{ path: str
 
 /** Why nothing ran, for the model: refused, unanswered, or nobody there to ask. */
 const NOT_RUN: Record<Exclude<SandboxGrantOutcome, "approved-once" | "approved-session" | "approved-always">, string> = {
-  refused: "The user refused the grant. The command did not run.",
+  refused: "The user refused the grant. The command did not run. Do not ask for it again in this request: tell the user what it blocked.",
   "refused-always": "The user refused the grant, and always will: do not ask for it again. The command did not run.",
   expired: "Nobody answered the grant request in time. The command did not run.",
   aborted: "The grant request was cancelled with the turn or the session. The command did not run.",
@@ -68,6 +69,20 @@ export interface RunWithGrantOptions {
 type ExecuteRest = Parameters<ToolDefinition["execute"]> extends [unknown, unknown, ...infer Rest] ? [toolCallId: string, ...Rest] : never;
 
 export function createRunWithGrantToolDefinition(options: RunWithGrantOptions): ToolDefinition {
+  /**
+   * What the user refused, by request: the id of the user's message the agent is answering. A new
+   * message is a new question, which may ask again — the tool's guidelines say so. Only the latest
+   * request is kept.
+   */
+  let refusals: { request: string; directories: Array<{ path: string; access: "read" | "write" }> } | undefined;
+  const remember = (request: string, directories: ReadonlyArray<{ path: string; access: "read" | "write" }>) => {
+    if (refusals?.request !== request) refusals = { request, directories: [] };
+    refusals.directories.push(...directories);
+  };
+  // Refusing to read refuses writing too; refusing to write leaves reading to be asked.
+  const refusedInRequest = (request: string, asked: { path: string; access: "read" | "write" }) =>
+    refusals?.request === request &&
+    refusals.directories.some((refused) => isWithin(refused.path, asked.path) && (refused.access === "read" || asked.access === "write"));
   return {
     name: RUN_WITH_GRANT_TOOL,
     label: "Run with grant",
@@ -99,7 +114,8 @@ export function createRunWithGrantToolDefinition(options: RunWithGrantOptions): 
         const targets = check.refusals.map((refusal) => refusal.target).join(", ");
         options.broker.log(grantLogLine("forbidden", targets, params.command, params.reason));
         throw new Error(
-          `Not asked: ${check.refusals.map((refusal) => `${refusal.target} — ${refusal.why}`).join("; ")}. The command did not run.`,
+          `Not asked: ${check.refusals.map((refusal) => `${refusal.target} — ${refusal.why}`).join("; ")}. The command did not run. ` +
+            "This is never granted: do not ask for it again, tell the user what it blocked.",
         );
       }
       // What can never be granted was refused above; then the user's rules, then the user.
@@ -116,6 +132,15 @@ export function createRunWithGrantToolDefinition(options: RunWithGrantOptions): 
         const result = await options.run(grant, { command: params.command, timeout: params.timeout }, toolCallId, signal, onUpdate, ctx);
         return withLead(result, "The sandbox already gives what was asked: ran without a grant.");
       }
+      // Refused once in this request, not put to the user again: a model re-asking after a refusal
+      // showed the same dialog seventeen times in one turn (a real session).
+      const request = requestOf(ctx);
+      const refusedHere = request === undefined ? [] : grant.directories.filter((asked) => refusedInRequest(request, asked));
+      if (refusedHere.length > 0) {
+        const targets = refusedHere.map((directory) => directory.path).join(", ");
+        options.broker.log(grantLogLine("refused", targets, params.command, `${params.reason} (refused earlier in this request)`));
+        throw new Error(`Not asked again: the user already refused ${targets} in this request. The command did not run. Do not ask for it again: tell the user what it blocked.`);
+      }
       const outcome = await options.broker.ask({
         kind: "command",
         command: params.command,
@@ -124,6 +149,9 @@ export function createRunWithGrantToolDefinition(options: RunWithGrantOptions): 
         overridesReadOnly: !context.allowWrite && grant.directories.some((directory) => directory.access === "write"),
         ...(signal ? { signal } : {}),
       });
+      if (outcome === "refused" || outcome === "refused-always") {
+        if (request !== undefined) remember(request, grant.directories);
+      }
       if (outcome === "refused" || outcome === "refused-always" || outcome === "expired" || outcome === "aborted" || outcome === "unattended") throw new Error(NOT_RUN[outcome]);
       const result = await options.run(grant, { command: params.command, timeout: params.timeout }, toolCallId, signal, onUpdate, ctx);
       const scope = outcome === "approved-once" ? "for this command" : outcome === "approved-always" ? "always, from now on" : "for the rest of the session";
@@ -135,4 +163,19 @@ export function createRunWithGrantToolDefinition(options: RunWithGrantOptions): 
 /** The tool result with a first line saying what it ran with. */
 async function withLead(result: Awaited<ReturnType<ToolDefinition["execute"]>>, lead: string): ReturnType<ToolDefinition["execute"]> {
   return { ...result, content: [{ type: "text", text: lead }, ...result.content] };
+}
+
+/** The user's message the agent is answering, as the session records it: the request a refusal belongs to. */
+function requestOf(ctx: unknown): string | undefined {
+  try {
+    const branch = (ctx as { sessionManager?: { getBranch(): Array<{ id: string; type: string; message?: { role?: string } }> } } | undefined)?.sessionManager?.getBranch();
+    if (!Array.isArray(branch)) return undefined;
+    for (let at = branch.length - 1; at >= 0; at--) {
+      const entry = branch[at];
+      if (entry.type === "message" && entry.message?.role === "user") return entry.id;
+    }
+  } catch {
+    // A context without a session: nothing remembered, every request asked.
+  }
+  return undefined;
 }

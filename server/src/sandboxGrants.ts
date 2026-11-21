@@ -121,8 +121,16 @@ function comparable(file: string, platform: NodeJS.Platform): string {
   return platform === "win32" ? file.toLowerCase() : file;
 }
 
-/** Why a resolved directory may never be granted, or undefined when it may. */
-async function forbiddenDirectory(resolved: string, context: GrantContext): Promise<string | undefined> {
+/**
+ * Why a resolved directory may never be granted, or undefined when it may.
+ *
+ * `given`: the sandbox already gives it, so a grant adds nothing. A directory merely *holding* a
+ * protected target is then no reason to refuse — the project's own root holds the configuration
+ * file, which the sandbox keeps from its commands whatever is asked; refusing it told a model asking
+ * for the folder it was already working in that "the configuration file says what the sandbox is",
+ * run after run (a real session). One *inside* a protected target is still refused.
+ */
+async function forbiddenDirectory(resolved: string, context: GrantContext, given = false): Promise<string | undefined> {
   const platform = context.platform ?? process.platform;
   const asked = comparable(resolved, platform);
   const protectedTargets: Array<[string | undefined, string]> = [
@@ -132,7 +140,7 @@ async function forbiddenDirectory(resolved: string, context: GrantContext): Prom
   for (const [target, why] of protectedTargets) {
     if (target === undefined) continue;
     const real = comparable(await realResolve(target), platform);
-    if (isWithin(asked, real) || isWithin(real, asked)) return why;
+    if (isWithin(real, asked) || (!given && isWithin(asked, real))) return why;
   }
   if (asked.split(path.sep).includes(".pi")) return "a .pi directory may hold an extension's policy";
   if (path.parse(resolved).root === resolved) return "a drive's root would undo the sandbox";
@@ -162,12 +170,14 @@ export async function checkGrantRequest(
   for (const asked of request.directories ?? []) {
     // A relative path means the root's, as the agent's shell starts there.
     const resolved = await realResolve(path.resolve(root, asked.path));
-    const why = await forbiddenDirectory(resolved, context);
+    const given = asked.access === "write" ? writable !== undefined && isWithin(writable, resolved) : isWithin(root, resolved);
+    // A target the agent should leave alone is still named, given or not: a `.pi` inside the root is
+    // kept from the file tools only, and the answer is what tells the agent so.
+    const why = await forbiddenDirectory(resolved, context, given);
     if (why) {
       refusals.push({ target: asked.path, why });
       continue;
     }
-    const given = asked.access === "write" ? writable !== undefined && isWithin(writable, resolved) : isWithin(root, resolved);
     if (!given) directories.push({ path: resolved, access: asked.access });
   }
   return refusals.length > 0 ? { ok: false, refusals } : { ok: true, grant: mergeGrants({ hosts: [], directories }) };

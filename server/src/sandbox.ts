@@ -576,7 +576,7 @@ export function withDiagnoseParameter(parameters: ToolDefinition["parameters"]):
       [DIAGNOSE_OPTION]: Type.Optional(
         Type.Boolean({
           description:
-            "Only after this command failed and its output ends saying the sandbox does not tell what it refused: true runs it once more, " +
+            "Only after this command failed and its output reported an access denied: true runs it once more, " +
             "under a narrower sandbox without network, and returns only the paths the sandbox refused instead of its output. " +
             "Its effects happen again — never for a command that must not run twice (install, commit, append, send).",
         }),
