@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { landstripNote, landstripStderr } from "../src/confinedBash.ts";
 import { networkSummary, toolchainsFor } from "../src/sandbox.ts";
+import { bunInstallNote } from "../src/confinedBash.ts";
 
 // As landstrip 0.20.26 prints them (abridged to the fields read).
 const BIND = '{"kind":"network","code":"NETWORK_DENIED","state":"info","query_id":"0","operation":"bind","target":"[::1]:0","syscall":"bind","errno":"EACCES","mechanism":"seccomp"}';
@@ -106,5 +107,15 @@ describe("toolchainsFor", () => {
     assert.equal(toolchainsFor({ ...base, bashRunner: "mxc", bashImage: "buildpack-deps:bookworm-scm" } as never, {}, "win32"), undefined);
     assert.equal(toolchainsFor({ ...base, bashRunner: "C:/tools/landstrip.exe" } as never, {}, "win32"), undefined);
     assert.ok(toolchainsFor({ ...base, bashRunner: "mxc" } as never, {}, "win32")?.toolchains.cacheDir.endsWith("pi-outpost\\sandbox-cache"));
+  });
+});
+
+describe("bunInstallNote", () => {
+  // openlore: scenario=BunInstallsFailureIsExplained spec=sandbox-runner-bash
+  test("says what fails, what still works, and to run the install outside without retrying", () => {
+    const note = bunInstallNote();
+    assert.match(note, /bun cannot install packages in this sandbox/);
+    assert.match(note, /bun run, bun test and bun <file> work/);
+    assert.match(note, /outside the sandbox; do not retry/);
   });
 });

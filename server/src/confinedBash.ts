@@ -397,7 +397,20 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
    */
   const launchCommand = async (command: string, cwd: string, { onData: shown, signal, timeout }: ExecOptions, extra: Grant, diagnosis?: (found: Refusal[] | undefined) => void) => {
     const diagnose = diagnosis !== undefined;
-    const onData: (data: Buffer) => void = diagnose ? () => {} : shown;
+    // bun's install, refused a rename in the container (see bunInstallNote): watched for, a window
+    // kept across chunks so a message split between two is still seen.
+    let bunInstallRefused = false;
+    let tail = "";
+    const onData: (data: Buffer) => void = diagnose
+      ? () => {}
+      : (data) => {
+          if (!bunInstallRefused) {
+            const text = tail + data.toString();
+            if (text.includes(BUN_TEMPORARY_DIRECTORY_REFUSED)) bunInstallRefused = true;
+            tail = text.slice(-BUN_TEMPORARY_DIRECTORY_REFUSED.length);
+          }
+          shown(data);
+        };
     const timeoutMs = timeoutInMs(timeout);
     if (signal?.aborted) throw new Error("aborted");
     const refusal = await options.gate?.();
@@ -676,6 +689,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         // An MSYS2 program named by its path: it died at start, and nothing here can make it run.
         const msys = diagnosable && (exitCode === STATUS_DLL_INIT_FAILED || exitCode === STATUS_DLL_INIT_FAILED_UNSIGNED) ? msysProgramNamed(command, process.env.PATH) : undefined;
         if (msys !== undefined) onData(Buffer.from(`\n${msysNote(msys)}\n`));
+        if (bunInstallRefused && diagnosable) onData(Buffer.from(`\n${bunInstallNote()}\n`));
         // Last, so the agent reads it after everything else: what it can do about a failure here.
         // Not when the proxy already named a refused host — that is what failed, and a diagnosis
         // runs without network: it would contradict "do not retry".
@@ -825,6 +839,23 @@ function timeoutInMs(timeout: number | undefined): number | undefined {
 function isInside(candidate: string, root: string): boolean {
   const relative = path.relative(root, candidate);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+/** How bun says its install could not use its temporary directory (`PackageManagerDirectories.rs`). */
+const BUN_TEMPORARY_DIRECTORY_REFUSED = "accessing temporary directory. set $BUN_TMPDIR or $BUN_INSTALL";
+
+/**
+ * What ends a command whose `bun install` / `bun add` hit MXC's rename limit: inside the container a
+ * rename relative to a directory handle (`NtSetInformationFile`, `RootDirectory`) fails with
+ * `STATUS_INVALID_HANDLE`, while the same by absolute path succeeds; bun probes its cache with the
+ * first and reports `EBADF`. No folder avoids it.
+ */
+export function bunInstallNote(): string {
+  return (
+    "[pi-outpost] bun cannot install packages in this sandbox: the container refuses the file rename bun uses " +
+    "(relative to a folder it holds open), whatever folders bun is given. bun run, bun test and bun <file> work. " +
+    "Ask the user to run the install outside the sandbox; do not retry it here."
+  );
 }
 
 /** `0xC0000142`, a program's DLL failing to initialise: how every MSYS2 program ends in MXC's container. */

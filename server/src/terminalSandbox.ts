@@ -725,6 +725,8 @@ export function windowsToolchains(
     NUGET_PACKAGES: at("nuget", "packages"),
     DOTNET_CLI_HOME: at("dotnet"),
     BUN_INSTALL_CACHE_DIR: at("bun", "install-cache"),
+    // bun moves what it downloads from its temporary folder into its cache: the same volume.
+    BUN_TMPDIR: at("bun", "tmp"),
     npm_config_cache: at("npm"),
     UV_CACHE_DIR: at("uv"),
     PIP_CACHE_DIR: at("pip"),

@@ -250,6 +250,38 @@ describe("toolchains under MXC's real executor", { skip }, () => {
     assert.match(output, /MSYS2 program.*none of them can start in this sandbox/s, output);
   });
 
+  /** bun's version when it is on the search path and 1.4.5 or later (`bun run` gave up on unreadable ancestors before). */
+  const bunReady = (() => {
+    const bun = onPath("bun");
+    if (!bun) return false;
+    const [major = 0, minor = 0, patch = 0] = execFileSync(bun, ["--version"], { encoding: "utf8", windowsHide: true }).trim().split(".").map(Number);
+    return major > 1 || (major === 1 && (minor > 4 || (minor === 4 && patch >= 5)));
+  })();
+
+  async function bunProject(dir: string): Promise<void> {
+    await mkdir(path.join(root, dir), { recursive: true });
+    await writeFile(path.join(root, dir, "package.json"), JSON.stringify({ name: dir, private: true, type: "module" }));
+    await writeFile(path.join(root, dir, "index.ts"), 'console.log("bun ok");\n');
+    await writeFile(path.join(root, dir, "math.test.ts"), 'import { expect, test } from "bun:test";\ntest("adds", () => { expect(1 + 1).toBe(2); });\n');
+  }
+
+  // openlore: scenario=OnWindowsBunRunsAndTests spec=sandbox-runner-bash
+  test("OnWindowsBunRunsAndTests: bun run prints, bun test passes", { skip: bunReady ? false : "no bun 1.4.5 or later on the search path" }, async () => {
+    await bunProject("bun1");
+    const { output, exitCode } = await ps("bun run index.ts; if ($LASTEXITCODE -eq 0) { bun test }", "bun1");
+    assert.equal(exitCode, 0, output);
+    assert.match(output, /^bun ok$/m);
+    assert.match(output, /1 pass/);
+  });
+
+  // openlore: scenario=BunInstallsFailureIsExplained spec=sandbox-runner-bash
+  test("BunInstallsFailureIsExplained: bun add fails on the container's rename limit, and the note says to run it outside", { skip: bunReady ? false : "no bun 1.4.5 or later on the search path" }, async () => {
+    await bunProject("bun2");
+    const { output, exitCode } = await ps("bun add is-odd", "bun2");
+    assert.notEqual(exitCode, 0, output);
+    assert.match(output, /bun cannot install packages in this sandbox.*run the install outside the sandbox/s, output);
+  });
+
   // openlore: scenario=OnWindowsGccCompiles spec=sandbox-runner-bash
   test("OnWindowsGccCompiles: gcc compiles and the program runs", { skip: onPath("gcc") ? false : "no gcc on the search path" }, async () => {
     await mkdir(path.join(root, "c"), { recursive: true });
