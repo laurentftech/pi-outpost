@@ -1006,7 +1006,7 @@ export function mxcLinuxConfig(input: MxcLinuxInput): MxcLinuxConfig {
     input.root,
     ...(input.readOnlyFiles ?? []),
     ...(input.grantedRead ?? []),
-  ]).filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)));
+  ]).filter((p) => !readwritePaths.includes(p)); // PROBE: keep a read-only path under a writable one
   const deniedPaths = unique([input.agentDir, input.configFile].filter((p): p is string => Boolean(p)));
   return {
     version: "1.0.0",
@@ -1100,7 +1100,7 @@ export function mxcMacConfig(input: MxcMacInput): MxcMacConfig {
       ...(input.readOnlyFiles ?? []),
       ...(input.grantedRead ?? []),
     ].map(real),
-  ).filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)));
+  ).filter((p) => !readwritePaths.includes(p)); // PROBE
   const deniedPaths = unique([input.agentDir, input.configFile].filter((p): p is string => Boolean(p)).map(real));
   return {
     version: "1.0.0",
@@ -1198,6 +1198,8 @@ export function seatbeltPolicy(input: MxcMacInput): SeatbeltPolicy {
     '(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))',
     ...(request.filesystem.readonlyPaths.length ? ["(allow file-read*", subpaths(byDepth(request.filesystem.readonlyPaths)) + ")"] : []),
     ...byDepth(request.filesystem.readwritePaths).map((p) => `(allow file-read* file-write* (subpath ${sbplString(p)}))`),
+    // PROBE: a read-only path inside a writable one, denied writing after the allows (SBPL: last match wins).
+    ...request.filesystem.readonlyPaths.filter((p) => request.filesystem.readwritePaths.some((rw) => p !== rw && p.startsWith(rw + "/"))).map((p) => `(deny file-write* (subpath ${sbplString(p)}))`),
     ...(port
       ? [`(allow network-outbound (remote ip ${sbplString(`localhost:${port}`)}))`]
       : ["(allow network-outbound)", "(allow network-bind (local ip))", "(allow system-socket)", '(deny network-outbound (remote ip "localhost:*"))']),
