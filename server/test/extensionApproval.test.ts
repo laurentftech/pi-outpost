@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, beforeEach, describe, test } from "node:test";
@@ -120,70 +120,109 @@ describe("the project's extensions run only once allowed", () => {
   });
 });
 
-const RUNNER = process.env.MXC_EXEC;
-const POWERSHELL = path.join(process.env.SystemRoot ?? "C:\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-const skipMxc = process.platform !== "win32" ? "MXC confines on Windows only" : !RUNNER ? "MXC_EXEC (wxc-exec.exe) is not set" : false;
+/**
+ * The same two checks under each real runner this machine has, named by its variable: MXC on
+ * Windows (`MXC_EXEC`, PowerShell), MXC on Linux (`MXC_LXC_EXEC`, Bubblewrap — CI's `mxc-linux`
+ * job), MXC on macOS (`MXC_MAC_EXEC`) and Seatbelt (`SEATBELT_EXEC`) — CI's `mxc-macos` job.
+ */
+interface RealRunner {
+  name: string;
+  runner: string;
+  shell?: string;
+  /** Creates the extension file with \`body\`, and prints "wrote it". */
+  plant(file: string, body: string): string;
+  /** Tries to read, then to write, \`file\`, printing "read: yes|no" and "write: yes|no". */
+  touch(file: string): string;
+}
 
-describe("the decisions are out of a confined command's reach", { skip: skipMxc }, () => {
-  // openlore: scenario=AnExtensionTheAgentWroteDoesNotRunUntilAllowed spec=project-extension-approval
-  test("an extension a confined command writes under MXC's real executor is not run by the next session", async () => {
-    const { confinedBashOperations } = await import("../src/confinedBash.ts");
-    const base = await mkdtemp(path.join(tmpdir(), "ext-approval-mxc-write-"));
-    try {
-      const root = path.join(base, "project");
-      const agentDir = path.join(base, "agent");
-      const outside = path.join(base, "outside");
-      await mkdir(root, { recursive: true });
-      await mkdir(agentDir, { recursive: true });
-      await mkdir(outside, { recursive: true });
-      const marker = slash(path.join(outside, "ESCAPED"));
-      const file = path.join(root, ".pi", "extensions", "planted.ts");
-      const ops = confinedBashOperations({ runner: RUNNER!, shell: POWERSHELL, root, allowWrite: true, agentDir });
-      let output = "";
-      const body = `import { writeFileSync } from "node:fs"; writeFileSync("${marker}", "ran"); export default function () {}`;
-      await ops.exec(
-        `New-Item -ItemType Directory -Force -Path '${path.dirname(file)}' | Out-Null; Set-Content -LiteralPath '${file}' -Value '${body}'; if (Test-Path -LiteralPath '${file}') { 'wrote it' }`,
-        root,
-        { onData: (data: Buffer) => (output += data.toString()), timeout: 120 },
-      );
-      assert.match(output, /wrote it/, "writing an extension stays allowed to the agent");
-      const gate = await extensionGate(root, agentDir, new ExtensionApprovalStore(agentDir, root));
-      await createAgentSessionServices({ cwd: root, agentDir, settingsManager: gate.settingsManager });
-      assert.deepEqual(gate.undecided.map((candidate) => candidate.label), [".pi/extensions/planted.ts"], "asked about");
-      assert.equal(existsSync(path.join(outside, "ESCAPED")), false, "not run outside the sandbox");
-    } finally {
-      await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-    }
-  });
+const POWERSHELL = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+const sh = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+const posix = (name: string, runner: string | undefined, platform: NodeJS.Platform): RealRunner | undefined =>
+  runner && process.platform === platform
+    ? {
+        name,
+        runner,
+        plant: (file, body) => `mkdir -p ${sh(path.dirname(file))} && printf '%s\\n' ${sh(body)} > ${sh(file)} && test -f ${sh(file)} && echo 'wrote it'`,
+        touch: (file) =>
+          `if cat ${sh(file)} >/dev/null 2>&1; then echo 'read: yes'; else echo 'read: no'; fi; ` +
+          `if (printf '{}' > ${sh(file)}) 2>/dev/null; then echo 'write: yes'; else echo 'write: no'; fi`,
+      }
+    : undefined;
 
-  // openlore: scenario=AConfinedCommandCannotApprove spec=project-extension-approval
-  test("AConfinedCommandCannotApprove: under MXC's real executor, the decisions file can be neither read nor written", async () => {
-    const { confinedBashOperations } = await import("../src/confinedBash.ts");
-    const base = await mkdtemp(path.join(tmpdir(), "ext-approval-mxc-"));
-    try {
-      const root = path.join(base, "project");
-      const agentDir = path.join(base, "agent");
-      await mkdir(path.join(root, ".pi", "extensions"), { recursive: true });
-      await mkdir(agentDir, { recursive: true });
-      await writeFile(path.join(root, ".pi", "extensions", "x.ts"), "export default function () {}\n");
-      const approvals = new ExtensionApprovalStore(agentDir, root);
-      const [candidate] = await projectExtensionCandidates(root, agentDir);
-      await approvals.decide(candidate, "refuse");
-      const ops = confinedBashOperations({ runner: RUNNER!, shell: POWERSHELL, root, allowWrite: true, agentDir });
-      let output = "";
-      await ops.exec(
-        [
-          `try { Get-Content -LiteralPath '${approvals.file}' -ErrorAction Stop | Out-Null; 'read: yes' } catch { 'read: no' }`,
-          `try { Set-Content -LiteralPath '${approvals.file}' -Value '{}' -ErrorAction Stop; 'write: yes' } catch { 'write: no' }`,
-        ].join("; "),
-        root,
-        { onData: (data: Buffer) => (output += data.toString()), timeout: 120 },
-      );
-      assert.match(output, /read: no/, output);
-      assert.match(output, /write: no/, output);
-      assert.equal(await approvals.decisionFor(candidate), "refuse", "the decision is unchanged");
-    } finally {
-      await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-    }
-  });
+const REAL_RUNNERS: RealRunner[] = [
+  process.platform === "win32" && process.env.MXC_EXEC
+    ? {
+        name: "MXC on Windows",
+        runner: process.env.MXC_EXEC,
+        shell: POWERSHELL,
+        plant: (file: string, body: string) =>
+          `New-Item -ItemType Directory -Force -Path '${path.dirname(file)}' | Out-Null; Set-Content -LiteralPath '${file}' -Value '${body}'; if (Test-Path -LiteralPath '${file}') { 'wrote it' }`,
+        touch: (file: string) =>
+          `try { Get-Content -LiteralPath '${file}' -ErrorAction Stop | Out-Null; 'read: yes' } catch { 'read: no' }; ` +
+          `try { Set-Content -LiteralPath '${file}' -Value '{}' -ErrorAction Stop; 'write: yes' } catch { 'write: no' }`,
+      }
+    : undefined,
+  posix("MXC on Linux", process.env.MXC_LXC_EXEC, "linux"),
+  posix("MXC on macOS", process.env.MXC_MAC_EXEC, "darwin"),
+  posix("Seatbelt", process.env.SEATBELT_EXEC, "darwin"),
+].filter((runner): runner is RealRunner => runner !== undefined);
+
+/** A fresh base with a project, an agent directory and a place outside both, symlinks resolved. */
+async function confinedBase(prefix: string) {
+  const base = await realpath(await mkdtemp(path.join(tmpdir(), prefix)));
+  const root = path.join(base, "project");
+  const agentDir = path.join(base, "agent");
+  const outside = path.join(base, "outside");
+  await mkdir(root, { recursive: true });
+  await mkdir(agentDir, { recursive: true });
+  await mkdir(outside, { recursive: true });
+  return { base, root, agentDir, outside };
+}
+
+async function runConfined(runner: RealRunner, root: string, agentDir: string, command: string): Promise<string> {
+  const { confinedBashOperations } = await import("../src/confinedBash.ts");
+  const ops = confinedBashOperations({ runner: runner.runner, ...(runner.shell ? { shell: runner.shell } : {}), root, allowWrite: true, agentDir });
+  let output = "";
+  await ops.exec(command, root, { onData: (data: Buffer) => (output += data.toString()), timeout: 120 });
+  return output;
+}
+
+describe("under a real runner: what a confined command writes waits, and the decisions are out of its reach", { skip: REAL_RUNNERS.length === 0 ? "no real runner named (MXC_EXEC, MXC_LXC_EXEC, MXC_MAC_EXEC, SEATBELT_EXEC)" : false }, () => {
+  for (const runner of REAL_RUNNERS) {
+    // openlore: scenario=AnExtensionTheAgentWroteDoesNotRunUntilAllowed spec=project-extension-approval
+    test(`${runner.name}: an extension a confined command writes is not run by the next session`, async () => {
+      const { base, root, agentDir, outside } = await confinedBase("ext-approval-write-");
+      try {
+        const marker = slash(path.join(outside, "ESCAPED"));
+        const file = path.join(root, ".pi", "extensions", "planted.ts");
+        const body = `import { writeFileSync } from "node:fs"; writeFileSync("${marker}", "ran"); export default function () {}`;
+        const output = await runConfined(runner, root, agentDir, runner.plant(file, body));
+        assert.match(output, /wrote it/, `writing an extension stays allowed to the agent: ${output}`);
+        const gate = await extensionGate(root, agentDir, new ExtensionApprovalStore(agentDir, root));
+        await createAgentSessionServices({ cwd: root, agentDir, settingsManager: gate.settingsManager });
+        assert.deepEqual(gate.undecided.map((candidate) => candidate.label), [".pi/extensions/planted.ts"], "asked about");
+        assert.equal(existsSync(path.join(outside, "ESCAPED")), false, "not run outside the sandbox");
+      } finally {
+        await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      }
+    });
+
+    // openlore: scenario=AConfinedCommandCannotApprove spec=project-extension-approval
+    test(`AConfinedCommandCannotApprove (${runner.name}): the decisions file can be neither read nor written`, async () => {
+      const { base, root, agentDir } = await confinedBase("ext-approval-touch-");
+      try {
+        await mkdir(path.join(root, ".pi", "extensions"), { recursive: true });
+        await writeFile(path.join(root, ".pi", "extensions", "x.ts"), "export default function () {}\n");
+        const approvals = new ExtensionApprovalStore(agentDir, root);
+        const [candidate] = await projectExtensionCandidates(root, agentDir);
+        await approvals.decide(candidate, "refuse");
+        const output = await runConfined(runner, root, agentDir, runner.touch(approvals.file));
+        assert.match(output, /read: no/, output);
+        assert.match(output, /write: no/, output);
+        assert.equal(await approvals.decisionFor(candidate), "refuse", "the decision is unchanged");
+      } finally {
+        await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      }
+    });
+  }
 });
