@@ -134,7 +134,7 @@ a server started to check it answers would otherwise hold the turn for ever. Com
 asks for in one message run one after another, in the order it wrote them, where pi would run them
 together: each starts a runner first, and a step that depends on the previous one (create, then
 rename) would otherwise overtake it. Each project's
-commands and terminals are confined to that project's root. Settings never edit `bashRunner` or
+commands and terminals are confined to that project's root. Each command runs in a sandbox of its own, ended with it: a process it starts in the background (`Start-Process`, `Start-Job`, `&`, `nohup`) ends when the command does — the agent is told so, and to keep a server inside one command with a timeout, or in the terminal. Under MXC on Windows there is no WMI (`Get-CimInstance` fails) and `Get-Process` lists only the command's own processes. A drive of your session the sandbox does not reach (a mapped network drive) made PowerShell print an `InitializeDefaultDrives` error at the start of every command; that line is left out. Settings never edit `bashRunner` or
 `bashShell`.
 
 ## Linux: landstrip
