@@ -39,6 +39,7 @@ import {
 import { Composer } from "./components/Composer";
 import { ExtensionDialog } from "./components/ExtensionDialog";
 import { SandboxGrantDialog } from "./components/SandboxGrantDialog";
+import { ExtensionApprovalDialog } from "./components/ExtensionApprovalDialog";
 import { ShellUnavailableDialog, shellNoticeKey, shellNoticeSeen } from "./components/ShellUnavailableDialog";
 import { ExtensionNotifications } from "./components/ExtensionNotifications";
 import { ExtensionWidgets } from "./components/ExtensionWidgets";
@@ -173,6 +174,10 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
     fetchOlderItems,
     respondToDialog,
     respondToGrant,
+    answerExtensionQuestion,
+    dismissExtensionAllowed,
+    getExtensionDecisions,
+    withdrawExtensionDecision,
     getSandboxRules,
     setSandboxRule,
     revokeSandboxRule,
@@ -1152,6 +1157,8 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   const question = state.dialogQueue[0];
   // Keep the existing question-before-grant ordering, with both beside the timeline.
   const grant = question ? undefined : state.sandboxGrants?.pending[0];
+  // A project extension waiting for the user's say: after any question or grant, which hold a turn.
+  const extensionQuestion = question || grant ? undefined : state.extensionQuestions[0];
 
   const viewerAgentStatus = agentStatus(state.items, state.isStreaming, question ? "question" : grant ? "grant" : null);
   /** Look at the conversation from the overlay: the latest of it, with the file kept as it was. */
@@ -1347,6 +1354,9 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
           canRestartServer={!embedded}
           serverRestarting={state.serverRestarting}
           onCheckPiPackages={checkPiPackages}
+          extensionDecisions={state.extensionDecisions}
+          onGetExtensionDecisions={getExtensionDecisions}
+          onWithdrawExtensionDecision={withdrawExtensionDecision}
           onUpdatePiPackage={updatePiPackage}
           onRestartServer={restartServer}
           restartNeeded={state.restartNeeded}
@@ -1910,10 +1920,35 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
             className="min-w-0 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800"
             style={{ gridColumn: viewerBeside ? 2 : 1, gridRow: 3 }}
           >
-            {(question || grant) && (
+            {(question || grant || extensionQuestion) && (
               <div className="mx-auto max-w-3xl">
                 {question && <ExtensionDialog key={question.id} request={question} onRespond={respondToDialog} />}
                 {grant && <SandboxGrantDialog key={grant.id} request={grant} onRespond={respondToGrant} />}
+                {extensionQuestion && (
+                  <ExtensionApprovalDialog
+                    key={extensionQuestion.id}
+                    question={extensionQuestion}
+                    remaining={state.extensionQuestions.length - 1}
+                    onAnswer={answerExtensionQuestion}
+                    onView={(path) => readFile(path)}
+                  />
+                )}
+              </div>
+            )}
+            {state.extensionAllowed && (
+              <div
+                role="status"
+                data-testid="extension-allowed-notice"
+                className="mx-auto mb-2 flex max-w-3xl items-center justify-between gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+              >
+                <span>
+                  {state.extensionAllowed.loaded
+                    ? `${state.extensionAllowed.label} is allowed and loaded: the session was restarted with it.`
+                    : `${state.extensionAllowed.label} is allowed: it loads with the next conversation, or when you restart the session.`}
+                </span>
+                <button type="button" className="text-xs underline" onClick={dismissExtensionAllowed}>
+                  OK
+                </button>
               </div>
             )}
             {unavailableShell && shellNoticeOpen && <ShellUnavailableDialog verdict={unavailableShell} onClose={() => setShellNoticeOpen(false)} />}

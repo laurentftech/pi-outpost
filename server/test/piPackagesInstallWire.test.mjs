@@ -140,6 +140,19 @@ test("an install into this project is pinned when a version is given, and a doub
     { installed: project[0].installed, pinned: project[0].pinned, restartNeeded: project[0].restartNeeded },
     { installed: "1.1.0", pinned: "1.1.0", restartNeeded: true },
   );
+
+  // openlore: scenario=APackageInstalledFromSettingsIsNotAskedAbout spec=project-extension-approval
+  // Installed from Settings: the user's own hand. Allowed, so the rebuilt session loads it, unasked.
+  client.received.length = 0;
+  client.send({ type: "extension_decisions_get" });
+  const decisions = await client.waitFor((m) => m.type === "extension_decisions", 30_000);
+  assert.deepEqual(decisions.decisions.map((decision) => [decision.label, decision.decision]), [[`npm:${NAME}@1.1.0`, "allow"]]);
+  client.received.length = 0;
+  client.send({ type: "restart_session" });
+  const rebuilt = await client.waitFor((m) => m.type === "update_config_ack", 120_000);
+  assert.equal(rebuilt.extensionQuestions, undefined, "nothing asked about the package");
+  assert.ok(!client.received.some((m) => m.type === "extension_questions" && m.questions.length > 0), "no question either");
+  assert.ok(toolNames(rebuilt).includes("fake_ext_v1_1_0"), `the project's package loaded: ${toolNames(rebuilt).join(",")}`);
 });
 
 test("a version published after the confirmation is not installed in its place", async (t) => {

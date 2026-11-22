@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { PiPackageInfo, Theme } from "@pi-outpost/shared";
+import type { PiPackageInfo, ProjectExtensionDecision, Theme } from "@pi-outpost/shared";
 import type { AgentState } from "../useAgent";
 import { MIN_SESSION_QUERY_LENGTH, type AgentResourceInventory, type GitUnavailable, type SessionSummary, type TreeNode, type WorkspaceInfo } from "@pi-outpost/shared";
 import { ProjectMenu } from "./ProjectMenu";
@@ -76,6 +76,10 @@ interface HeaderProps {
   serverRestarting?: boolean;
   onCheckPiPackages?: () => void;
   onUpdatePiPackage?: (source: string) => void;
+  /** This project's decisions on its extensions (`project-extension-approval`). */
+  extensionDecisions?: ProjectExtensionDecision[] | null;
+  onGetExtensionDecisions?: () => void;
+  onWithdrawExtensionDecision?: (kind: "file" | "package", key: string) => void;
   onRestartServer?: () => void;
   /** What waits on a restart to run. */
   restartNeeded?: string[];
@@ -817,6 +821,9 @@ export function Header(props: HeaderProps) {
           canRestartServer={props.canRestartServer ?? false}
           serverRestarting={props.serverRestarting ?? false}
           {...(props.onCheckPiPackages ? { onCheckPiPackages: props.onCheckPiPackages } : {})}
+          {...(props.onGetExtensionDecisions ? { onGetExtensionDecisions: props.onGetExtensionDecisions } : {})}
+          {...(props.onWithdrawExtensionDecision ? { onWithdrawExtensionDecision: props.onWithdrawExtensionDecision } : {})}
+          {...(props.extensionDecisions !== undefined ? { extensionDecisions: props.extensionDecisions } : {})}
           {...(props.onUpdatePiPackage ? { onUpdatePiPackage: props.onUpdatePiPackage } : {})}
           {...(props.onRestartServer ? { onRestartServer: props.onRestartServer } : {})}
           restartNeeded={props.restartNeeded ?? []}

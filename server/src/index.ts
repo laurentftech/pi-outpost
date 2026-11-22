@@ -54,6 +54,7 @@ import {
   type TreeNode,
   type WireImage,
   type WorkPlan,
+  type ProjectExtensionDecision,
 } from "@pi-outpost/shared";
 import { rewriteMentionedPaths } from "@pi-outpost/shared/mentions";
 import { isWorkPlanReadyForReview, validateWorkPlan } from "@pi-outpost/shared/work-plan";
@@ -85,6 +86,7 @@ import { BuildExeError, buildExecutable } from "./buildExe.ts";
 import { probePty, TerminalManager, type TerminalConfinement } from "./terminalManager.ts";
 import { LoginRelay } from "./loginRelay.ts";
 import { confineConfiguration, unconfineConfiguration } from "./confineCommand.ts";
+import { approvalStoreFor, extensionGate, packageCandidate } from "./extensionApproval.ts";
 import {
   autoShown,
   autoUnavailableRefusal,
@@ -1575,9 +1577,20 @@ const makeCreateRuntime =
     ...allExtensionPaths(config),
     ...config.extensionScripts,
   ];
+  // What the project brings — `.pi/extensions`, the extensions and packages its settings name —
+  // runs in this process, outside the sandbox: only what the user allowed for its content is given
+  // to pi (`extensionApproval.ts`). The rest waits for an answer, and is said.
+  const gate = await extensionGate(cwd, AGENT_DIR, approvalStoreFor(AGENT_DIR, cwd));
+  for (const candidate of gate.undecided) {
+    console.warn(
+      `[pi-outpost] not loaded: ${candidate.kind === "package" ? "package" : "extension"} ${candidate.label} of this project has not been allowed — ` +
+        "it would run outside the sandbox. Allow it in the interface.",
+    );
+  }
   const services = await createAgentSessionServices({
     cwd,
     agentDir: config.agentDir,
+    settingsManager: gate.settingsManager,
     resourceLoaderOptions: {
       ...(config.noExtensions ? { noExtensions: true } : {}),
       ...(allExtPaths.length > 0
@@ -1629,6 +1642,7 @@ const makeCreateRuntime =
     },
   });
   if (reloadResources) await services.resourceLoader.reload();
+  publishInto?.setExtensionQuestions(gate.undecided);
   const extResult = services.resourceLoader.getExtensions();
   if (extResult.errors.length > 0) {
     for (const err of extResult.errors) {
@@ -2845,6 +2859,7 @@ function projectFields(workspace: Workspace) {
     // What a client connecting or reloading has to show: the requests still waiting, and the
     // session's grants. Only where the agent's shell can ask for one.
     ...(grantsEnabled(workspace.settings.sandbox) ? { sandboxGrants: workspace.grants.state() } : {}),
+    ...(workspace.extensionQuestions().length > 0 ? { extensionQuestions: workspace.extensionQuestions() } : {}),
   };
 }
 
@@ -3697,33 +3712,66 @@ async function rebuildSibling(sibling: Workspace): Promise<void> {
   }
 }
 
-/** Manual reload changes no settings and affects only the current session. */
-async function handleRestartSession(workspace: Workspace, socket: WebSocket): Promise<void> {
-  const refuse = (message: string) => send(socket, { type: "error", message });
+/**
+ * The session rebuilt with its resources read again: undefined when done, or why not. Changes no
+ * settings and affects only the current session.
+ */
+async function restartSession(workspace: Workspace): Promise<string | undefined> {
   if (workspace.replacingSession || workspace.isBusy()) {
-    refuse("The session is working or changing — wait for it to finish before restarting");
-    return;
+    return "The session is working or changing — wait for it to finish before restarting";
   }
   const rebuild = workspace.agent.rebuildTools;
-  if (!rebuild) {
-    refuse(new RuntimeUnsupportedError("Restarting the session", workspace.agent.kind).message);
-    return;
-  }
+  if (!rebuild) return new RuntimeUnsupportedError("Restarting the session", workspace.agent.kind).message;
   workspace.replacingSession = true;
   try {
     const result = await rebuild.call(workspace.agent, makeCreateRuntime(workspace.sandboxedTools, workspace, true));
-    if (result.cancelled) {
-      refuse("Session restart cancelled by an extension; the previous session remains active");
-      return;
-    }
+    if (result.cancelled) return "Session restart cancelled by an extension; the previous session remains active";
     await refreshResourceInventory(workspace);
     await workspace.workPlanSync;
-    send(socket, { type: "update_config_ack", ...snapshot(workspace) });
+    return undefined;
   } catch (error) {
-    refuse(`Could not restart the session: ${error instanceof Error ? error.message : String(error)}`);
+    return `Could not restart the session: ${error instanceof Error ? error.message : String(error)}`;
   } finally {
     workspace.replacingSession = false;
   }
+}
+
+/** Manual reload changes no settings and affects only the current session. */
+async function handleRestartSession(workspace: Workspace, socket: WebSocket): Promise<void> {
+  const refused = await restartSession(workspace);
+  if (refused) send(socket, { type: "error", message: refused });
+  else send(socket, { type: "update_config_ack", ...snapshot(workspace) });
+}
+
+/** The project's decisions on its extensions, as Settings lists them. */
+async function extensionDecisions(workspace: Workspace): Promise<ProjectExtensionDecision[]> {
+  const decisions = await approvalStoreFor(AGENT_DIR, workspace.root).decisions();
+  return decisions.map(({ kind, key, label, decision, decidedAt }) => ({ kind, key, label, decision, decidedAt }));
+}
+
+/**
+ * The user's answer about one of the project's extensions. Allowed, the session is rebuilt with it
+ * when the agent is idle; while it works, the extension loads with the next session, and the
+ * client is told so. Every client sees the question close and the decisions change.
+ */
+async function answerExtensionQuestion(workspace: Workspace, socket: WebSocket, id: string, decision: "allow" | "refuse"): Promise<void> {
+  const candidate = workspace.takeExtensionQuestion(id);
+  if (!candidate) return; // answered from another tab, or gone with its file
+  await approvalStoreFor(AGENT_DIR, workspace.root).decide(candidate, decision);
+  console.log(`[pi-outpost] ${candidate.label}: ${decision === "allow" ? "allowed" : "refused"} by the user`);
+  broadcast(workspace, { type: "extension_decisions", decisions: await extensionDecisions(workspace) });
+  if (decision !== "allow") return;
+  if (workspace.replacingSession || workspace.isBusy()) {
+    send(socket, { type: "extension_allowed", label: candidate.label, loaded: false });
+    return;
+  }
+  const refused = await restartSession(workspace);
+  if (refused) {
+    send(socket, { type: "error", message: refused });
+    return;
+  }
+  broadcast(workspace, { type: "update_config_ack", ...snapshot(workspace) });
+  send(socket, { type: "extension_allowed", label: candidate.label, loaded: true });
 }
 
 async function handleUpdateConfig(
@@ -5892,14 +5940,21 @@ async function handleInstallPiPackage(
     answer("refused", settled);
     return;
   }
-  const result = await changePiPackage(workspace, name, settled.affected, () =>
-    installPiPackage(workspace.settings.cwd, AGENT_DIR, {
+  const result = await changePiPackage(workspace, name, settled.affected, async () => {
+    // Installed into the project from Settings: the user's own hand, so allowed before the session
+    // that loads it is built, never asked about. Inside the change, under its guard: a second
+    // confirmation is still refused. A failed install leaves an approval of nothing.
+    if (request.scope === "project") {
+      const source = request.version === undefined ? `npm:${name}` : `npm:${name}@${request.version}`;
+      await approvalStoreFor(AGENT_DIR, workspace.root).decide(packageCandidate(source), "allow");
+    }
+    return await installPiPackage(workspace.settings.cwd, AGENT_DIR, {
       name,
       scope: request.scope,
       exact: found.version,
       ...(request.version !== undefined ? { version: request.version } : {}),
-    }),
-  );
+    });
+  });
   answer(result.outcome === "installed" ? "installed" : "failed", result.message);
 }
 
@@ -6581,6 +6636,29 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
         const state = await workspace.sandboxRules();
         if (state) send(socket, { type: "sandbox_rules", state });
       }, (error: unknown) => send(socket, { type: "sandbox_rule_refused", message: `The rule could not be revoked: ${(error as Error).message}` }));
+      break;
+    }
+    // The user's say on the project's extensions, from the interface alone: no tool reaches these.
+    case "extension_question_response": {
+      if (typeof message.id !== "string" || (message.decision !== "allow" && message.decision !== "refuse")) return;
+      void answerExtensionQuestion(workspace, socket, message.id, message.decision).catch((error: unknown) =>
+        send(socket, { type: "error", message: `The answer could not be kept: ${(error as Error).message}` }),
+      );
+      break;
+    }
+    case "extension_decisions_get": {
+      void extensionDecisions(workspace).then(
+        (decisions) => send(socket, { type: "extension_decisions", decisions }),
+        (error: unknown) => send(socket, { type: "error", message: `The extension decisions could not be read: ${(error as Error).message}` }),
+      );
+      break;
+    }
+    case "extension_decision_withdraw": {
+      if ((message.kind !== "file" && message.kind !== "package") || typeof message.key !== "string") return;
+      void approvalStoreFor(AGENT_DIR, workspace.root)
+        .withdraw(message.kind, message.key)
+        .then(async () => broadcast(workspace, { type: "extension_decisions", decisions: await extensionDecisions(workspace) }))
+        .catch((error: unknown) => send(socket, { type: "error", message: `The decision could not be withdrawn: ${(error as Error).message}` }));
       break;
     }
     case "extension_ui_response": {

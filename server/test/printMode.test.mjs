@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -98,6 +99,23 @@ describe("pi-outpost -p", () => {
     assert.equal(code, 0);
     const events = stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
     assert.ok(events.some((event) => event.type === "user" && event.text === "the prompt from stdin"), "the turn's prompt is stdin's");
+  });
+
+  // openlore: scenario=PrintModeLeavesItOut spec=project-extension-approval
+  test("PrintModeLeavesItOut: with no one to ask, a project extension not allowed is not loaded, and stderr names it", { timeout: 150_000 }, async () => {
+    const marker = path.join(dir, "print-mode-extension-ran");
+    const extensions = path.join(dir, ".pi", "extensions");
+    await mkdir(extensions, { recursive: true });
+    await writeFile(path.join(extensions, "planted.ts"), `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "ran"); export default function () {}`);
+    try {
+      const { code, stdout, stderr } = await print(["-p", "Say hello", "--model", MODEL], { config, env: { BASH_CALL_STEPS: "[]" } });
+      assert.equal(code, 0, stderr);
+      assert.equal(stdout, "done\n");
+      assert.match(stderr, /not loaded: extension \.pi\/extensions\/planted\.ts of this project has not been allowed — it would run outside the sandbox/);
+      assert.equal(existsSync(marker), false, "the extension did not run");
+    } finally {
+      await rm(path.join(dir, ".pi"), { recursive: true, force: true });
+    }
   });
 
   // openlore: scenario=AFailedTurnExitsNonZero spec=cli

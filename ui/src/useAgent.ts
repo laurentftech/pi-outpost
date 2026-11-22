@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { randomId } from "./util/randomId";
-import type { LoginEvent, LoginPrompt, OutpostChanges, OutpostUpdateNotice, PiPackageInfo, SandboxGrantDecision, SandboxGrantState, SandboxRulesState, SessionSnapshot } from "@pi-outpost/shared";
+import type { LoginEvent, LoginPrompt, OutpostChanges, OutpostUpdateNotice, PiPackageInfo, ProjectExtensionDecision, ProjectExtensionQuestion, SandboxGrantDecision, SandboxGrantState, SandboxRulesState, SessionSnapshot } from "@pi-outpost/shared";
 type PiPackageScope = PiPackageInfo["scope"];
 import type { ProjectAppearance, StructuredConformance } from "@pi-outpost/shared/structured-exchange/profile";
 import { workspaceKey } from "./util/workspaceKey";
@@ -528,6 +528,15 @@ export interface AgentState {
   /** Why the last rule could not be made or revoked, from the server. */
   sandboxRuleError: string | null;
   /**
+   * The project's extensions waiting for the user's say before they load: every one the server
+   * lists, the list replaced whole each time, so an answer from another tab closes it here too.
+   */
+  extensionQuestions: ProjectExtensionQuestion[];
+  /** The project's decisions on its extensions, once asked for (Settings). */
+  extensionDecisions: ProjectExtensionDecision[] | null;
+  /** The last extension allowed from here: loaded now, or with the next session. */
+  extensionAllowed: { label: string; loaded: boolean } | null;
+  /**
    * Skill paths added through Settings — the list the user may add to and remove
    * from. The configuration file's own `skillPaths` are not carried into the UI:
    * they load regardless, and nothing here may touch them.
@@ -622,6 +631,9 @@ const initialState: AgentState = {
   sandboxGrants: null,
   sandboxRules: null,
   sandboxRuleError: null,
+  extensionQuestions: [],
+  extensionDecisions: null,
+  extensionAllowed: null,
   notifications: [],
   statuses: {},
   widgets: {},
@@ -682,6 +694,7 @@ type Action =
   | { type: "pending_prompt_cancelled"; restoreText: boolean }
   | { type: "composer_prefilled"; text: string; notice?: string }
   | { type: "dismiss_notification"; id: string }
+  | { type: "extension_allowed_seen" }
   | { type: "dialog_answered" }
   | { type: "dir_list_started"; path: string; requestId: string; preserveEntries?: boolean }
   | { type: "raw_preview_changed"; path: string }
@@ -888,6 +901,8 @@ function applySnapshot(state: AgentState, message: ServerMessage & { sessionId: 
     sandboxGrants: message.sandboxGrants ?? null,
     sandboxRules: null,
     sandboxRuleError: null,
+    extensionQuestions: message.extensionQuestions ?? [],
+    extensionDecisions: null,
     userSkillPaths: message.userSkillPaths ?? [],
     serverBrowse: null,
     settingsApply: null,
@@ -1059,6 +1074,7 @@ function reduce(state: AgentState, action: Action): AgentState {
     if (!action.restoreText || !state.pendingPrompt) return state;
     return { ...state, editorPrefill: { text: state.pendingPrompt.text, nonce: state.editorPrefill ? state.editorPrefill.nonce + 1 : 1 } };
   }
+  if (action.type === "extension_allowed_seen") return { ...state, extensionAllowed: null };
   if (action.type === "dismiss_notification") {
     return { ...state, notifications: state.notifications.filter((n) => n.id !== action.id) };
   }
@@ -1726,6 +1742,12 @@ function reduce(state: AgentState, action: Action): AgentState {
       return { ...state, sandboxRules: message.state, sandboxRuleError: null };
     case "sandbox_rule_refused":
       return { ...state, sandboxRuleError: message.message };
+    case "extension_questions":
+      return { ...state, extensionQuestions: message.questions };
+    case "extension_decisions":
+      return { ...state, extensionDecisions: message.decisions };
+    case "extension_allowed":
+      return { ...state, extensionAllowed: { label: message.label, loaded: message.loaded } };
     case "compaction_start":
       return { ...state, isCompacting: true };
     case "compaction_end":
@@ -3070,6 +3092,13 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     /** Make a rule from a recorded refusal. Kept, every client is sent the rules again. */
     setSandboxRule: (refusalKey: string, decision: "allow" | "refuse") => sendMessage({ type: "sandbox_rule_set", refusalKey, decision }),
     revokeSandboxRule: (id: string) => sendMessage({ type: "sandbox_rule_revoke", id }),
+    /** Answer about one of the project's extensions. Its dialog closes when the server's list no longer holds it. */
+    answerExtensionQuestion: (id: string, decision: "allow" | "refuse") => sendMessage({ type: "extension_question_response", id, decision }),
+    /** Ask for the project's decisions on its extensions: `extensionDecisions` holds them once answered. */
+    getExtensionDecisions: () => sendMessage({ type: "extension_decisions_get" }),
+    /** Withdraw a decision: that extension is asked about again. */
+    withdrawExtensionDecision: (kind: "file" | "package", key: string) => sendMessage({ type: "extension_decision_withdraw", kind, key }),
+    dismissExtensionAllowed: () => dispatch({ type: "extension_allowed_seen" }),
     dismissNotification: (id: string) => dispatch({ type: "dismiss_notification", id }),
     /** List a directory's children (path is relative to the browser root; "" = root). */
     listDirectory: (path: string) => requestDirectory(path),

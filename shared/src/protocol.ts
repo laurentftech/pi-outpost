@@ -1059,6 +1059,37 @@ export interface SessionSnapshot {
    * connecting or reloading shows them, and what this session holds. Absent with no confined shell.
    */
   sandboxGrants?: SandboxGrantState;
+  /**
+   * The project's extensions waiting for the user's say before they load
+   * (`project-extension-approval`), so a client connecting or reloading asks them.
+   */
+  extensionQuestions?: ProjectExtensionQuestion[];
+}
+
+/**
+ * Something the project would have pi load — an extension file, or a package to install — that
+ * the user has not allowed for its current content. It is not loaded until allowed: an extension
+ * runs in the server, outside the sandbox, with every right of the account.
+ */
+export interface ProjectExtensionQuestion {
+  /** Stable for one content: the same file unchanged is the same question. */
+  id: string;
+  kind: "file" | "package";
+  /** The path from the project (a directory for a directory extension), or the package source. */
+  label: string;
+  /** For a file: the path the file viewer opens, from the project. */
+  path?: string;
+  /** Bytes of what would run, for a file. */
+  size?: number;
+}
+
+/** A decision on one of the project's extensions, as Settings lists it. */
+export interface ProjectExtensionDecision {
+  kind: "file" | "package";
+  key: string;
+  label: string;
+  decision: "allow" | "refuse";
+  decidedAt: string;
 }
 
 /** Hosts and directories beyond the sandbox, as the user grants them to the agent's confined shell. */
@@ -1454,6 +1485,12 @@ export type ServerMessage =
   | { type: "sandbox_rules"; state: SandboxRulesState }
   /** A rule could not be made or revoked, and why: to the client that asked. */
   | { type: "sandbox_rule_refused"; message: string }
+  /** The project's extensions waiting for an answer, all of them: replaces any list shown before. */
+  | { type: "extension_questions"; questions: ProjectExtensionQuestion[] }
+  /** The project's decisions on its extensions: asked for, or changed by any client. */
+  | { type: "extension_decisions"; decisions: ProjectExtensionDecision[] }
+  /** An extension the user allowed: loaded now (the session was rebuilt), or with the next session while the agent works. */
+  | { type: "extension_allowed"; label: string; loaded: boolean }
   | { type: "work_plan_changed"; workPlan: WorkPlan | null }
   | { type: "workspace_outcome"; requestId: string; outcome: WorkspaceOutcome }
   /**
@@ -1951,6 +1988,12 @@ export type ClientMessage =
   | { type: "sandbox_rule_set"; refusalKey: string; decision: "allow" | "refuse" }
   /** The user revokes a rule: it stops applying from the next command. */
   | { type: "sandbox_rule_revoke"; id: string }
+  /** The user's answer about one of the project's extensions. The first answer decides. */
+  | { type: "extension_question_response"; id: string; decision: "allow" | "refuse" }
+  /** The project's decisions on its extensions: answered with `extension_decisions`. */
+  | { type: "extension_decisions_get" }
+  /** Withdraws a decision: that extension is asked about again, and not loaded until allowed. */
+  | { type: "extension_decision_withdraw"; kind: "file" | "package"; key: string }
   | ExtensionUIResponse;
 
 /**

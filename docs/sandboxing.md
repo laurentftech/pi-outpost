@@ -89,11 +89,30 @@ that filters it.
 | `edit`, `write`, document tools | To `sandbox.writableRoot`, with `allowWrite` only. Never inside a `.pi` directory, where an extension's policy may live, and never pi-outpost's configuration file, which sets the sandbox. |
 | `bash` (`allowBash`) | **Only with `bashRunner`** — `"auto"` by default — or `bashFrom`. With `"none"`, or `allowBash` and no runner in a section of your own, it can do anything the server's user can. With a PowerShell `bashShell`, the agent's shell tool is `powershell` instead, confined the same way. |
 | The terminal panel | **Only with `terminal.sandbox`.** |
-| Extensions, MCP servers | **No.** They run with the server's rights, or their own process's. |
+| Extensions, MCP servers | **No.** They run with the server's rights, or their own process's. The project's own load only once you allow them ([below](#the-projects-extensions-allowed-one-by-one)). |
 
 Pi's own `bash`, `powershell`, `edit` and `write` are never registered in a sandbox, so nothing can
 switch them back on. The file tools' confinement is pi-outpost checking paths, not an operating-system
 boundary; the runner is one.
+
+### The project's extensions: allowed one by one
+
+A pi extension is code pi loads into the server itself: it is not confined, and runs with every right of
+your account. The agent may write one in the project — that is part of what pi is — and a cloned
+project may bring some. So what the project brings is loaded only once you have allowed it: the files
+under `.pi/extensions/` (a directory extension as a whole), the extensions its `.pi/settings.json`
+names, and the packages it lists, which pi would install.
+
+At each new session, one not allowed for its current content is left out, and the interface asks: its
+path and size, that it would run outside the sandbox, its code one click away, **Allow** or **Refuse**.
+Allowed while the agent is idle, the session restarts with it; while it works, it loads with the next
+session. Both answers are kept, per project, under the agent directory, out of every confined command's
+reach. A change to the file asks again. Settings → Extensions lists what you decided, and withdrawing a
+decision asks at the next session. A package you install into the project from Settings is allowed by
+that act. Extensions of your own (`~/.pi/agent`) are not asked about.
+
+With no one to ask (`pi-outpost -p`), an extension not allowed is left out and named on stderr. The pi
+CLI run in the folder has its own question, about the whole folder.
 
 Under a runner, a command (or a terminal) may:
 
