@@ -465,8 +465,22 @@ export async function createSandboxedTools(
     // The agent asks for it after a failure; nothing calls it on its own.
     const diagnose = operations?.diagnose?.bind(operations);
     const diagnosing = diagnose ? shellToolFor({ exec: diagnose }) : undefined;
+    // What a confined command cannot do that a model expects it can, said where it writes the
+    // command (issue #547): background processes end with their command — each command runs in a
+    // sandbox of its own, ended with it — and, under MXC on Windows, no WMI.
+    const confinedGuidelines = operations
+      ? [
+          "Each command runs in a sandbox of its own, ended when the command ends: a process it starts in the background (Start-Process, Start-Job, &, nohup) ends with it. Keep a server or a long job inside one command, with a timeout, or ask the user to run it in the terminal.",
+          ...(onWindowsMxcProcessContainer(sandbox, process.platform)
+            ? [
+                "In this sandbox WMI is unavailable (Get-CimInstance fails) and Get-Process lists only this command's processes. For the machine's free memory: Add-Type -AssemblyName Microsoft.VisualBasic; (New-Object Microsoft.VisualBasic.Devices.ComputerInfo).AvailablePhysicalMemory.",
+              ]
+            : []),
+        ]
+      : [];
     tools.push({
       ...shellTool,
+      ...(confinedGuidelines.length > 0 ? { promptGuidelines: [...(shellTool.promptGuidelines ?? []), ...confinedGuidelines] } : {}),
       ...(diagnosing ? { parameters: withDiagnoseParameter(shellTool.parameters) } : {}),
       // A model often batches dependent steps (create, then rename) in one message, and pi
       // runs a message's calls together; a runner's second-long start makes the later step

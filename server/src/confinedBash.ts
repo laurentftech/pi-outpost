@@ -453,9 +453,18 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     let accessDenied = false;
     let deniedTail = "";
     let tail = "";
+    let sqliteCannotOpen = false;
+    let sqliteTail = "";
+    const filtered = powerShell ? withoutPowerShellDriveNoise(shown) : undefined;
+    const show = filtered ? (data: Buffer) => filtered.write(data) : shown;
     const onData: (data: Buffer) => void = diagnose
       ? () => {}
       : (data) => {
+          if (!sqliteCannotOpen) {
+            const text = sqliteTail + data.toString();
+            if (text.includes(SQLITE_CANNOT_OPEN)) sqliteCannotOpen = true;
+            sqliteTail = text.slice(-SQLITE_CANNOT_OPEN.length);
+          }
           if (!bunInstallRefused) {
             const text = tail + data.toString();
             if (text.includes(BUN_TEMPORARY_DIRECTORY_REFUSED)) bunInstallRefused = true;
@@ -466,7 +475,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
             if (reportsAccessDenied(text)) accessDenied = true;
             deniedTail = text.slice(-64);
           }
-          shown(data);
+          show(data);
         };
     const timeoutMs = timeoutInMs(timeout);
     if (signal?.aborted) throw new Error("aborted");
@@ -745,6 +754,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         return result;
       } finally {
         unwatch?.();
+        // A last line held back while it could still have been PowerShell's drive line.
+        filtered?.flush();
         // With someone to ask, every unlisted host was asked about: what each answer was. Without,
         // the hosts refused, and that the list is where they would go.
         if (answers.size > 0) onData(Buffer.from(`\n${networkNote(answers)}\n`));
@@ -756,6 +767,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         const msys = diagnosable && (exitCode === STATUS_DLL_INIT_FAILED || exitCode === STATUS_DLL_INIT_FAILED_UNSIGNED) ? msysProgramNamed(command, process.env.PATH) : undefined;
         if (msys !== undefined) onData(Buffer.from(`\n${msysNote(msys)}\n`));
         if (bunInstallRefused && diagnosable) onData(Buffer.from(`\n${bunInstallNote()}\n`));
+        if (sqliteCannotOpen && !diagnose && directories.grantedRead.length > 0) onData(Buffer.from(`\n${sqliteReadOnlyNote()}\n`));
         // Last, so the agent reads it after everything else: what it can do about a failure here.
         // Not when the proxy already named a refused host — that is what failed, and a diagnosis
         // runs without network: it would contradict "do not retry".
@@ -976,6 +988,60 @@ export function bunInstallNote(): string {
     "[pi-outpost] bun cannot install packages in this sandbox: the container refuses the file rename bun uses " +
     "(relative to a folder it holds open), whatever folders bun is given. bun run, bun test and bun <file> work. " +
     "Ask the user to run the install outside the sandbox; do not retry it here."
+  );
+}
+
+/**
+ * PowerShell's own line, at its start, when a drive of the user's session cannot be reached from
+ * the container — a mapped network drive (issue #547): "InitializeDefaultDrives" on the FileSystem
+ * provider failed. Printed by the host before any line of the command, in the console's code page
+ * (so garbled), on every command; the drive is out of the sandbox's reach by design, and the
+ * command runs. The operation's name is the same in every language, the words around it are not.
+ */
+const POWERSHELL_DRIVE_NOISE = /InitializeDefaultDrives/;
+
+/**
+ * The command's output without PowerShell's startup line about a drive it cannot reach: lines are
+ * held only until the first one that is not it, then everything passes as it comes.
+ */
+export function withoutPowerShellDriveNoise(next: (data: Buffer) => void): { write(data: Buffer): void; flush(): void } {
+  let held: Buffer | undefined = Buffer.alloc(0);
+  return {
+    write(data) {
+      if (held === undefined) return next(data);
+      let buffer = Buffer.concat([held, data]);
+      for (;;) {
+        const end = buffer.indexOf(0x0a);
+        if (end < 0) break;
+        const line = buffer.subarray(0, end + 1);
+        buffer = buffer.subarray(end + 1);
+        if (POWERSHELL_DRIVE_NOISE.test(line.toString("latin1"))) continue;
+        held = undefined;
+        next(Buffer.concat([line, buffer]));
+        return;
+      }
+      held = buffer;
+    },
+    flush() {
+      if (held !== undefined && held.length > 0 && !POWERSHELL_DRIVE_NOISE.test(held.toString("latin1"))) next(held);
+      held = undefined;
+    },
+  };
+}
+
+/** SQLite's message when it cannot open a database: under a read-only grant, a WAL database's sign. */
+const SQLITE_CANNOT_OPEN = "unable to open database file";
+
+/**
+ * What ends a command whose SQLite could not open a database while a folder was granted read-only:
+ * a database in WAL mode writes its `-wal` and `-shm` files to be read at all (measured, #547).
+ */
+export function sqliteReadOnlyNote(): string {
+  return (
+    "[pi-outpost] SQLite could not open a database, and this command was granted a folder read-only. " +
+    "If the database is in WAL mode, reading it writes its -wal and -shm files: open it with ?immutable=1 " +
+    "(e.g. sqlite3.connect('file:<path>?immutable=1', uri=True)) when nothing writes it meanwhile, or ask " +
+    "run_with_grant for write access to its folder."
   );
 }
 
