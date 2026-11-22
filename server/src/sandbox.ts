@@ -411,6 +411,7 @@ export async function createSandboxedTools(
       ...(sandbox.allowedHosts ? { allowedHosts: sandbox.allowedHosts } : {}),
       ...neverReadable,
       wslc: sandbox.bashImage !== undefined,
+      ...(sandbox.gitWritable ? { gitWritable: true } : {}),
     });
     const broker = sandbox.bashRunner && unavailable === undefined && sandbox.grants !== "never" ? grants : undefined;
     const bashOptions = sandbox.bashRunner && unavailable === undefined ? await agentBashOptions(sandbox, neverReadable) : undefined;
@@ -619,6 +620,7 @@ export async function agentBashOptions(
     gitConfig: userGitConfig(),
     ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts), allowedHosts: sandbox.allowedHosts }),
     ...(sandbox.hostLoopback === undefined ? {} : { hostLoopback: sandbox.hostLoopback }),
+    ...(sandbox.gitWritable ? { gitWritable: true } : {}),
     ...(toolchainsFor(sandbox, neverReadable) ?? {}),
   };
 }

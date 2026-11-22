@@ -55,7 +55,7 @@ describe("the agent's bash under MXC's real executor", { skip }, () => {
     if (base) await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
-  async function bash(command: string, options: { writableRoot?: string; signal?: AbortSignal; timeout?: number; gitConfig?: string } = {}) {
+  async function bash(command: string, options: { writableRoot?: string; signal?: AbortSignal; timeout?: number; gitConfig?: string; gitGrant?: boolean } = {}) {
     const ops = confinedBashOperations({
       runner: RUNNER!,
       shell: SHELL!,
@@ -64,6 +64,8 @@ describe("the agent's bash under MXC's real executor", { skip }, () => {
       allowWrite: true,
       agentDir,
       ...(options.gitConfig ? { gitConfig: options.gitConfig } : {}),
+      // A commit writes the repository's .git, held read-only: it takes a grant, as the agent asks one.
+      ...(options.gitGrant ? { grants: () => ({ hosts: [], directories: [{ path: path.join(root, ".git"), access: "write" as const }] }) } : {}),
     });
     let output = "";
     const { exitCode } = await ops.exec(command, root, {
@@ -133,7 +135,7 @@ describe("the agent's bash under MXC's real executor", { skip }, () => {
       `git commit -q --allow-empty -m from-the-sandbox && git log -1 --format='author=%an <%ae>'; ` +
         `echo tampered >> "${gc}"; echo "append-exit=$?"; cat "${slash(path.join(base, "other", "secret.txt"))}" >/dev/null 2>&1; echo "beside-exit=$?"; ` +
         `echo "cache=$(npm config get cache)"`,
-      { gitConfig },
+      { gitConfig, gitGrant: true },
     );
     assert.match(result.output, /^author=Sandbox Tester <tester@example\.com>$/m, result.output);
     assert.match(result.output, /^append-exit=[1-9]/m, "the git configuration was writable");

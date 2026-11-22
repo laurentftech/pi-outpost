@@ -10,19 +10,39 @@ Each runner is given a policy built in `server/src/terminalSandbox.ts`: a writab
 
 The file tools already refuse `.pi`; `.git` joins them there, but the boundary that matters is the runner's: a shell command is what writes `.git` in practice.
 
-### Per runner, by what it can express
+### Per runner: measured, before any code
 
-| Runner | Read-only `.git` inside the writable root |
-| --- | --- |
-| Seatbelt, MXC on macOS | a `deny file-write*` subpath after the root's allow (SBPL: the last matching rule wins) — to verify for MXC's generated profile |
-| Bubblewrap (MXC on Linux), landstrip | a read-only bind of `<root>/.git` after the root's read-write bind; landstrip: a deny-write rule if it has one, else the same bind |
-| MXC on Windows | an ACL-based policy: to probe whether `readonlyPaths` under a `readwritePaths` entry holds |
+A read-only `.git` inside a read-write root, through each runner's real executor (MXC on Windows locally;
+MXC on Linux, MXC on macOS, Seatbelt and landstrip in CI), every outcome read back from the disk:
 
-A runner that cannot hold it says so at its check, and the shell keeps today's behaviour with a line in the startup log and the lock's tooltip — never a silent difference.
+| | MXC Windows | MXC Linux | MXC macOS | Seatbelt | landstrip |
+| --- | --- | --- | --- | --- | --- |
+| write in the root | yes | yes | yes | yes | yes |
+| write `.git/config`, create a hook | refused | refused | refused | refused | refused (`denyWrite`) |
+| read and list `.git` | yes | yes | yes | yes | yes |
+| `git status` | works | works | works | works | works |
+| `git commit` | refused | refused | refused | refused | refused |
+| a read-only path **absent** when the command starts | created and written | **the command does not start** (`bwrap: Can't find source path`) | refused | refused | refused |
 
-### A `.git` that appears during the session
+Each runner is given it in its own words: MXC `readonlyPaths` (the POSIX builders no longer drop a
+read-only path under a writable one when it is held on purpose), Seatbelt a `deny file-write*` after
+the allows, landstrip `denyWrite`.
 
-A path that does not exist cannot be bound read-only. The policy is built per command, so a `.git` created by one command (`git init`) is read-only from the next. The first command, the one that creates it, is the agent's own `git init`, which writes nothing git will run later that a user did not ask for.
+### Held only where it exists
+
+The last row decides it: a `.git` named before it exists would stop every command under MXC on Linux in
+a folder that is no repository, and refuse the agent's own `git init` under macOS and landstrip. So it
+is held only when it exists, the same on every runner: the command that creates it — the agent's
+`git init` — writes it, and the next command finds it held.
+
+### Only the root's `.git`
+
+Repositories nested in the project (another `.git` below the root) are not held: the agent's commands
+may write them. pi-outpost's own git runs nothing their configuration names (GHSA-6w2r-6jpf-5ccr).
+
+### The agent's shell only
+
+A terminal is the user's own hand: its commits are not asked about.
 
 ### The commit asks
 

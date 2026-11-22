@@ -4,7 +4,7 @@
 
 ### Requirement: TheRepositoryMetadataIsReadOnlyToAConfinedCommand
 
-Under every runner that can hold it, a confined command SHALL be able to read the repository's `.git` and SHALL NOT be able to write it, unless a grant names `<root>/.git` for write. A runner that cannot hold it SHALL say so at its check, in the startup log and in the shell lock's tooltip. `sandbox.gitWritable: true` in the configuration file SHALL restore a writable `.git`.
+Where the writable root holds a `.git`, a command of the agent's confined shell SHALL be able to read it and SHALL NOT be able to write it, under every runner, unless a write grant names it or a folder holding it. A `.git` that does not exist when a command starts SHALL NOT be held for that command. `sandbox.gitWritable: true` in the configuration file SHALL leave it writable. The terminal SHALL NOT be held.
 
 #### Scenario: AConfinedCommandCannotWriteTheRepositoryConfiguration
 - **GIVEN** a project that is a git repository, and the agent's shell confined by a runner
@@ -15,6 +15,11 @@ Under every runner that can hold it, a confined command SHALL be able to read th
 - **GIVEN** the same project
 - **WHEN** the agent runs `git commit` with `run_with_grant` naming `<root>/.git` for write
 - **THEN** the user is asked, the dialog says the grant lets the command change what git runs, and once approved the commit is made
+
+#### Scenario: AMissingGitDirectoryIsNotHeld
+- **GIVEN** a writable root that is no git repository
+- **WHEN** a command runs `git init`, and another then writes `.git/config`
+- **THEN** the first runs and creates the repository, and the second's write is refused
 
 #### Scenario: TheCanarySeesAWritableGitDirectory
 - **GIVEN** a runner whose policy leaves `<root>/.git` writable while it claims to hold it read-only

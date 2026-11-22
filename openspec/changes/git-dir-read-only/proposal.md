@@ -23,7 +23,6 @@ Codex closes this at the sandbox: in its default mode `.git` (and `.codex`) are 
 
 Every runner's policy (`server/src/terminalSandbox.ts`: MXC on Windows, Linux and macOS, landstrip, Seatbelt), the canary (`confinementCanary.ts`), the grant prompt, `docs/sandboxing.md`. The agent's routine commit gains one question per session; nothing changes outside a git repository.
 
-## Open questions (answered by task 1, before any code)
+## Measured
 
-- Whether each runner can hold a read-only directory **inside** a writable one: Seatbelt's last-rule-wins and Bubblewrap's later bind should; MXC's own policy is unknown — pi-outpost's POSIX MXC code drops a read-only path under a writable one today.
-- What a runner does with a `.git` that does not exist yet (`git init` by the agent), and with one created during the session.
+Every runner holds a read-only `.git` inside the writable root when it exists (design.md has the table). Held only where it exists, as a missing one stops MXC on Linux.

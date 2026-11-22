@@ -1180,6 +1180,8 @@ export type ConfinementAttempt =
   | "agent-directory"
   | "beside-root"
   | "write-beside-root"
+  /** Inside the writable zone, the repository's `.git`, held read-only (`heldReadOnlyInside`). */
+  | "write-git-dir"
   | "signal-process"
   | "server-environment"
   | "server-process-environment"
