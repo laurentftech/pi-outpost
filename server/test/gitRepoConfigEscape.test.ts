@@ -126,7 +126,9 @@ describe("the whole path under MXC's real executor", { skip }, () => {
     await mkdir(outside, { recursive: true });
     const marker = path.join(outside, "ESCAPED");
     const script = path.join(root, "hook.sh");
-    const ops = confinedBashOperations({ runner: RUNNER!, shell: POWERSHELL, root, allowWrite: true, agentDir });
+    // .git is held read-only by default (git-dir-read-only): with sandbox.gitWritable the confined
+    // command writes it, and this shows the server still runs nothing it names.
+    const ops = confinedBashOperations({ runner: RUNNER!, shell: POWERSHELL, root, allowWrite: true, agentDir, gitWritable: true });
     let output = "";
     const written = await ops.exec(
       [
