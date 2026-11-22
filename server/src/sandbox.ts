@@ -476,6 +476,15 @@ export async function createSandboxedTools(
                 "In this sandbox WMI is unavailable (Get-CimInstance fails) and Get-Process lists only this command's processes. For the machine's free memory: Add-Type -AssemblyName Microsoft.VisualBasic; (New-Object Microsoft.VisualBasic.Devices.ComputerInfo).AvailablePhysicalMemory.",
               ]
             : []),
+          // `~` is the project (issue #549): a `~/projet.log` a document names was looked for there.
+          // Not in WSLC's container, which holds no folder of the user's.
+          ...(sandbox.bashImage === undefined
+            ? [
+                `In this shell HOME (~) is the project folder${process.platform === "win32" ? "; USERPROFILE, TEMP and LOCALAPPDATA are this command's own throwaway folders, and APPDATA is the sandbox's cache" : ""}: none is the user's. ` +
+                  `The user's own home is ${os.homedir()} (also in PI_OUTPOST_USER_HOME): a path under ~ that the user or a document names is there, outside the sandbox` +
+                  `${broker ? " — ask run_with_grant for read access to that file or folder" : ""}.`,
+              ]
+            : []),
         ]
       : [];
     tools.push({

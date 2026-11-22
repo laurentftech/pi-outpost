@@ -866,7 +866,7 @@ SYS-1, then REQ-2 carrying the link to SYS-1 and SYS-1 itself, so the rules can 
 It exits **1**: SYS-1 conforms, and REQ-2 is non-conforming — derived, it satisfies an upstream
 requirement.
 
-**What an exporter produces.** A converter such as ISAI writes, for each requirement in order:
+**What an exporter produces.** A requirements converter writes, for each requirement in order:
 
 - a heading line, `{"heading": "1. Braking", "depth": 1}`, where a chapter starts;
 - a document line: a version 2 table naming the profile (or relying on the registry's

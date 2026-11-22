@@ -178,7 +178,7 @@ export that knows nothing of conformity is simpler to specify and serves every t
 
 ### D9. The document shape an exporter produces
 
-Documented for ISAI: one document per requirement — the requirement as a subject row with its attributes, its
+Documented for the converter: one document per requirement — the requirement as a subject row with its attributes, its
 relations, and every object those relations name as a row carrying at least the attributes the rules condition,
 or as a `{ ref }` end when it cannot. A requirement's neighbours are therefore sometimes rows and sometimes
 references, and the report says which rules could not be verified.

@@ -11,7 +11,7 @@ requirements tool — in the project's language.
 Today nothing checks them, in pi-outpost or anywhere else, and a reviewer finds each violation by reading.
 The same check is wanted in two places: in the agent's loop, so an extraction or a proposal that breaks a
 rule is corrected before anyone sees it, and outside pi-outpost, over requirements exported from DOORS by a
-separate tool (ISAI) — a whole specification or an extract — with the result handed to reviewers. For now
+separate converter — a whole specification or an extract — with the result handed to reviewers. For now
 the result is a **review aid**, not certification evidence.
 
 ## What Changes
@@ -48,7 +48,7 @@ the result is a **review aid**, not certification evidence.
   profile, a table that strays from it is not written.
 
 Out of scope, each named so it is not mistaken for forgotten:
-- Converting DOORS exports. ISAI produces the documents; this change documents the shape it must produce.
+- Converting DOORS exports. The converter produces the documents; this change documents the shape it must produce.
 - Cardinality rules ("every derived requirement has at least one justification"): on an extract an absence
   proves nothing, and none of the rules described needs them.
 - Rules over requirement text (wording patterns) and rules over list or reference attributes.

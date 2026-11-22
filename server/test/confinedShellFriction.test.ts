@@ -6,8 +6,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
 import { confinedBashOperations, sqliteReadOnlyNote, withoutPowerShellDriveNoise } from "../src/confinedBash.ts";
@@ -90,6 +90,22 @@ describe("the confined shell's description", () => {
       const tools = await createSandboxedTools({ root: base, allowWrite: true, allowBash: true, readExceptions: [] });
       const shell = tools.find((tool) => tool.name === "bash" || tool.name === "powershell");
       assert.ok(!(shell?.promptGuidelines ?? []).some((line: string) => /ends with it/.test(line)));
+      assert.ok(!(shell?.promptGuidelines ?? []).some((line: string) => /PI_OUTPOST_USER_HOME/.test(line)));
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  // openlore: scenario=TheAgentIsToldHomeIsTheProject spec=sandbox-runner-bash
+  test("says HOME is the project and names the user's own home, and where a ~ path is read", async () => {
+    const base = await mkdtemp(path.join(tmpdir(), "friction-tools-"));
+    try {
+      const tools = await createSandboxedTools({ root: base, allowWrite: true, allowBash: true, bashRunner: process.platform === "win32" ? "mxc" : "/usr/bin/bwrap", readExceptions: [] } as never);
+      const shell = tools.find((tool) => tool.name === "bash" || tool.name === "powershell");
+      const guidelines = (shell?.promptGuidelines ?? []).join("\n");
+      assert.match(guidelines, /HOME \(~\) is the project folder/);
+      assert.ok(guidelines.includes(`The user's own home is ${homedir()} (also in PI_OUTPOST_USER_HOME)`), guidelines);
+      if (process.platform === "win32") assert.match(guidelines, /USERPROFILE, TEMP and LOCALAPPDATA are this command's own throwaway folders, and APPDATA is the sandbox's cache/);
     } finally {
       await rm(base, { recursive: true, force: true });
     }
@@ -121,6 +137,24 @@ describe("under MXC's real executor on Windows", { skip: process.platform !== "w
     await ops.exec(command, root, { onData: (data: Buffer) => (output += data.toString()), timeout: 120 }).catch((error: Error) => (output += `\n[${error.message}]`));
     return output;
   };
+
+  // openlore: scenario=TheUsersHomeIsNamed spec=sandbox-runner-bash
+  test("a command reads the user's home in PI_OUTPOST_USER_HOME; a file there is read with a grant on it", async () => {
+    const { base, root, agentDir } = await setUp();
+    const file = path.join(homedir(), `friction-${process.pid}-projet.log`);
+    await writeFile(file, "the user's own log\n");
+    try {
+      const read = `'USER_HOME=' + $env:PI_OUTPOST_USER_HOME; Get-Content (Join-Path $env:PI_OUTPOST_USER_HOME '${path.basename(file)}') 2>&1 | ForEach-Object { 'READ: ' + $_ }`;
+      const without = await run(root, agentDir, read);
+      assert.ok(without.includes(`USER_HOME=${process.env.USERPROFILE}`), without);
+      assert.doesNotMatch(without, /READ: the user's own log/, "no grant, no read: a path is not an access");
+      const granted = await run(root, agentDir, read, [file]);
+      assert.match(granted, /READ: the user's own log/, granted);
+    } finally {
+      await rm(file, { force: true });
+      await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  });
 
   test("the drive line, written first by the command itself, is not shown; the rest is", async () => {
     const { base, root, agentDir } = await setUp();

@@ -177,6 +177,8 @@ describe("confinedEnvironment", () => {
     );
     assert.deepEqual(env, {
       PATH: "/usr/bin", LANG: "fr_FR.UTF-8", LC_ALL: "C", TERM: "xterm-256color", SHELL: "/bin/bash", HOME: root, TMPDIR: tmp,
+      // HOME is the project: where the user's own is, a path and not an access.
+      PI_OUTPOST_USER_HOME: "/home/server",
       // npm's cache in the private temp: the profile's is out of reach.
       npm_config_cache: path.join(tmp, "npm-cache"),
       // uv's and pip's as well: never the user's own cache, which a command could leave a package in.
@@ -203,6 +205,16 @@ describe("confinedEnvironment on Windows", () => {
     assert.equal(env.USERPROFILE, "C:\\tmp\\t1");
     assert.equal(env.HOME, "C:\\work\\app");
     assert.equal(env.TEMP, "C:\\tmp\\t1");
+  });
+
+  // openlore: scenario=TheUsersHomeIsNamed spec=sandbox-runner-bash
+  test("the user's own profile is named in PI_OUTPOST_USER_HOME, USERPROFILE being the private temp", () => {
+    const env = confinedEnvironment(
+      { SystemRoot: "C:\\Windows", USERPROFILE: "C:\\Users\\server", HOME: "C:\\elsewhere" },
+      { root: "C:\\work\\app", tmp: "C:\\tmp\\t1", shell: "powershell.exe", platform: "win32" },
+    );
+    assert.equal(env.PI_OUTPOST_USER_HOME, "C:\\Users\\server", "on Windows the profile, not a HOME the server inherited");
+    assert.equal(env.USERPROFILE, "C:\\tmp\\t1");
   });
 
   // openlore: scenario=OnWindowsATemporaryFileCanBeCreated spec=sandbox-runner-bash
