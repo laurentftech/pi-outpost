@@ -41,6 +41,7 @@ export function ExtensionApprovalDialog({
   };
 
   const isPackage = question.kind === "package";
+  const isMcp = question.kind === "mcp";
   const viewable = !isPackage && question.path !== undefined && onView !== undefined;
   return (
     <section
@@ -52,7 +53,7 @@ export function ExtensionApprovalDialog({
     >
       <div className="min-h-0 overflow-y-auto overscroll-contain break-words p-4 text-sm text-zinc-700 dark:text-zinc-300">
         <h2 id={headingId} className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          {isPackage ? "This project asks pi to install a package" : "This project has an extension pi has not loaded"}
+          {isPackage ? "This project asks pi to install a package" : isMcp ? "This project asks pi to start an MCP server" : "This project has an extension pi has not loaded"}
         </h2>
         <p className="mb-2">
           <code data-testid="extension-approval-label" className="break-all rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
@@ -63,7 +64,9 @@ export function ExtensionApprovalDialog({
         <p data-testid="extension-approval-warning" className="mb-2 font-medium text-red-700 dark:text-red-400">
           {isPackage
             ? "Its extensions, and its install scripts, would run outside the sandbox, with every right of your account."
-            : "It would run outside the sandbox, with every right of your account — and so would what it imports."}
+            : isMcp
+              ? "It would run outside the sandbox, with every right of your account, and the agent could call its tools."
+              : "It would run outside the sandbox, with every right of your account — and so would what it imports."}
         </p>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
           The agent may have written it, or the project brought it. It is not loaded until you allow it, and a change to it asks

@@ -1583,7 +1583,7 @@ const makeCreateRuntime =
   const gate = await extensionGate(cwd, AGENT_DIR, approvalStoreFor(AGENT_DIR, cwd));
   for (const candidate of gate.undecided) {
     console.warn(
-      `[pi-outpost] not loaded: ${candidate.kind === "package" ? "package" : "extension"} ${candidate.label} of this project has not been allowed — ` +
+      `[pi-outpost] not loaded: ${candidate.kind === "package" ? "package" : candidate.kind === "mcp" ? "the" : "extension"} ${candidate.label} of this project has not been allowed — ` +
         "it would run outside the sandbox. Allow it in the interface.",
     );
   }
@@ -1635,7 +1635,12 @@ const makeCreateRuntime =
           ? [
               { name: "codemode", factory: createCodemodeExtension(), replaceable: true },
               { name: "tool-search", factory: createToolSearchExtension(), replaceable: true },
-              { name: "mcp", factory: createMcpExtension(), replaceable: true },
+              // The project's own MCP servers start only once allowed (`extensionApproval.ts`).
+              {
+                name: "mcp",
+                factory: createMcpExtension({ loadConfig: (ctx) => gate.loadMcpConfig({ agentDir: AGENT_DIR, cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() }) }),
+                replaceable: true,
+              },
             ]
           : []),
       ],
@@ -6654,7 +6659,7 @@ function handleClientMessage(socket: WebSocket, raw: string): void {
       break;
     }
     case "extension_decision_withdraw": {
-      if ((message.kind !== "file" && message.kind !== "package") || typeof message.key !== "string") return;
+      if ((message.kind !== "file" && message.kind !== "package" && message.kind !== "mcp") || typeof message.key !== "string") return;
       void approvalStoreFor(AGENT_DIR, workspace.root)
         .withdraw(message.kind, message.key)
         .then(async () => broadcast(workspace, { type: "extension_decisions", decisions: await extensionDecisions(workspace) }))

@@ -101,7 +101,8 @@ A pi extension is code pi loads into the server itself: it is not confined, and 
 your account. The agent may write one in the project — that is part of what pi is — and a cloned
 project may bring some. So what the project brings is loaded only once you have allowed it: the files
 under `.pi/extensions/` (a directory extension as a whole), the extensions its `.pi/settings.json`
-names, and the packages it lists, which pi would install.
+names, the packages it lists, which pi would install, and the MCP servers its `.pi/mcp.json`
+defines — a command the server would start, or a URL it would connect to.
 
 At each new session, one not allowed for its current content is left out, and the interface asks: its
 path and size, that it would run outside the sandbox, its code one click away, **Allow** or **Refuse**.

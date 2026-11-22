@@ -3097,7 +3097,7 @@ export function useAgent(serverUrl = "", explicitToken?: string, embedded = fals
     /** Ask for the project's decisions on its extensions: `extensionDecisions` holds them once answered. */
     getExtensionDecisions: () => sendMessage({ type: "extension_decisions_get" }),
     /** Withdraw a decision: that extension is asked about again. */
-    withdrawExtensionDecision: (kind: "file" | "package", key: string) => sendMessage({ type: "extension_decision_withdraw", kind, key }),
+    withdrawExtensionDecision: (kind: "file" | "package" | "mcp", key: string) => sendMessage({ type: "extension_decision_withdraw", kind, key }),
     dismissExtensionAllowed: () => dispatch({ type: "extension_allowed_seen" }),
     dismissNotification: (id: string) => dispatch({ type: "dismiss_notification", id }),
     /** List a directory's children (path is relative to the browser root; "" = root). */

@@ -110,6 +110,28 @@ describe("the project's extensions run only once allowed", () => {
     assert.equal(ran("x"), false);
   });
 
+  // openlore: scenario=AProjectMcpServerDoesNotStartUntilAllowed spec=project-extension-approval
+  test("AProjectMcpServerDoesNotStartUntilAllowed: a server the project's mcp.json defines is left out of pi's MCP configuration until allowed, and a change asks again", async () => {
+    await writeFile(
+      path.join(root, ".pi", "mcp.json"),
+      JSON.stringify({ mcpServers: { planted: { command: "node", args: ["-e", "1"] }, other: { url: "https://example.invalid/mcp" } } }),
+    );
+    const approvals = store();
+    const gate = await extensionGate(root, agentDir, approvals);
+    const mcp = gate.undecided.filter((candidate) => candidate.kind === "mcp");
+    assert.deepEqual(mcp.map((candidate) => candidate.label).sort(), ['MCP server "other": https://example.invalid/mcp', 'MCP server "planted": node -e 1']);
+    const servers = (g: typeof gate) => g.loadMcpConfig({ agentDir, cwd: root, projectTrusted: true }).servers.map((entry) => entry.name).sort();
+    assert.deepEqual(servers(gate), [], "neither is given to pi");
+    await approvals.decide(mcp.find((candidate) => candidate.key === "planted")!, "allow");
+    const next = await extensionGate(root, agentDir, approvals);
+    assert.deepEqual(servers(next), ["planted"], "the allowed one only");
+    // Changed after it was allowed: its command is not what was allowed.
+    await writeFile(path.join(root, ".pi", "mcp.json"), JSON.stringify({ mcpServers: { planted: { command: "node", args: ["-e", "2"] } } }));
+    assert.deepEqual(servers(next), [], "a changed server is out, even through a gate built before the change");
+    const after = await extensionGate(root, agentDir, approvals);
+    assert.deepEqual(after.undecided.filter((candidate) => candidate.kind === "mcp").map((candidate) => candidate.label), ['MCP server "planted": node -e 2'], "asked again");
+  });
+
   test("decisions live under the agent directory, for this project only", async () => {
     const approvals = store();
     assert.ok(approvals.file.startsWith(path.join(agentDir, "pi-outpost")), approvals.file);
