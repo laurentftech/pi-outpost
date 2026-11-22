@@ -7,6 +7,52 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.64.0] - 2026-11-22
+
+### Added
+
+- **A project's extensions, packages and MCP servers run only once you allow them.** An extension
+  is code that runs in pi-outpost itself, outside the sandbox; the agent may write one, and a cloned
+  project may bring some. Each one the project brings — `.pi/extensions`, what `.pi/settings.json`
+  names, the MCP servers of `.pi/mcp.json` — is asked about once: its path, its code one click away,
+  Allow or Refuse. A change to it asks again; Settings → Extensions lists what you decided. Those a
+  project already has ask once after this update. Your own extensions (`~/.pi/agent`) and a package
+  you install from Settings are not asked about.
+  ([#539](https://github.com/laurentftech/pi-outpost/pull/539), [#541](https://github.com/laurentftech/pi-outpost/pull/541))
+- **On Windows under MXC: Python's asyncio, and the common toolchains.** pytest-asyncio, uv, npm,
+  pip, Cargo and the tools installed for your account run in the agent's confined shell, with a
+  sandbox cache of their own.
+  ([#524](https://github.com/laurentftech/pi-outpost/pull/524), [#528](https://github.com/laurentftech/pi-outpost/pull/528), [#529](https://github.com/laurentftech/pi-outpost/pull/529))
+- **A machine that cannot confine says so, once, with what to do.** A Windows without the update
+  MXC needs (or before 24H2) shows a dialog naming the build, the update, and the way round:
+  **`pi-outpost config --unconfine`**, which sets `"sandbox.bashRunner": "none"` and says what that
+  costs. The padlock reads "Windows update needed" and opens it again.
+  ([#534](https://github.com/laurentftech/pi-outpost/pull/534), [#537](https://github.com/laurentftech/pi-outpost/pull/537))
+
+### Changed
+
+- **The repository's `.git` is read-only to the agent's confined commands.** Reading it, `git status`,
+  `diff` and `log` work; a commit asks for a grant on `.git` — "for this session" covers a session's
+  commits. `"sandbox.gitWritable": true` leaves it writable.
+  ([#543](https://github.com/laurentftech/pi-outpost/pull/543))
+- **The server always asks for its token.** Without `server.token` it makes one, kept in the agent
+  directory; the printed address carries it. Opened without it, a browser shows the token screen once.
+  ([#528](https://github.com/laurentftech/pi-outpost/pull/528))
+- **The sandbox speaks only when it refused something.** A failed command no longer ends with a note
+  about the sandbox; a PowerShell command that does not parse says so, Python's messages arrive
+  intact, a command given no timeout stops after five minutes, and a refused grant is not asked again
+  in the same turn. ([#532](https://github.com/laurentftech/pi-outpost/pull/532))
+- **pi 1.6.0.** GPT-6.2 Sol becomes the default model of the OpenAI providers; the find tool's path
+  patterns are relative to the folder searched. ([#538](https://github.com/laurentftech/pi-outpost/pull/538))
+
+### Fixed
+
+- **A repository's configuration runs nothing in pi-outpost** (GHSA-6w2r-6jpf-5ccr, low): the git
+  behind the Files badges and the history no longer runs commands a repository's configuration names.
+  ([#543](https://github.com/laurentftech/pi-outpost/pull/543))
+- **PDFs stay within the model's image limit**, and the extraction budget follows the pages asked for.
+  ([#530](https://github.com/laurentftech/pi-outpost/pull/530))
+
 ## [0.63.3] - 2026-11-19
 
 ### Changed
