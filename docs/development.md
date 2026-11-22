@@ -461,17 +461,25 @@ by hand, on `main`.
    versions. Dependency changes may update lock metadata; review them with the
    install-script policy rather than regenerating with a different npm major.
 
-6. **Commit and push to `main`:**
+6. **Commit on a branch and merge it through a pull request.** `main` refuses a direct push
+   (the repository's rules), so the release commit goes through a PR like any other:
 
    ```bash
+   git switch -c release/vX.Y.Z
    git add CHANGELOG.md cli/package.json embed/package.json package-lock.json
    git commit -m "chore(release): vX.Y.Z"
-   git push origin main
+   git push -u origin release/vX.Y.Z
+   gh pr create --base main --title "chore(release): vX.Y.Z" --body "…"
    ```
 
-7. **Tag that commit and push the tag:**
+   Merge it once its CI is green. **Tag nothing before the merge:** a tag pushed first starts the
+   release workflow on a commit `main` does not hold.
+
+7. **Tag the merged `main` and push the tag:**
 
    ```bash
+   git switch main && git pull --ff-only
+   git log -1 --format=%s   # the merge of the release PR
    git tag -a vX.Y.Z -m "vX.Y.Z"
    git push origin vX.Y.Z
    ```
