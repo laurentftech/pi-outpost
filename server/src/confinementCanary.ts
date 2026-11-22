@@ -32,6 +32,8 @@ export interface CanaryBait {
   agentMarker?: string;
   /** A private directory outside the root, holding `marker`: reading it and writing in it must fail. */
   besideDir?: string;
+  /** A file the command must fail to create inside a directory held read-only (the repository's `.git`). */
+  heldTarget?: string;
   envName: string;
   envValue: string;
   /** A throwaway process of the server's user: signalling it must fail. */
@@ -45,6 +47,8 @@ export interface BaitOptions {
   /** Real paths: what the command may read, and where it may write. */
   root: string;
   writableRoot?: string;
+  /** Inside the writable zone, what the command may not write: one is tried, with a file of the canary's own. */
+  heldReadOnly?: readonly string[];
 }
 
 export async function prepareBait(options: BaitOptions): Promise<CanaryBait> {
@@ -71,6 +75,8 @@ export async function prepareBait(options: BaitOptions): Promise<CanaryBait> {
     await rm(besideDir, { recursive: true, force: true });
     besideDir = undefined;
   }
+  // Never the repository's own files: a name of the canary's, removed whatever happens.
+  const heldTarget = options.heldReadOnly?.[0] ? path.join(options.heldReadOnly[0], `.pi-outpost-canary-${id}`) : undefined;
   const victim = spawn(...victimCommand(), { stdio: "ignore", windowsHide: true });
   const envName = `PI_OUTPOST_CANARY_${id.toUpperCase()}`;
   const envValue = `canary-${id}`;
@@ -79,6 +85,7 @@ export async function prepareBait(options: BaitOptions): Promise<CanaryBait> {
     id,
     ...(agentMarker ? { agentMarker } : {}),
     ...(besideDir ? { besideDir } : {}),
+    ...(heldTarget ? { heldTarget } : {}),
     envName,
     envValue,
     victim,
@@ -88,6 +95,7 @@ export async function prepareBait(options: BaitOptions): Promise<CanaryBait> {
       victim.kill("SIGKILL");
       if (agentMarker) await rm(agentMarker, { force: true });
       if (besideDir) await rm(besideDir, { recursive: true, force: true });
+      if (heldTarget) await rm(heldTarget, { force: true });
     },
   };
 }
@@ -123,6 +131,7 @@ function posixCanary(bait: CanaryBait, options: ScriptOptions): string {
     lines.push(`cat ${quoteSh(path.join(bait.besideDir, "marker"))} >/dev/null 2>&1; r beside-root $?`);
     lines.push(`(echo x > ${quoteSh(path.join(bait.besideDir, "written"))}) 2>/dev/null; r write-beside-root $?`);
   }
+  if (bait.heldTarget) lines.push(`(echo x > ${quoteSh(bait.heldTarget)}) 2>/dev/null; r write-git-dir $?`);
   if (bait.victim?.pid) lines.push(`kill -TERM ${bait.victim.pid} 2>/dev/null; r signal-process $?`);
   // Its own environment must never carry the server's; where there is a /proc, the server's own
   // environment must not be readable either (landstrip on Linux lets it be: judged by its content).
@@ -149,6 +158,7 @@ function powerShellCanary(bait: CanaryBait, options: ScriptOptions): string {
     lines.push(report("beside-root", reads(path.join(bait.besideDir, "marker"))));
     lines.push(report("write-beside-root", `try { [IO.File]::WriteAllText(${quotePs(path.join(bait.besideDir, "written"))}, 'x'); $true } catch { $false }`));
   }
+  if (bait.heldTarget) lines.push(report("write-git-dir", `try { [IO.File]::WriteAllText(${quotePs(bait.heldTarget)}, 'x'); $true } catch { $false }`));
   if (bait.victim?.pid) lines.push(report("signal-process", `try { [System.Diagnostics.Process]::GetProcessById(${bait.victim.pid}).Kill(); $true } catch { $false }`));
   lines.push(report("server-environment", `[bool][Environment]::GetEnvironmentVariable(${quotePs(bait.envName)})`));
   if (options.proxied) {
@@ -166,6 +176,7 @@ export function expectedAttempts(bait: CanaryBait, options: Pick<ScriptOptions, 
   return [
     ...(bait.agentMarker ? (["agent-directory"] as const) : []),
     ...(bait.besideDir ? (["beside-root", "write-beside-root"] as const) : []),
+    ...(bait.heldTarget ? (["write-git-dir"] as const) : []),
     ...(bait.victim?.pid ? (["signal-process"] as const) : []),
     "server-environment",
     ...(options.powerShell ? [] : (["server-process-environment"] as const)),
@@ -180,7 +191,7 @@ export function expectedAttempts(bait: CanaryBait, options: Pick<ScriptOptions, 
 export function readCanary(
   output: string,
   expected: readonly ConfinementAttempt[],
-  host: { wroteBeside?: boolean; victimAlive?: boolean; serverSecrets?: readonly string[] },
+  host: { wroteBeside?: boolean; wroteHeld?: boolean; victimAlive?: boolean; serverSecrets?: readonly string[] },
   base: { runner: string; checkedAt: string; notChecked: CanaryBait["notChecked"] },
 ): ConfinementVerdict {
   const said = new Map<string, string>();
@@ -194,6 +205,7 @@ export function readCanary(
   for (const attempt of expected) {
     let outcome = said.get(attempt);
     if (attempt === "write-beside-root" && host.wroteBeside !== undefined) outcome = host.wroteBeside ? "reached" : "refused";
+    if (attempt === "write-git-dir" && host.wroteHeld !== undefined) outcome = host.wroteHeld ? "reached" : "refused";
     if (attempt === "signal-process" && host.victimAlive !== undefined) outcome = host.victimAlive ? "refused" : "reached";
     if (outcome === undefined) {
       const tail = output.trim().split(/\r?\n/).slice(-3).join(" ").slice(0, 300);
@@ -288,11 +300,12 @@ export async function runCanary(run: CanaryRun): Promise<ConfinementVerdict> {
     const options = { powerShell: run.powerShell, proxied: run.proxied, serverPid: process.pid };
     const output = await run.exec(canaryScript(bait, options));
     const wroteBeside = bait.besideDir ? existsSync(path.join(bait.besideDir, "written")) : undefined;
+    const wroteHeld = bait.heldTarget ? existsSync(bait.heldTarget) : undefined;
     // A signal takes a moment to land.
     await new Promise((resolve) => setTimeout(resolve, 100));
     const victimAlive = bait.victim ? bait.victim.exitCode === null && bait.victim.signalCode === null : undefined;
     const serverSecrets = secretVariables(await serverEnvironment());
-    return readCanary(output, expectedAttempts(bait, options), { wroteBeside, victimAlive, serverSecrets }, { runner: run.runner, checkedAt, notChecked: bait.notChecked });
+    return readCanary(output, expectedAttempts(bait, options), { wroteBeside, wroteHeld, victimAlive, serverSecrets }, { runner: run.runner, checkedAt, notChecked: bait.notChecked });
   } catch (error) {
     const remedy = remedyOf(error);
     return { state: "failed", runner: run.runner, checkedAt, reason: reasonOf(error), ...(remedy ? { remedy } : {}) };

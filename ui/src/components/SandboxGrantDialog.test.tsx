@@ -27,6 +27,24 @@ describe("the grant dialog", () => {
     expect(screen.queryByTestId("sandbox-grant-overrides")).toBeNull();
   });
 
+  // openlore: scenario=ACommitAsksForAGrant spec=sandbox-approved-grants
+  it("a write grant on the repository's .git says what it lets a command change — not for a read, nor elsewhere", () => {
+    const { unmount } = render(
+      <SandboxGrantDialog request={request({ command: "git commit -m x", grant: { hosts: [], directories: [{ path: "/work/app/.git", access: "write" }] } })} onRespond={() => {}} />,
+    );
+    expect(screen.getByTestId("sandbox-grant-git").textContent).toContain("can change what git runs");
+    expect(screen.getByTestId("sandbox-grant-git").textContent).toContain("for this session is enough");
+    unmount();
+    const { unmount: second } = render(<SandboxGrantDialog request={request({ grant: { hosts: [], directories: [{ path: "C:\\work\\app\\.git\\hooks", access: "write" }] } })} onRespond={() => {}} />);
+    expect(screen.getByTestId("sandbox-grant-git")).toBeTruthy();
+    second();
+    const { unmount: third } = render(<SandboxGrantDialog request={request({ grant: { hosts: [], directories: [{ path: "/work/app/.git", access: "read" }] } })} onRespond={() => {}} />);
+    expect(screen.queryByTestId("sandbox-grant-git")).toBeNull();
+    third();
+    render(<SandboxGrantDialog request={request({ grant: { hosts: [], directories: [{ path: "/work/app/.github", access: "write" }] } })} onRespond={() => {}} />);
+    expect(screen.queryByTestId("sandbox-grant-git")).toBeNull();
+  });
+
   it("a connection waiting on the answer says so: the running command, the host, and that the agent did not ask", () => {
     const onRespond = vi.fn();
     render(

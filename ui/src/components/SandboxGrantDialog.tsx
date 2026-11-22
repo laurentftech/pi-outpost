@@ -74,6 +74,13 @@ export function SandboxGrantDialog({ request, onRespond }: SandboxGrantDialogPro
           ))}
         </ul>
 
+        {directories.some((directory) => directory.access === "write" && /[\\/]\.git([\\/]|$)/.test(directory.path)) && (
+          <p data-testid="sandbox-grant-git" className="mb-3 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+            This is the repository's <code className="font-mono">.git</code>: a command allowed to write it can change what git runs — its
+            hooks and configuration — for you too, later, outside the sandbox. A commit needs it; for this session is enough.
+          </p>
+        )}
+
         {request.overridesReadOnly && (
           <p data-testid="sandbox-grant-overrides" className="mb-3 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
             Writing is off in this project's sandbox: allowing this lets the command write there anyway.

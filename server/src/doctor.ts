@@ -407,6 +407,7 @@ const ATTEMPT_LABELS: Record<ConfinementAttempt, string> = {
   "agent-directory": "read the agent directory (the provider keys)",
   "beside-root": "read a file beside the root",
   "write-beside-root": "write beside the root",
+  "write-git-dir": "write the repository's .git",
   "signal-process": "signal another process of the server's user",
   "server-environment": "inherit the server's environment",
   "server-process-environment": "read the server's process environment (/proc)",

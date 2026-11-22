@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { isAllowedHostPattern } from "./egressProxy.ts";
 import { isWithin, realResolve } from "./sandbox.ts";
-import { runnerKind } from "./terminalSandbox.ts";
+import { heldReadOnlyInside, runnerKind } from "./terminalSandbox.ts";
 
 export type GrantAccess = "read" | "write";
 export type GrantScope = "once" | "session";
@@ -46,6 +46,8 @@ export interface GrantContext {
   home?: string;
   /** Bash runs in a WSLC container (`sandbox.bashImage`), whose mounts are fixed when it starts. */
   wslc?: boolean;
+  /** `sandbox.gitWritable`: the repository's `.git` is writable like the rest of the zone. */
+  gitWritable?: boolean;
   /** Whose filesystem: Windows compares names whatever their case. Default: this host's. */
   platform?: NodeJS.Platform;
 }
@@ -166,11 +168,16 @@ export async function checkGrantRequest(
   }
   const root = await realResolve(context.root);
   const writable = context.allowWrite ? await realResolve(context.writableRoot ?? context.root) : undefined;
+  // Inside the writable zone, what a command may not write without a grant: the repository's metadata.
+  const held = writable === undefined || context.wslc ? [] : heldReadOnlyInside(writable, { gitWritable: context.gitWritable });
   const directories: GrantedDirectory[] = [];
   for (const asked of request.directories ?? []) {
     // A relative path means the root's, as the agent's shell starts there.
     const resolved = await realResolve(path.resolve(root, asked.path));
-    const given = asked.access === "write" ? writable !== undefined && isWithin(writable, resolved) : isWithin(root, resolved);
+    const given =
+      asked.access === "write"
+        ? writable !== undefined && isWithin(writable, resolved) && !held.some((dir) => isWithin(dir, resolved))
+        : isWithin(root, resolved);
     // A target the agent should leave alone is still named, given or not: a `.pi` inside the root is
     // kept from the file tools only, and the answer is what tells the agent so.
     const why = await forbiddenDirectory(resolved, context, given);

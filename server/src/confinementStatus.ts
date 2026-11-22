@@ -27,6 +27,7 @@ import {
   terminalPolicy,
   userGitConfig,
   windowsToolchains,
+  heldReadOnlyInside,
 } from "./terminalSandbox.ts";
 
 /**
@@ -107,6 +108,8 @@ export async function agentShellVerdict(sandbox: SandboxConfig, neverReadable: {
       agentDir: neverReadable.agentDir,
       root: options.root,
       ...(options.writableRoot ? { writableRoot: options.writableRoot } : {}),
+      // The agent's shell only: what it may read but not write inside its zone, tried like the rest.
+      heldReadOnly: options.allowWrite ? heldReadOnlyInside(options.writableRoot ?? options.root, { gitWritable: options.gitWritable }) : [],
       powerShell: isPowerShell(sandbox.bashShell),
       proxied: sandbox.allowedHosts !== undefined,
       exec: async (command) => {
@@ -213,6 +216,7 @@ const ATTEMPT_WORDS: Record<string, string> = {
   "agent-directory": "read the agent directory (the provider keys)",
   "beside-root": "read a file beside the root",
   "write-beside-root": "write beside the root",
+  "write-git-dir": "write the repository's .git",
   "signal-process": "signal another process of the server's user",
   "server-environment": "inherit the server's environment",
   "server-process-environment": "read the server's process environment",

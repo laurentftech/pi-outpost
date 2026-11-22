@@ -285,7 +285,7 @@ export class Workspace {
   setExtensionQuestions(candidates: readonly ExtensionCandidate[]): void {
     const next = new Map<string, { question: ProjectExtensionQuestion; candidate: ExtensionCandidate }>();
     for (const candidate of candidates) {
-      const id = createHash("sha256").update(`${candidate.kind} ${candidate.key} ${candidate.hash}`).digest("hex").slice(0, 24);
+      const id = createHash("sha256").update(`${candidate.kind}\0${candidate.key}\0${candidate.hash}`).digest("hex").slice(0, 24);
       const question: ProjectExtensionQuestion = {
         id,
         kind: candidate.kind,
@@ -349,6 +349,7 @@ export class Workspace {
       ...(sandbox?.writableRoot ? { writableRoot: sandbox.writableRoot } : {}),
       ...this.options.limits.neverReadable,
       wslc: sandbox?.bashImage !== undefined,
+      ...(sandbox?.gitWritable ? { gitWritable: true } : {}),
     };
   }
 

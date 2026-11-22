@@ -113,6 +113,12 @@ export interface SandboxConfig {
    */
   hostLoopback?: boolean;
   /**
+   * The repository's `.git` writable to a command, as the rest of the zone. Absent or false: read-only
+   * where it exists — its configuration and hooks name commands git runs, for the user too — and a
+   * command that writes it (`git commit`) asks with `run_with_grant`. The file only, never Settings.
+   */
+  gitWritable?: boolean;
+  /**
    * MXC's process container on Windows: where confined commands' tools keep their downloads (Cargo,
    * Gradle, Go, Maven, NuGet, bun, npm, uv, pip) — writable by them, read by nothing unconfined.
    * Absent: `%LOCALAPPDATA%pi-outpostsandbox-cache` (see `windowsToolchains`).
@@ -1099,6 +1105,8 @@ export function loadConfig(
     }
     const hostLoopback = sandbox.hostLoopback;
     if (hostLoopback !== undefined && typeof hostLoopback !== "boolean") fail(`"sandbox.hostLoopback" must be true or false`);
+    const gitWritable = sandbox.gitWritable;
+    if (gitWritable !== undefined && typeof gitWritable !== "boolean") fail(`"sandbox.gitWritable" must be true or false`);
     const allowedHosts = optionalStringArray(sandbox, "allowedHosts");
     if (allowedHosts !== undefined) {
       // MXC's process container, Seatbelt, or landstrip on Linux (its seccomp supervisor) closes
@@ -1206,6 +1214,7 @@ export function loadConfig(
       ...(bashImage === undefined ? {} : { bashImage }),
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
       ...(hostLoopback === undefined ? {} : { hostLoopback }),
+      ...(gitWritable === true ? { gitWritable } : {}),
       ...(resolvedCacheDir === undefined ? {} : { cacheDir: resolvedCacheDir }),
       ...(toolEnvironment === undefined ? {} : { toolEnvironment }),
       ...(grants === undefined ? {} : { grants: grants as SandboxGrantsMode }),

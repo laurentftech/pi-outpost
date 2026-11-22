@@ -323,9 +323,33 @@ function lastJsonLine(text: string): Record<string, unknown> | undefined {
   return undefined;
 }
 
+/**
+ * Inside the writable zone, what the agent's commands may read but not write: the repository's
+ * metadata (`.git`), whose configuration and hooks name commands git runs — for the user too, later,
+ * outside any sandbox. Held only when it exists: Bubblewrap will not start on a missing read-only
+ * path, and the command that creates it is the agent's own `git init` (measured on every runner).
+ * `sandbox.gitWritable` leaves it writable; a write grant on it, for its command or the session, too.
+ */
+export function heldReadOnlyInside(
+  writable: string | undefined,
+  options: { gitWritable?: boolean; grantedWrite?: readonly string[]; exists?: (p: string) => boolean } = {},
+): string[] {
+  if (writable === undefined || options.gitWritable) return [];
+  const git = path.join(writable, ".git");
+  if (!(options.exists ?? existsSync)(git)) return [];
+  // This host's paths, case aside on Windows: a grant on .git, or on a folder holding it, opens it.
+  const norm = (p: string) => (process.platform === "win32" ? path.resolve(p).toLowerCase() : path.resolve(p));
+  const within = (child: string, parent: string) => {
+    const rel = path.relative(norm(parent), norm(child));
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  };
+  const granted = (options.grantedWrite ?? []).some((p) => within(git, p));
+  return granted ? [] : [git];
+}
+
 /** landstrip's native policy, as much of it as a terminal uses. */
 export interface TerminalPolicy {
-  filesystem: { denyRead: string[]; allowRead: string[]; allowWrite: string[] };
+  filesystem: { denyRead: string[]; allowRead: string[]; allowWrite: string[]; denyWrite?: string[] };
   /**
    * Open, or — under `sandbox.allowedHosts` — closed but for the proxy's port: landstrip then
    * permits loopback TCP to that port alone, by its number on any loopback address (the proxy
@@ -353,6 +377,11 @@ export interface TerminalPolicyInput {
   searchPath?: string;
   /** Single files readable besides the trees: the user's git configuration (see `userGitConfig`). */
   readOnlyFiles?: string[];
+  /**
+   * Inside the writable zone, what stays read-only: the repository's metadata (`heldReadOnlyInside`).
+   * The agent's shell only — a terminal is the user's own hand.
+   */
+  readOnlyInside?: string[];
   /** Whose rules: defaults to this host's. A parameter so both are tested everywhere. */
   platform?: NodeJS.Platform;
   /** Windows' system directory (`%SystemRoot%`), readable by every shell. */
@@ -400,6 +429,7 @@ export function terminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
       denyRead: unique(denyRead),
       allowRead: unique([...SYSTEM_READ, ...toolTrees(input.searchPath, path.posix), input.root, input.tmp, ...(input.readOnlyFiles ?? []), ...granted(input)]),
       allowWrite: unique([...writable, ...(input.grantedWrite ?? []), input.tmp, "/dev/null", "/dev/tty", "/dev/pts"]),
+      ...(input.readOnlyInside?.length ? { denyWrite: unique(input.readOnlyInside) } : {}),
     },
     network: input.networkProxy === undefined ? { allowNetwork: true } : { allowNetwork: false, allowLocalBinding: false, httpProxyPort: proxyPort(input.networkProxy) },
   };
@@ -451,6 +481,7 @@ function windowsTerminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
       denyRead: unique(denyRead),
       allowRead: unique(allowRead),
       allowWrite: unique([...writable, ...(input.grantedWrite ?? []), input.tmp].map(slash)),
+      ...(input.readOnlyInside?.length ? { denyWrite: unique(input.readOnlyInside.map(slash)) } : {}),
     },
     network: { allowNetwork: true },
     windows: { appContainerMode: "standard" },
@@ -560,6 +591,11 @@ export interface MxcTerminalInput {
   siblings: string[];
   /** Single files readable besides the trees: the user's git configuration. */
   readOnlyFiles?: string[];
+  /**
+   * Inside the writable zone, what stays read-only: the repository's metadata (`heldReadOnlyInside`).
+   * The agent's shell only — a terminal is the user's own hand.
+   */
+  readOnlyInside?: string[];
   /** `sandbox.allowedHosts`' proxy: the network closed but for it. The agent's shell only. */
   networkProxy?: string;
   /**
@@ -900,7 +936,7 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     ...readableSearchEntries(input.searchPath, { home: input.home, agentDir: input.agentDir, configFile: input.configFile }),
     ...toolInstallations(input, input.toolReader),
   ];
-  const readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? [])].filter((p) => !readwritePaths.includes(p)));
+  const readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? []), ...(input.readOnlyInside ?? [])].filter((p) => !readwritePaths.includes(p)));
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const deniedPaths = unique([...input.siblings, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
@@ -967,6 +1003,11 @@ export interface MxcLinuxInput {
   searchPath?: string;
   /** Single files readable besides the trees: the user's git configuration. */
   readOnlyFiles?: string[];
+  /**
+   * Inside the writable zone, what stays read-only: the repository's metadata (`heldReadOnlyInside`).
+   * The agent's shell only — a terminal is the user's own hand.
+   */
+  readOnlyInside?: string[];
   /** `sandbox.allowedHosts`' proxy: the network closed but for it. The agent's shell only. */
   networkProxy?: string;
   /** Which paths exist: only those are mounted. A parameter for tests. */
@@ -1006,7 +1047,10 @@ export function mxcLinuxConfig(input: MxcLinuxInput): MxcLinuxConfig {
     input.root,
     ...(input.readOnlyFiles ?? []),
     ...(input.grantedRead ?? []),
-  ]).filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)));
+  ])
+    .filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)))
+    // Inside the writable zone, held read-only on purpose: Bubblewrap's later read-only bind wins (measured).
+    .concat(input.readOnlyInside ?? []);
   const deniedPaths = unique([input.agentDir, input.configFile].filter((p): p is string => Boolean(p)));
   return {
     version: "1.0.0",
@@ -1100,7 +1144,10 @@ export function mxcMacConfig(input: MxcMacInput): MxcMacConfig {
       ...(input.readOnlyFiles ?? []),
       ...(input.grantedRead ?? []),
     ].map(real),
-  ).filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)));
+  )
+    .filter((p) => !readwritePaths.includes(p) && !readwritePaths.some((rw) => isUnder(p, rw)))
+    // Inside the writable zone, held read-only on purpose: MXC's profile holds it (measured).
+    .concat((input.readOnlyInside ?? []).map(real));
   const deniedPaths = unique([input.agentDir, input.configFile].filter((p): p is string => Boolean(p)).map(real));
   return {
     version: "1.0.0",
@@ -1198,6 +1245,8 @@ export function seatbeltPolicy(input: MxcMacInput): SeatbeltPolicy {
     '(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))',
     ...(request.filesystem.readonlyPaths.length ? ["(allow file-read*", subpaths(byDepth(request.filesystem.readonlyPaths)) + ")"] : []),
     ...byDepth(request.filesystem.readwritePaths).map((p) => `(allow file-read* file-write* (subpath ${sbplString(p)}))`),
+    // Inside the writable zone, held read-only: denied after the allows, as the last matching rule wins.
+    ...(input.readOnlyInside ?? []).map((p) => `(deny file-write* (subpath ${sbplString(realPath(p))}))`),
     ...(port
       ? [`(allow network-outbound (remote ip ${sbplString(`localhost:${port}`)}))`]
       : ["(allow network-outbound)", "(allow network-bind (local ip))", "(allow system-socket)", '(deny network-outbound (remote ip "localhost:*"))']),

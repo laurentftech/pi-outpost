@@ -43,6 +43,7 @@ import {
   type WindowsToolchains,
   msysNote,
   msysProgramNamed,
+  heldReadOnlyInside,
 } from "./terminalSandbox.ts";
 
 export interface ConfinedBashOptions {
@@ -135,6 +136,11 @@ export interface ConfinedBashOptions {
    * refuse answers at once, always allow lets it through. Absent: no rules.
    */
   hostRule?: (host: string) => Promise<"allow" | "refuse" | undefined>;
+  /**
+   * `sandbox.gitWritable`: the repository's `.git` stays writable to a command. Default: held
+   * read-only where it exists (`heldReadOnlyInside`), a write grant on it opening it for its command.
+   */
+  gitWritable?: boolean;
 }
 
 type ExecOptions = Parameters<BashOperations["exec"]>[2];
@@ -484,6 +490,10 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
       throw new Error("a directory grant cannot reach bash in a WSLC container: its mounts are fixed when it starts");
     }
     const directories = grantedDirectories(grant);
+    // The repository's metadata: read-only inside the writable zone, unless granted or configured so.
+    const readOnlyInside = options.allowWrite
+      ? heldReadOnlyInside(options.writableRoot ?? options.root, { gitWritable: options.gitWritable, grantedWrite: directories.grantedWrite })
+      : [];
     // The sandbox cache and the toolchain homes: part of the sandbox, a diagnosis' too.
     const toolchains = kind === "mxc" && windows && !wslc && !isPosixMxc(options.runner) ? options.toolchains : undefined;
     if (toolchains) {
@@ -566,6 +576,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           env,
           searchPath: env.PATH,
           readOnlyFiles,
+          readOnlyInside,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
         });
         const profileFile = path.join(tmp, "policy.sb");
@@ -599,6 +610,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           env,
           searchPath: env.PATH,
           readOnlyFiles,
+          readOnlyInside,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
         });
         if (mxcRunsInProcess(platform)) {
@@ -636,6 +648,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           searchPath: env.PATH,
           ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
           readOnlyFiles,
+          readOnlyInside,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
           ...(options.hostLoopback === undefined ? {} : { hostLoopback: options.hostLoopback }),
         });
@@ -658,6 +671,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           systemRoot: process.env.SystemRoot,
           userProfile: process.env.USERPROFILE,
           readOnlyFiles,
+          readOnlyInside,
           platform,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
         });

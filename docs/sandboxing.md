@@ -121,9 +121,12 @@ Under a runner, a command (or a terminal) may:
 | --- | --- |
 | Read | The sandbox root, the system directories, the tools on the `PATH`, a private temporary directory, and the directories you list in `sandbox.readOnlyPaths` ([below](#tools-installed-for-you-sandboxreadonlypaths)). |
 | Write | The writable zone and the private temporary directory. Nothing with `allowWrite: false`. |
+| Not write | The repository's `.git` at the root of the writable zone, when it exists: its configuration and hooks name commands git runs, for you too, later. Reading it, `git status`, `git diff` and `git log` work; a commit asks for a grant on it ([below](#grants-beyond-the-sandbox-when-you-say-so)), and "for this session" covers a session's commits. A repository nested deeper in the project is not held. `sandbox.gitWritable: true` leaves it writable. The terminal is not held. |
 | Never | The agent directory (`auth.json`, the keys) and the configuration file. |
 | Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's, uv's and pip's caches in the temporary directory (`npm_config_cache`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`: never your own cache made writable, where a package left by a command would later run unconfined), the shell's history there too (`HISTFILE`, and `ZDOTDIR` for zsh) so none is left in your project, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity — with the global ignore and attributes files it names in `core.excludesFile` and `core.attributesFile`, read-only too); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory. None of the server's other variables, so no provider key. |
 | Signal | No process outside the sandbox. |
+
+The repository's `.git/config` names commands git runs (`core.fsmonitor`, filters, diff drivers). The agent's commands cannot write it by default (the *Not write* row above). And whatever is written there — with `sandbox.gitWritable`, a grant, or in a repository nested deeper — the git pi-outpost itself runs, unconfined, for the Files badges and the history, overrides every such key: nothing written there runs in the server. Your own tools still read that file: an editor's git integration or a prompt that shows git status would run what it names.
 
 Output, exit status, timeout and cancellation behave as for an unconfined `bash`, with one difference: a
 command given no timeout is stopped after 300 seconds, its output ending with a sentence that says so —
