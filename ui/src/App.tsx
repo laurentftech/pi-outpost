@@ -1158,7 +1158,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
   // Keep the existing question-before-grant ordering, with both beside the timeline.
   const grant = question ? undefined : state.sandboxGrants?.pending[0];
   // A project extension waiting for the user's say: after any question or grant, which hold a turn.
-  const extensionQuestion = question || grant ? undefined : state.extensionQuestions[0];
+  const extensionQuestion = question || grant ? undefined : state.extensionQuestions?.[0];
 
   const viewerAgentStatus = agentStatus(state.items, state.isStreaming, question ? "question" : grant ? "grant" : null);
   /** Look at the conversation from the overlay: the latest of it, with the file kept as it was. */
@@ -1928,7 +1928,7 @@ const App = forwardRef<AppHandle, AppProps>(function App({ serverUrl = "", rootE
                   <ExtensionApprovalDialog
                     key={extensionQuestion.id}
                     question={extensionQuestion}
-                    remaining={state.extensionQuestions.length - 1}
+                    remaining={(state.extensionQuestions?.length ?? 1) - 1}
                     onAnswer={answerExtensionQuestion}
                     onView={(path) => readFile(path)}
                   />
