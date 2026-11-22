@@ -325,7 +325,7 @@ function lastJsonLine(text: string): Record<string, unknown> | undefined {
 
 /** landstrip's native policy, as much of it as a terminal uses. */
 export interface TerminalPolicy {
-  filesystem: { denyRead: string[]; allowRead: string[]; allowWrite: string[] };
+  filesystem: { denyRead: string[]; allowRead: string[]; allowWrite: string[]; denyWrite?: string[] };
   /**
    * Open, or — under `sandbox.allowedHosts` — closed but for the proxy's port: landstrip then
    * permits loopback TCP to that port alone, by its number on any loopback address (the proxy
@@ -400,6 +400,8 @@ export function terminalPolicy(input: TerminalPolicyInput): TerminalPolicy {
       denyRead: unique(denyRead),
       allowRead: unique([...SYSTEM_READ, ...toolTrees(input.searchPath, path.posix), input.root, input.tmp, ...(input.readOnlyFiles ?? []), ...granted(input)]),
       allowWrite: unique([...writable, ...(input.grantedWrite ?? []), input.tmp, "/dev/null", "/dev/tty", "/dev/pts"]),
+      // PROBE: a read-only path inside a writable one, as landstrip's denyWrite.
+      ...((input.grantedRead ?? []).some((p) => writable.some((w) => p.startsWith(w + "/"))) ? { denyWrite: (input.grantedRead ?? []).filter((p) => writable.some((w) => p.startsWith(w + "/"))) } : {}),
     },
     network: input.networkProxy === undefined ? { allowNetwork: true } : { allowNetwork: false, allowLocalBinding: false, httpProxyPort: proxyPort(input.networkProxy) },
   };
