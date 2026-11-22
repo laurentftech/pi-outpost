@@ -563,6 +563,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         containerProfileInTmp: kind === "mxc" && !wslc && !isPosixMxc(options.runner),
       });
       if (toolchains) Object.assign(env, toolchains.env);
+      // A Linux container holds no folder of the user's: a Windows path there would only mislead.
+      if (wslc) delete env.PI_OUTPOST_USER_HOME;
       const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
       const policyFile = path.join(tmp, "policy.json");
       let args: string[];

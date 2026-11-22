@@ -43,7 +43,7 @@
 ## 8. Documentation and skill
 
 - [x] 8.1 Document rules files, the when/then grammar, levels, not-verifiable ends, and the conformance statement's findings in `docs/structured-exchange.md`; verify every JSON example passes the documented-examples suite, extended to route rules files to their validator
-- [x] 8.2 Document batch validation, the report, and the document shape an exporter such as ISAI must produce (D9), with a two-line batch example; verify the example batch runs through the bundle with the documented exit status
+- [x] 8.2 Document batch validation, the report, and the document shape an exporter must produce (D9), with a two-line batch example; verify the example batch runs through the bundle with the documented exit status
 - [x] 8.3 Tell the agent in `skills/structured-exchange/SKILL.md`, and in `present_structure`'s refusal text, how to act on a rule refusal and on findings to check, and that a table can be written to the workspace with `write_structure_table`; verify the bundled-skill and tool tests
 
 ## 9. Verification

@@ -1468,6 +1468,9 @@ export function confinedEnvironment(
   env.SHELL = options.shell;
   env.HOME = options.root;
   env.TMPDIR = options.tmp;
+  // HOME (and on Windows USERPROFILE) is not the user's: where theirs is, for a `~/…` the user or a
+  // document names (issue #549). A path, not an access — reading there still takes a grant.
+  env.PI_OUTPOST_USER_HOME = (windows ? serverEnv.USERPROFILE : serverEnv.HOME) || homedir();
   // npm's cache defaults to the user's profile, which is out of reach: a writable one, and
   // a private one, in the temp. It goes with the terminal (or the command).
   env.npm_config_cache = path.join(options.tmp, "npm-cache");

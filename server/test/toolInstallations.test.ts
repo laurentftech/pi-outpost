@@ -11,7 +11,7 @@ import { describe, test } from "node:test";
 import { msysFolders, msysNote, msysProgramNamed, mxcTerminalConfig, toolInstallations, windowsToolchains, withoutMsysFolders, type ToolInstallationReader } from "../src/terminalSandbox.ts";
 
 const HOME = "C:\\Users\\me";
-const ROOT = "L:\\Python\\isai_oper";
+const ROOT = "L:\\Python\\projet";
 const AGENT_DIR = `${HOME}\\.pi\\agent`;
 const CONFIG = `${HOME}\\pi-outpost.config.json`;
 
