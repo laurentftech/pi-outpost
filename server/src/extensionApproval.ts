@@ -186,23 +186,43 @@ export function approvalStoreFor(agentDir: string, root: string): ExtensionAppro
 /** Directories a directory extension's hash leaves out: what an install puts there, not its code. */
 const NOT_HASHED = new Set(["node_modules", ".git"]);
 
+/** How deep a directory extension's hash goes: a link back up must end, not loop. */
+const MAX_HASH_DEPTH = 32;
+
 async function hashOf(target: string): Promise<{ hash: string; size: number }> {
   const hash = createHash("sha256");
   let size = 0;
-  const walk = async (current: string, relative: string): Promise<void> => {
-    const stat = await fs.lstat(current);
-    if (stat.isDirectory()) {
-      const entries = (await fs.readdir(current)).filter((name) => !NOT_HASHED.has(name)).sort();
-      for (const name of entries) await walk(path.join(current, name), relative ? `${relative}/${name}` : name);
-      return;
+  // Each entry is opened once, and what is hashed is read through that handle: the file checked
+  // is the file read. A link is followed, as pi's import would follow it.
+  const walk = async (current: string, relative: string, depth: number): Promise<void> => {
+    let handle: fs.FileHandle | undefined;
+    try {
+      handle = await fs.open(current, "r");
+    } catch (error) {
+      // Windows will not open a directory as a file.
+      if ((error as NodeJS.ErrnoException).code !== "EISDIR" && (error as NodeJS.ErrnoException).code !== "EPERM") throw error;
     }
-    if (!stat.isFile()) return;
-    const bytes = await fs.readFile(current);
-    size += bytes.byteLength;
-    hash.update(`${relative}\0${bytes.byteLength}\0`);
-    hash.update(bytes);
+    try {
+      const isDirectory = handle === undefined || (await handle.stat()).isDirectory();
+      if (isDirectory) {
+        if (depth >= MAX_HASH_DEPTH) throw new Error(`${target} is nested deeper than ${MAX_HASH_DEPTH} directories`);
+        await handle?.close();
+        handle = undefined;
+        const entries = (await fs.readdir(current)).filter((name) => !NOT_HASHED.has(name)).sort();
+        for (const name of entries) await walk(path.join(current, name), relative ? `${relative}/${name}` : name, depth + 1);
+        return;
+      }
+      const stat = await handle!.stat();
+      if (!stat.isFile()) return;
+      const bytes = await handle!.readFile();
+      size += bytes.byteLength;
+      hash.update(`${relative}\0${bytes.byteLength}\0`);
+      hash.update(bytes);
+    } finally {
+      await handle?.close();
+    }
   };
-  await walk(target, "");
+  await walk(target, "", 0);
   return { hash: hash.digest("hex"), size };
 }
 
