@@ -162,7 +162,9 @@ const REAL_RUNNERS: RealRunner[] = [
           `try { Set-Content -LiteralPath '${file}' -Value '{}' -ErrorAction Stop; 'write: yes' } catch { 'write: no' }`,
       }
     : undefined,
-  posix("MXC on Linux", process.env.MXC_LXC_EXEC, "linux"),
+  // In the Linux container, only the run with the documented flags confines: under Docker's default
+  // profile MXC must refuse (MXC_LINUX_EXPECT=refused), which its own tests check.
+  posix("MXC on Linux", process.env.MXC_LINUX_EXPECT === "confined" ? process.env.MXC_LXC_EXEC : undefined, "linux"),
   posix("MXC on macOS", process.env.MXC_MAC_EXEC, "darwin"),
   posix("Seatbelt", process.env.SEATBELT_EXEC, "darwin"),
 ].filter((runner): runner is RealRunner => runner !== undefined);
