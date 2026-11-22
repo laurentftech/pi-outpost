@@ -79,7 +79,7 @@ interface HeaderProps {
   /** This project's decisions on its extensions (`project-extension-approval`). */
   extensionDecisions?: ProjectExtensionDecision[] | null;
   onGetExtensionDecisions?: () => void;
-  onWithdrawExtensionDecision?: (kind: "file" | "package", key: string) => void;
+  onWithdrawExtensionDecision?: (kind: "file" | "package" | "mcp", key: string) => void;
   onRestartServer?: () => void;
   /** What waits on a restart to run. */
   restartNeeded?: string[];

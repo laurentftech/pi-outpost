@@ -13,7 +13,7 @@ export function ProjectExtensionDecisions({
 }: {
   decisions: ProjectExtensionDecision[] | null;
   onLoad: () => void;
-  onWithdraw: (kind: "file" | "package", key: string) => void;
+  onWithdraw: (kind: "file" | "package" | "mcp", key: string) => void;
 }) {
   // Asked for each time Settings opens: another tab may have decided since.
   // eslint-disable-next-line react-hooks/exhaustive-deps

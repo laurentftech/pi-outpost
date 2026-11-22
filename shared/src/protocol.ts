@@ -1074,7 +1074,7 @@ export interface SessionSnapshot {
 export interface ProjectExtensionQuestion {
   /** Stable for one content: the same file unchanged is the same question. */
   id: string;
-  kind: "file" | "package";
+  kind: "file" | "package" | "mcp";
   /** The path from the project (a directory for a directory extension), or the package source. */
   label: string;
   /** For a file: the path the file viewer opens, from the project. */
@@ -1085,7 +1085,7 @@ export interface ProjectExtensionQuestion {
 
 /** A decision on one of the project's extensions, as Settings lists it. */
 export interface ProjectExtensionDecision {
-  kind: "file" | "package";
+  kind: "file" | "package" | "mcp";
   key: string;
   label: string;
   decision: "allow" | "refuse";
@@ -1993,7 +1993,7 @@ export type ClientMessage =
   /** The project's decisions on its extensions: answered with `extension_decisions`. */
   | { type: "extension_decisions_get" }
   /** Withdraws a decision: that extension is asked about again, and not loaded until allowed. */
-  | { type: "extension_decision_withdraw"; kind: "file" | "package"; key: string }
+  | { type: "extension_decision_withdraw"; kind: "file" | "package" | "mcp"; key: string }
   | ExtensionUIResponse;
 
 /**

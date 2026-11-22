@@ -17,13 +17,18 @@ import { createHash, randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { DefaultPackageManager, SettingsManager, type LoadedMcpConfig, type McpServerEntry } from "@earendil-works/pi-coding-agent";
+// Not exported from the package root; pi's own reader, so a server is found exactly as pi finds it.
+import { loadMcpConfig } from "../../node_modules/@earendil-works/pi-coding-agent/dist/extensions/mcp/config.js";
 
 export type ExtensionDecision = "allow" | "refuse";
 
-/** One thing the project would have pi load: an extension file, or a package to install. */
+/** What the project can bring: an extension file, a package to install, or an MCP server to start. */
+export type ExtensionKind = "file" | "package" | "mcp";
+
+/** One thing the project would have pi load: an extension file, a package to install, or an MCP server. */
 export interface ExtensionCandidate {
-  kind: "file" | "package";
+  kind: ExtensionKind;
   /** The file pi would import (absolute), or the package's source as the settings write it. */
   key: string;
   /** What is hashed for a file: itself, or the directory of a directory extension. */
@@ -37,7 +42,7 @@ export interface ExtensionCandidate {
 }
 
 export interface ExtensionDecisionRecord {
-  kind: "file" | "package";
+  kind: ExtensionKind;
   key: string;
   label: string;
   hash: string;
@@ -102,7 +107,7 @@ export class ExtensionApprovalStore {
   }
 
   /** Withdraws the decision on `key`: true when there was one. It is asked about again. */
-  withdraw(kind: "file" | "package", key: string): Promise<boolean> {
+  withdraw(kind: ExtensionKind, key: string): Promise<boolean> {
     let found = false;
     return this.update((store) => {
       const wanted = keyOf(kind, key, this.platform);
@@ -156,7 +161,7 @@ export class ExtensionApprovalStore {
 function isRecord(value: unknown): value is ExtensionDecisionRecord {
   const record = value as Partial<ExtensionDecisionRecord> | null;
   return (
-    (record?.kind === "file" || record?.kind === "package") &&
+    (record?.kind === "file" || record?.kind === "package" || record?.kind === "mcp") &&
     typeof record.key === "string" &&
     typeof record.hash === "string" &&
     typeof record.label === "string" &&
@@ -278,6 +283,37 @@ export function packageCandidate(source: string): ExtensionCandidate {
   return { kind: "package", key: source, hash: createHash("sha256").update(source).digest("hex"), label: source };
 }
 
+/** What an MCP server would start or reach, said in one line: its command and arguments, or its URL. */
+function mcpLabel(entry: McpServerEntry): string {
+  const config = entry.config as { command?: string; args?: string[]; url?: string };
+  const what = typeof config.command === "string" ? [config.command, ...(Array.isArray(config.args) ? config.args : [])].join(" ") : String(config.url ?? "");
+  return `MCP server "${entry.name}": ${what}`;
+}
+
+/**
+ * The MCP servers the project's `.pi/mcp.json` defines, read by pi's own reader. A stdio server is a
+ * command the server starts, unconfined, as the session opens; an HTTP one, a connection made from
+ * it. A project entry that only overrides a global server's switches is not one: it starts nothing
+ * the user did not configure.
+ */
+export function projectMcpCandidates(cwd: string, agentDir: string): ExtensionCandidate[] {
+  let loaded: LoadedMcpConfig;
+  try {
+    loaded = loadMcpConfig({ agentDir, cwd, projectTrusted: true }) as LoadedMcpConfig;
+  } catch {
+    return [];
+  }
+  return loaded.servers
+    .filter((entry) => entry.scope === "project")
+    .map((entry) => ({
+      kind: "mcp" as const,
+      key: entry.name,
+      hash: createHash("sha256").update(JSON.stringify(entry.config)).digest("hex"),
+      label: mcpLabel(entry),
+      contentPath: path.join(cwd, ".pi", "mcp.json"),
+    }));
+}
+
 export interface ExtensionGate {
   /** The settings manager to give pi: project settings without what is not allowed. */
   settingsManager: SettingsManager;
@@ -285,11 +321,16 @@ export interface ExtensionGate {
   undecided: ExtensionCandidate[];
   /** Candidates kept out: undecided and refused. */
   excluded: ExtensionCandidate[];
+  /**
+   * pi's MCP configuration with the project's servers not allowed left out — checked again here, as
+   * the MCP extension reads its configuration itself, so a server changed since the gate is out too.
+   */
+  loadMcpConfig(options: { agentDir: string; cwd: string; projectTrusted: boolean }): LoadedMcpConfig;
 }
 
 /** The settings pi is to read for this project: every file and package not allowed, left out. */
 export async function extensionGate(cwd: string, agentDir: string, store: ExtensionApprovalStore): Promise<ExtensionGate> {
-  const candidates = await projectExtensionCandidates(cwd, agentDir);
+  const candidates = [...(await projectExtensionCandidates(cwd, agentDir)), ...projectMcpCandidates(cwd, agentDir)];
   const undecided: ExtensionCandidate[] = [];
   const excluded: ExtensionCandidate[] = [];
   for (const candidate of candidates) {
@@ -313,5 +354,18 @@ export async function extensionGate(cwd: string, agentDir: string, store: Extens
       }),
     };
   };
-  return { settingsManager, undecided, excluded };
+  const allowedMcp = new Map<string, string>();
+  for (const candidate of candidates) {
+    if (candidate.kind === "mcp" && !excluded.includes(candidate)) allowedMcp.set(candidate.key, candidate.hash);
+  }
+  const filteredMcp = (options: { agentDir: string; cwd: string; projectTrusted: boolean }): LoadedMcpConfig => {
+    const loaded = loadMcpConfig(options) as LoadedMcpConfig;
+    return {
+      ...loaded,
+      servers: loaded.servers.filter(
+        (entry) => entry.scope !== "project" || allowedMcp.get(entry.name) === createHash("sha256").update(JSON.stringify(entry.config)).digest("hex"),
+      ),
+    };
+  };
+  return { settingsManager, undecided, excluded, loadMcpConfig: filteredMcp };
 }

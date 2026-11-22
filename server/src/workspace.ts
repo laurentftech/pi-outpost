@@ -290,7 +290,7 @@ export class Workspace {
         id,
         kind: candidate.kind,
         label: candidate.label,
-        ...(candidate.kind === "file" && candidate.contentPath ? { path: candidate.label } : {}),
+        ...(candidate.kind === "file" && candidate.contentPath ? { path: candidate.label } : candidate.kind === "mcp" ? { path: ".pi/mcp.json" } : {}),
         ...(candidate.size !== undefined ? { size: candidate.size } : {}),
       };
       next.set(id, { question, candidate });
