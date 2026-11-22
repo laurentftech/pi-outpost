@@ -31,6 +31,9 @@ import { QueuedPrompts } from "./queuedPrompts.ts";
 import { createSandboxedTools } from "./sandbox.ts";
 import { SandboxGrantBroker } from "./sandboxGrantBroker.ts";
 import { makeRulesFromGrant, rulesStoreFor, type SandboxRulesStore } from "./sandboxRules.ts";
+import { createHash } from "node:crypto";
+import type { ExtensionCandidate } from "./extensionApproval.ts";
+import type { ProjectExtensionQuestion } from "@pi-outpost/shared";
 import { ruleFromRefusal, rulesState } from "./sandboxRulesView.ts";
 import type { Grant, GrantContext } from "./sandboxGrants.ts";
 import type { SandboxRulesState, ServerMessage } from "@pi-outpost/shared";
@@ -268,7 +271,49 @@ export class Workspace {
   readonly pendingDialogs = new Map<string, ExtensionUIRequest>();
 
   get needsAttention(): boolean {
-    return this.pendingDialogs.size > 0 || this.grants.hasPending;
+    return this.pendingDialogs.size > 0 || this.grants.hasPending || this.extensionQuestionsById.size > 0;
+  }
+
+  /** The project's extensions waiting for the user's say (`project-extension-approval`), by question id. */
+  private extensionQuestionsById = new Map<string, { question: ProjectExtensionQuestion; candidate: ExtensionCandidate }>();
+
+  /**
+   * What the session just built left out for want of an answer: replaces the list, and tells the
+   * project's clients. A question keeps its id while its content is unchanged, so a dialog shown
+   * across a new conversation stays the same dialog.
+   */
+  setExtensionQuestions(candidates: readonly ExtensionCandidate[]): void {
+    const next = new Map<string, { question: ProjectExtensionQuestion; candidate: ExtensionCandidate }>();
+    for (const candidate of candidates) {
+      const id = createHash("sha256").update(`${candidate.kind} ${candidate.key} ${candidate.hash}`).digest("hex").slice(0, 24);
+      const question: ProjectExtensionQuestion = {
+        id,
+        kind: candidate.kind,
+        label: candidate.label,
+        ...(candidate.kind === "file" && candidate.contentPath ? { path: candidate.label } : {}),
+        ...(candidate.size !== undefined ? { size: candidate.size } : {}),
+      };
+      next.set(id, { question, candidate });
+    }
+    const same = next.size === this.extensionQuestionsById.size && [...next.keys()].every((id) => this.extensionQuestionsById.has(id));
+    this.extensionQuestionsById = next;
+    if (same) return;
+    this.options.grantEvents?.announce(this, { type: "extension_questions", questions: this.extensionQuestions() });
+    this.options.grantEvents?.onPendingChanged?.(this);
+  }
+
+  extensionQuestions(): ProjectExtensionQuestion[] {
+    return [...this.extensionQuestionsById.values()].map((entry) => entry.question);
+  }
+
+  /** Takes the question `id` off the list, for its answer: the first answer decides. */
+  takeExtensionQuestion(id: string): ExtensionCandidate | undefined {
+    const entry = this.extensionQuestionsById.get(id);
+    if (!entry) return undefined;
+    this.extensionQuestionsById.delete(id);
+    this.options.grantEvents?.announce(this, { type: "extension_questions", questions: this.extensionQuestions() });
+    this.options.grantEvents?.onPendingChanged?.(this);
+    return entry.candidate;
   }
 
   /** The agent's grant requests and the session's grants (`sandboxGrantBroker.ts`). */

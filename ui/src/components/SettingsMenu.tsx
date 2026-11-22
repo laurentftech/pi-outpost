@@ -1,8 +1,9 @@
 import { Credits } from "./Credits";
 import { useEffect, useRef, useState } from "react";
-import type { PiPackageInfo } from "@pi-outpost/shared";
+import type { PiPackageInfo, ProjectExtensionDecision } from "@pi-outpost/shared";
 import type { AgentState } from "../useAgent";
 import { PiPackages, type PiPackageEdits } from "./PiPackages";
+import { ProjectExtensionDecisions } from "./ProjectExtensionDecisions";
 import { RestartNeeded } from "./RestartNeeded";
 import { useClickOutside } from "../util/clickOutside";
 import { ServerPathPicker } from "./ServerPathPicker";
@@ -89,6 +90,10 @@ interface SettingsMenuProps {
   serverRestarting?: boolean;
   onCheckPiPackages?: () => void;
   onUpdatePiPackage?: (source: string) => void;
+  /** This project's decisions on its extensions (`project-extension-approval`). */
+  extensionDecisions?: ProjectExtensionDecision[] | null;
+  onGetExtensionDecisions?: () => void;
+  onWithdrawExtensionDecision?: (kind: "file" | "package", key: string) => void;
   onRestartServer?: () => void;
   /** What waits on a restart to run. */
   restartNeeded?: string[];
@@ -164,6 +169,9 @@ export function SettingsMenu({
   serverRestarting = false,
   onCheckPiPackages,
   onUpdatePiPackage,
+  extensionDecisions = null,
+  onGetExtensionDecisions,
+  onWithdrawExtensionDecision,
   onRestartServer,
   onRestartSession,
   restartNeeded = [],
@@ -514,6 +522,9 @@ export function SettingsMenu({
                 onUpdate={(source) => onUpdatePiPackage?.(source)}
                 {...(piPackageEdits ? { edits: piPackageEdits } : {})}
               />
+              {onGetExtensionDecisions && onWithdrawExtensionDecision ? (
+                <ProjectExtensionDecisions decisions={extensionDecisions} onLoad={onGetExtensionDecisions} onWithdraw={onWithdrawExtensionDecision} />
+              ) : null}
               <RestartNeeded reasons={restartNeeded} canRestart={canRestartServer} restarting={serverRestarting} onRestart={() => onRestartServer?.()} />
             </section>
 
