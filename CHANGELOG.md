@@ -7,6 +7,15 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.64.1] - 2026-11-22
+
+### Fixed
+
+- On a machine with a mapped network drive, a confined PowerShell command no longer starts its output with a garbled `InitializeDefaultDrives` error: PowerShell prints it for a drive the sandbox does not reach, and the line is now left out. ([#548](https://github.com/laurentftech/pi-outpost/pull/548))
+- The agent is told that a process a command starts in the background ends with that command, and to keep a long job in one command with a timeout or in the terminal. Under MXC on Windows it is also told that WMI is unavailable, and how to read the free memory. ([#548](https://github.com/laurentftech/pi-outpost/pull/548))
+- When SQLite cannot open a database in a folder granted read-only (a WAL database), a note suggests `?immutable=1` or a write grant. ([#548](https://github.com/laurentftech/pi-outpost/pull/548))
+- The agent is told that `~` in its shell is the project, and where your own home is: a `~/…` path you or a document give is read there, after you approve it. Scripts find it in `PI_OUTPOST_USER_HOME`. ([#550](https://github.com/laurentftech/pi-outpost/pull/550))
+
 ## [0.64.0] - 2026-11-22
 
 ### Added
