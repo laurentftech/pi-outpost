@@ -501,7 +501,7 @@ work, and what it costs:
   | uv | `%APPDATA%\uv\uv.toml` | a `user:password@` in a URL |
   | pip | `%APPDATA%\pip\pip.ini` (named by `PIP_CONFIG_FILE`) | the same |
   | npm | `~\.npmrc` (named by `npm_config_userconfig`) | `_authToken`, `_auth`, `_password`, `password`, `username` |
-  | Maven 3.9+ | `~\.m2\settings.xml` (named by `MAVEN_ARGS`) | `<servers>`, every `<username>`, `<password>`, `<passphrase>`, `<privateKey>` |
+  | Maven | `~\.m2\settings.xml` (named by `MAVEN_ARGS`) | `<servers>`, every `<username>`, `<password>`, `<passphrase>`, `<privateKey>` |
   | Gradle | `~\.gradle\gradle.properties` | every property whose name says password, secret, token, credential, API key or auth |
   | Cargo | `~\.cargo\config.toml` | `token`; `credentials.toml` is never read |
   | Go | `%APPDATA%\go\env` (`go env -w`) | `GOAUTH` |
@@ -692,7 +692,6 @@ would start, is the "Remaining work" of the `windows-sandbox-reach` change's `de
 | A proxy configured by PAC or WinHTTP alone is not seen | set `HTTPS_PROXY` (and `NO_PROXY`) for the server |
 | A connection refused to a host the command never names (a library's, deep in a build) is told only when the program's own error says so — MXC does not report refused connections ([microsoft/mxc#1843](https://github.com/microsoft/mxc/issues/1843)) | if a build fails on the network, check the intranet hosts it uses against `sandbox.privateNetwork` |
 | Two pi-outpost servers of the same Windows user share the sandbox cache, and with it the carried configuration: one's commands may meet the other's relay and get a 404 | run one server per user, or give each its own `sandbox.cacheDir` |
-| Maven older than 3.9 does not read `MAVEN_ARGS`, so not your carried `settings.xml` | use Maven 3.9 or later |
 
 ## Older Windows
 
