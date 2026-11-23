@@ -80,13 +80,67 @@ words remain a second signal, with Windows' own sentence asked of Windows in the
 than listed. All ten then named the host; the bare `Invoke-WebRequest` caught in a `try` printed nothing
 failed, and gets nothing.
 
-## Not done
+## Remaining work
 
-- MXC reporting refused connections itself: asked in microsoft/mxc#1843; once it does, its report replaces the policy check here.
+What this change leaves undone, each with why and where it would start. None blocks the change; each is a
+known gap, said here so it is not rediscovered.
 
-- A system proxy set by PAC or WinHTTP rather than variables: not read.
-- Yarn Berry's `.yarnrc.yml`, bun's `bunfig.toml`, Poetry's and conda's configuration: not carried.
-- `sandbox.allowedHosts` behind a company proxy: the server's proxy connects directly, with no upstream.
+### Upstream, in MXC
+
+- **Refused connections in the denial report** — microsoft/mxc#1843. Until then a refused connection is
+  judged from pi-outpost's own policy (`sandboxNetworkVerdict.ts`): a failed command's named hosts,
+  resolved. A connection to a host the command never names, made by a library deep in a build, is caught
+  only by the error's words. Once MXC reports them, its report replaces the policy check.
+- **`whoami /user` run at the SDK's import**, through the shell's `PATH` — microsoft/mxc#1265. From Git
+  Bash, GNU's `whoami` answers `extra operand '/user'` on the server's stderr. Harmless; noise.
+- **The private network opens both ways** — microsoft/mxc#830, closed by design: outbound to the intranet
+  cannot be asked alone. `sandbox.privateNetwork` stays the user's explicit choice for that reason.
+
+### Root-cause work not done here
+
+- **Tool installations learned, not guessed.** `toolInstallations` follows each package manager's layout
+  by a rule of its own (Git, scoop — now outside the home too —, WinGet, nvm, a venv's `home`). A layout
+  no rule knows stays unreadable until someone writes one. The diagnosis already names what a command was
+  refused; turning a refusal into a proposed grant, then a durable rule (`sandboxRules.ts`), would make
+  the next unknown layout one click instead of a release.
+- **Package manager configuration is a list.** Eight files, each with its own format and credential
+  keys. Not carried: Yarn Berry's `.yarnrc.yml`, bun's `bunfig.toml`, Poetry's and conda's
+  configuration, RubyGems' `.gemrc`, Composer's `auth.json`. Each new one is an entry in
+  `userConfigsToCarry` and `SECRET_KEY`, with a real-MXC check that the tool reads its copy.
+- **Credentials that cannot be relayed are only left out**: Gradle's properties and Cargo's registry
+  tokens (build scripts and Cargo read them, not a URL the relay could stand in for), a Maven password
+  encrypted with the user's master password, NuGet's DPAPI-encrypted `Password`. An install from such a
+  registry answers 401 in the sandbox. Cargo would need the relay to serve a sparse index over HTTP
+  (`sparse+http`), Gradle an init script pointing repositories at the relay.
+- **`sandbox.allowedHosts` behind a company proxy.** The egress proxy connects to a listed host directly;
+  where only the company's proxy gets out, nothing does. The registry relay already chains through
+  `HTTPS_PROXY` (`tunnelThrough`); the egress proxy could do the same.
+- **A proxy set by PAC or WinHTTP**, not by `HTTPS_PROXY`, is not read: neither commands nor the relay
+  use it.
+
+### Coverage
+
+- **No CI runner has MXC tier 1**: every real-MXC suite, and `npm run sandbox:exercise`, run only on a
+  Windows 11 machine by hand. The release steps say so (`docs/development.md`). A self-hosted Windows
+  runner with the August 2026 update would put them in CI.
+- **Not exercised with a real agent in the running app.** The notes the model reads — the refused host,
+  the redirected-stderr status, the carried configuration — are checked as text, not by watching an agent
+  act on them (CLAUDE.md's running-app rule). Small models are the canary for it.
+- **Maven and Gradle reading their copies** is checked by unit tests only: neither was installed on the
+  test machine. `MAVEN_ARGS` needs Maven 3.9 or later; an older one does not read it.
+
+### Known limits, kept
+
+- **Two servers of the same user share the sandbox cache**: each rewrites the carried copies with its own
+  relay's port and key, so one server's commands can meet the other's relay URL and get a 404 until
+  their next launch. Rare; a copy per server would end it.
+- **The relay is read only**: publishing from the sandbox is refused (405) by design.
+- **The folders above a tool are enumerated, their names listable**: what lies beside the way down is
+  denied by name at each launch; an entry created after the launch is listable by name (never readable)
+  until the next.
+- **#554's other observations are not the sandbox**: a 280-character file name is over NTFS' limit, a
+  JavaScript string `'C:\tools…'` holds a tab (`\t`), libuv's `access(W_OK)` checks only the read-only
+  attribute on Windows, and a process container is not a VM (`whoami` is the user).
 
 ## Exercised on a real project
 
@@ -107,4 +161,4 @@ denied (78 before), the request built in 47 ms (29 before); each command about a
 - Under `allowedHosts`, a program connecting directly fails with 10051, not 10013: named too.
 - Windows PowerShell 5.1: `uv pip install … 2>&1`, `java -version 2>&1` ended 1 though they succeeded.
 - MXC's SDK runs `whoami /user` at import, through the shell's `PATH`: from Git Bash, GNU's `whoami` answers
-  and prints `extra operand '/user'`. MXC's, harmless; to report upstream.
+  and prints `extra operand '/user'`. MXC's, harmless: microsoft/mxc#1265.

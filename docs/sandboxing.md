@@ -677,6 +677,23 @@ environment is the container's own. Limits, all the backend's:
   `0x80004005`); running the command again works.
 - The terminal panel is not confined this way: `terminal.sandbox` keeps MXC's Windows container.
 
+### Not yet
+
+What the Windows sandbox does not do yet, and what to do meanwhile. The work behind each, and where it
+would start, is the "Remaining work" of the `windows-sandbox-reach` change's `design.md` (under
+`openspec/changes/`, or its archive once merged).
+
+| Not yet | Meanwhile |
+| --- | --- |
+| A tool installed in a layout pi-outpost does not know (beyond Git, scoop, WinGet, nvm, a `.venv`) is not readable | list its folder in [`sandbox.readOnlyPaths`](#tools-installed-for-you-sandboxreadonlypaths), or grant it when asked |
+| Yarn Berry's, bun's, Poetry's, conda's, RubyGems' and Composer's configuration is not carried in | set the mirror in the project's own configuration, or run that install outside the sandbox |
+| A registry authenticated by Gradle's properties, Cargo's token, or an encrypted Maven or NuGet password answers 401: those credentials are left out, not relayed | run that build's dependency download outside the sandbox once; the sandbox cache keeps what it downloaded |
+| Under `sandbox.allowedHosts`, a network reached only through a company proxy is not reached: the server's proxy connects directly | leave `allowedHosts` unset there, so commands use your `HTTPS_PROXY` |
+| A proxy configured by PAC or WinHTTP alone is not seen | set `HTTPS_PROXY` (and `NO_PROXY`) for the server |
+| A connection refused to a host the command never names (a library's, deep in a build) is told only when the program's own error says so — MXC does not report refused connections ([microsoft/mxc#1843](https://github.com/microsoft/mxc/issues/1843)) | if a build fails on the network, check the intranet hosts it uses against `sandbox.privateNetwork` |
+| Two pi-outpost servers of the same Windows user share the sandbox cache, and with it the carried configuration: one's commands may meet the other's relay and get a 404 | run one server per user, or give each its own `sandbox.cacheDir` |
+| Maven older than 3.9 does not read `MAVEN_ARGS`, so not your carried `settings.xml` | use Maven 3.9 or later |
+
 ## Older Windows
 
 Without MXC's tier 1, no runner confines natively: landstrip's AppContainer cannot run git
