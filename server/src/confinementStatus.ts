@@ -56,7 +56,16 @@ export function buildTerminalConfinement(input: {
   // MXC's process container on Windows: the sandbox cache and the toolchain homes, as the agent's shell gets them.
   const toolchains =
     kind === "mxc" && !isPosixMxc(runner) && process.platform === "win32"
-      ? windowsToolchains({ cacheDir: input.cacheDir ?? defaultSandboxCache(), serverEnv: process.env, home: homedir(), agentDir, configFile, ...(input.toolEnvironment ? { toolEnvironment: input.toolEnvironment } : {}) })
+      ? windowsToolchains({
+          cacheDir: input.cacheDir ?? defaultSandboxCache(),
+          serverEnv: process.env,
+          home: homedir(),
+          agentDir,
+          configFile,
+          ...(input.toolEnvironment ? { toolEnvironment: input.toolEnvironment } : {}),
+          // The terminal keeps the network: it reaches the registry relay on the loopback, while that is open.
+          ...(hostLoopback === false ? {} : { relayRoute: "loopback" as const }),
+        })
       : undefined;
   // git's identity: the user's ~/.gitconfig, readable on its own (see userGitConfig).
   const gitConfig = userGitConfig();

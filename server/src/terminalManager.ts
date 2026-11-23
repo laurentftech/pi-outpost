@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { confinedEnvironment, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
+import { carryUserConfigs, confinedEnvironment, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -642,7 +642,11 @@ export async function confinedLaunch(confine: TerminalConfinement, shell: string
   const startIn = isInside(path.resolve(cwd), confine.root) ? path.resolve(cwd) : confine.root;
   const shellArgs = confine.kind === "mxc" && process.platform === "win32" ? withTemporaryDirectoryRestored(shell, givenArgs) : givenArgs;
   let shellEnv: Record<string, string> = {};
-  if (confine.toolchains) await fs.mkdir(confine.toolchains.cacheDir, { recursive: true });
+  if (confine.toolchains) {
+    await fs.mkdir(confine.toolchains.cacheDir, { recursive: true });
+    // The user's uv.toml, pip.ini and .npmrc, as they are now, without credentials.
+    await carryUserConfigs(confine.toolchains.carried ?? [], confine.toolchains.relayRoute);
+  }
   const files = await prepareConfinedTerminal((tmp) => {
     shellEnv = confinedEnvironment(process.env, {
       root: confine.root,

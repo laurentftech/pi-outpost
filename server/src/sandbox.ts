@@ -71,7 +71,8 @@ import { createRunWithGrantToolDefinition } from "./sandboxGrantTool.ts";
 import { checkGrantRequest, EMPTY_GRANT, hostGrantsRefusal, mergeGrants, type Grant, type GrantContext } from "./sandboxGrants.ts";
 import type { Refusal } from "./sandboxRefusals.ts";
 import { hostDecision, type SandboxRulesStore } from "./sandboxRules.ts";
-import { defaultSandboxCache, isPosixMxc, proxyCredentialsLeftOut, runnerKind, userGitConfig, windowsToolchains, type WindowsToolchains } from "./terminalSandbox.ts";
+import { carriedSummary, defaultSandboxCache, isPosixMxc, proxyCredentialsLeftOut, runnerKind, userGitConfig, windowsToolchains, type WindowsToolchains } from "./terminalSandbox.ts";
+import type { RelayRoute } from "./registryRelay.ts";
 
 /**
  * Resolve `target` following symlinks in its deepest existing ancestor, so a
@@ -666,8 +667,18 @@ export function toolchainsFor(
       home: os.homedir(),
       ...neverReadable,
       ...(sandbox.toolEnvironment === undefined ? {} : { toolEnvironment: sandbox.toolEnvironment }),
+      ...(relayRouteFor(sandbox) ? { relayRoute: relayRouteFor(sandbox) } : {}),
     }),
   };
+}
+
+/**
+ * How a command of the agent's shell reaches the registry relay (`registryRelay.ts`): through its
+ * proxy under `sandbox.allowedHosts`, else on the host's loopback while that is open. Closed, none:
+ * the credentials of the user's configuration are left out, unrelayed.
+ */
+export function relayRouteFor(sandbox: Pick<SandboxConfig, "allowedHosts" | "hostLoopback">): RelayRoute | undefined {
+  return sandbox.allowedHosts !== undefined ? "proxy" : sandbox.hostLoopback === false ? undefined : "loopback";
 }
 
 /**
@@ -707,9 +718,12 @@ export function networkSummary(
         ? "loopback open: services listening on this machine are reachable"
         : "loopback closed: Python's asyncio cannot start in the shell",
     );
-    if (sandbox.allowedHosts === undefined && sandbox.privateNetwork === false) parts.push("private network closed");
+    if (sandbox.allowedHosts === undefined && sandbox.privateNetwork === true) parts.push("private network open: the intranet is reachable, and can reach a command");
     // Where confined commands' tools keep their downloads, so the operator knows what grows, and where.
     parts.push(`sandbox cache ${sandbox.cacheDir ?? defaultSandboxCache()}`);
+    // The user's uv.toml, pip.ini and .npmrc as commands see them: carried in, without credentials.
+    const carried = carriedSummary(windowsToolchains({ cacheDir: sandbox.cacheDir ?? defaultSandboxCache(), serverEnv, home: serverEnv.USERPROFILE }).carried ?? [], undefined, relayRouteFor(sandbox));
+    if (carried) parts.push(carried);
     // MSYS2 programs cannot start in the container: their folders are left out of the shell's PATH.
     if (msys.length > 0) parts.push(`MSYS2 folders left out of PATH: ${msys.join(", ")}`);
   }

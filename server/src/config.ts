@@ -116,8 +116,8 @@ export interface SandboxConfig {
    * MXC's process container on Windows, without `allowedHosts`: whether a command reaches the
    * private network (the subnets the machine is on, and intranet ranges a policy names: a company's
    * package mirror, git server or proxy).
-   * Windows grants it only together with inbound connections from that network. Absent: `true`, as
-   * the rest of the network is open (issue #552).
+   * Windows grants it only together with inbound connections from that network. Absent: `false` —
+   * opened only by the user's explicit choice (issue #552).
    */
   privateNetwork?: boolean;
   /**

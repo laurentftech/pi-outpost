@@ -28,10 +28,20 @@ command is refused something the sandbox means to allow, and the error points el
   covers, where enumeration would take reading away. MXC enumerates a whole subtree, so what lies beside
   the way down is denied by name in each, as the siblings of the path to the root are. Not where MXC's probe
   says it cannot enumerate.
-- **`sandbox.privateNetwork`**, boolean, default `true`: without `allowedHosts`, MXC's request on Windows
-  opens the private network (`ingress.default: "allow"`), keeping `hostLoopback` as it is. `false` closes it,
-  as before. Under `allowedHosts` nothing changes: the proxy is the way out, and it reaches named intranet
-  hosts itself.
+- **`sandbox.privateNetwork`**, boolean, default `false`: the user's explicit choice. `true`, without
+  `allowedHosts`, MXC's request on Windows opens the private network (`ingress.default: "allow"`), keeping
+  `hostLoopback` as it is. Absent, it stays closed, as before, and a refused connection says so (below).
+  Under `allowedHosts` nothing changes: the proxy is the way out, and it reaches named intranet hosts itself,
+  each asked about.
+- **The user's package manager configuration is carried in, without credentials**: their `uv.toml`,
+  `pip.ini`, `.npmrc`, Maven `settings.xml`, `gradle.properties`, Cargo `config.toml`, Go `env` and
+  `NuGet.Config`, copied before each command where the confined tool reads it, each credential taken out by
+  the file's own format. Measured: uv, pip, npm, Cargo, Go and dotnet then use the company's mirror (a
+  `uv.toml` declaring it was not seen at all: `APPDATA` is the sandbox's).
+- **A registry that needs the user's credentials goes through a relay in the server** (`registryRelay.ts`),
+  which adds them: the copy names the relay, the agent uses the registry without ever reading the secret.
+  Read only (GET, HEAD), the user's registries only, under a key; reached on the host's loopback, or through
+  the command's proxy under `allowedHosts`.
 - **A refused connection is named**: when a command's output reports WSAEACCES (`os error 10013`, `WinError
   10013`, .NET's sentence), it ends with a note saying the sandbox refused it, not to retry, and what this
   sandbox opens.
@@ -49,7 +59,7 @@ command is refused something the sandbox means to allow, and the error points el
 
 - `sandbox-runner-bash`: adds `AToolBesideTheRootResolves`, `TheIntranetIsReachable`,
   `PrivateNetworkMustBeABoolean`, `ASandboxRefusalIsNamed`, `ARedirectedStderrIsNoFailure`,
-  `TheCompanyProxyReachesTheCommand`.
+  `TheUsersMirrorIsSeen`, `TheCredentialsStayInTheServer`, `TheCompanyProxyReachesTheCommand`.
 
 ## Impact
 

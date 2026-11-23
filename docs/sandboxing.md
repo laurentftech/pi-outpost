@@ -428,21 +428,23 @@ cannot start in the shell`).
 
 Windows refuses a process in MXC's container the private network — the subnets this machine is on,
 and intranet ranges a policy names: a company's package mirror, git server or proxy — unless inbound
-connections from it are allowed too. Outbound alone cannot be asked for. So by default, without
-`sandbox.allowedHosts`, the agent's shell and the confined terminal run with the private network open,
-as the rest of the network is: a command reaches the intranet, and a server it starts can be reached
-from it, through Windows' firewall like any program. To close it again:
+connections from it are allowed too. Outbound alone cannot be asked for. So it stays closed unless you
+open it, which only you can do:
 
 ```json
-{ "sandbox": { "privateNetwork": false } }
+{ "sandbox": { "privateNetwork": true } }
 ```
 
-A connection then refused fails with WSAEACCES — uv's `os error 10013`, Python's `WinError 10013`.
-Whatever the setting, a command whose output shows that error ends with a note saying the sandbox
-refused it, so the agent does not take it for a network failure and retry:
+Then, without `sandbox.allowedHosts`, the agent's shell and the confined terminal reach the intranet, and
+a server a command starts can be reached from it, through Windows' firewall like any program. The
+startup line says so (`private network open: …`).
+
+Closed, a connection there fails with WSAEACCES — uv's `os error 10013`, Python's `WinError 10013`. A
+command whose output shows that error ends with a note saying the sandbox refused it, so the agent does
+not take it for a network failure and retry, and that only you can open it:
 
 ```
-[pi-outpost] the sandbox refused a network connection (WSAEACCES, 10013): it is not a network failure, and retrying will not help. Here the Internet is open; the private network is closed (sandbox.privateNetwork is false); this machine's own services too. If the task needs it, tell the user which host it was.
+[pi-outpost] the sandbox refused a network connection (WSAEACCES, 10013): it is not a network failure, and retrying will not help. Here the Internet is open; the private network (the intranet: a company's mirror, git server or proxy) is closed unless the user sets sandbox.privateNetwork to true; this machine's own services too. Only the user can open it: if the task needs it, tell them which host it was.
 ```
 
 Under `sandbox.allowedHosts` the key changes nothing: the proxy is the only way out, and it reaches an
@@ -481,9 +483,50 @@ work, and what it costs:
   project share it, all of them confined.
 - **Toolchain homes are read where they are**: rustup's (`RUSTUP_HOME`, by default `~\.rustup`), so
   `cargo` and `rustc` find your toolchain, and the Pythons uv installed (`%APPDATA%\uv\python`).
-- **Not carried in**: your mirrors and tokens — `~\.m2\settings.xml`, `~\.gradle\gradle.properties`,
-  `~\.npmrc`, `~\.cargo\config.toml` and `credentials.toml` stay out of reach. A project's own
-  configuration (`.npmrc`, `gradle.properties`, `.cargo\config.toml` in the root) still applies.
+- **Your mirrors are carried in, your credentials are not.** Before each command, a copy of your own
+  configuration is put where the confined tool reads it, with every credential taken out:
+
+  | Tool | Yours | Taken out |
+  | --- | --- | --- |
+  | uv | `%APPDATA%\uv\uv.toml` | a `user:password@` in a URL |
+  | pip | `%APPDATA%\pip\pip.ini` (named by `PIP_CONFIG_FILE`) | the same |
+  | npm | `~\.npmrc` (named by `npm_config_userconfig`) | `_authToken`, `_auth`, `_password`, `password`, `username` |
+  | Maven 3.9+ | `~\.m2\settings.xml` (named by `MAVEN_ARGS`) | `<servers>`, every `<username>`, `<password>`, `<passphrase>`, `<privateKey>` |
+  | Gradle | `~\.gradle\gradle.properties` | every property whose name says password, secret, token, credential, API key or auth |
+  | Cargo | `~\.cargo\config.toml` | `token`; `credentials.toml` is never read |
+  | Go | `%APPDATA%\go\env` (`go env -w`) | `GOAUTH` |
+  | NuGet | `%APPDATA%\NuGet\NuGet.Config` | `<packageSourceCredentials>`, an account's key |
+
+  So a company's mirror is used as on your machine. An edit of yours applies from the next command, and
+  the copy of a file you remove goes too. Each copy starts with a line naming yours: edit that one. A
+  project's own configuration (`.npmrc`, `gradle.properties`, `.cargo\config.toml` in the root) still
+  applies on top.
+
+  **A registry that needs your credentials goes through the server's relay.** A command can read
+  whatever its tools read, so a token given to the sandbox is a token the agent could print or send
+  anywhere. Instead, the copy names a relay the server runs —
+  `http://127.0.0.1:<port>/<key>/<registry>/…` — and the server, unconfined, forwards each request to
+  your registry with your credentials added. The agent uses your mirror; it never sees the secret.
+
+  - Read only: `GET` and `HEAD`. Installing works; publishing (`npm publish`, `mvn deploy`) is refused
+    with `405`, so nothing is published in your name. Run those outside the sandbox.
+  - Only the registries your files name, under a key drawn when the server starts. What a registry
+    answers comes back with its links pointing at the relay (an index's files, npm's tarballs, NuGet's
+    service index) and without its cookies.
+  - Behind a company proxy, the relay uses your `HTTPS_PROXY`; it trusts the certificate authorities
+    Windows trusts, so a mirror signed by your company's authority works.
+  - Paired with a URL in your file, so relayed: a `user:password@` in uv's, pip's and Go's; npm's
+    `_authToken`, `_auth` and `username` / `_password` for the `registry` lines they cover; Maven's
+    `<server>` for the `<mirror>` and `<repository>` of its id; NuGet's `ClearTextPassword` for its
+    source. Not relayed, only left out: Gradle's properties and Cargo's tokens (build scripts and Cargo
+    use them themselves), a Maven password encrypted with your master password, NuGet's encrypted
+    `Password`.
+  - Under `sandbox.allowedHosts`, the relay is reached through the command's proxy, as the host
+    `registry-relay.pi-outpost.invalid`, without a question. With `sandbox.hostLoopback: false` and no
+    list, a command cannot reach it: the credentials are left out, unrelayed.
+
+  The startup line lists what is carried (`your uv.toml, .npmrc (credentials kept in the server, its
+  registries relayed) carried in`).
 - **MSYS2 programs cannot start** — Git's `usr\bin` (its `bash`, `perl`, coreutils), an MSYS2 install:
   their runtime needs named objects a container may not create (microsoft/mxc#1061). Their folders are
   left out of the confined `PATH`, so `perl` finds a native Perl, and the startup line names them. A

@@ -39,19 +39,39 @@ names on the way down and nothing else.
 shell's folder and the grants. Not the temporary directory: it sits under the profile, whose `AppData\Local`
 holds hundreds of entries each to deny at every launch, and it worked before. Not git's single files.
 
-**`privateNetwork` on by default.** The rest of the network is open by default and documented so; a
-company's mirror, git server or proxy on the intranet being refused was the inconsistency #552 hit. Same
-shape as `hostLoopback`: a key to close it again. What it costs is inbound connections from the private
-network reaching a listener inside the container — still behind Windows' firewall. Under `allowedHosts`
-the request is unchanged.
+**`privateNetwork` off unless the user opens it.** Windows cannot open the intranet outbound alone: inbound
+connections from it come too. Reaching the company's network is the user's decision, written in the
+configuration, never the agent's — the refusal's note says only the user can open it. Under `allowedHosts`
+the request is unchanged: each intranet host is asked about there.
+
+**The user's configuration, copied without credentials, at each launch.** Commands cannot be given the
+user's files: the profile is denied, and they hold tokens. A copy in the sandbox cache, where each tool
+reads it — under the sandbox's `APPDATA` for uv, Go and NuGet (dotnet reads the variable, measured); named
+by `PIP_CONFIG_FILE` (pip asks Windows for the roaming folder, measured), `npm_config_userconfig` and
+`MAVEN_ARGS`; in Gradle's and Cargo's homes, already in the cache. `UV_CONFIG_FILE` was measured and
+rejected: it replaces discovery, and the project's own `[tool.uv]` was no longer read. A copy carries a
+first-line mark; only a marked file is replaced or removed, so a file a command wrote there is kept.
+Credentials are taken out rather than the file left out: the mirror's address is what the user needs, and a
+mirror that wants credentials answers 401, which says so.
 
 **Proxy variables without credentials.** A `user:password@` proxy is a secret: left out, named on the
 startup line so the operator knows why the command cannot get out. Under `allowedHosts` none are passed —
 `NO_PROXY` would route around the server's proxy.
 
+**A relay for the credentials, not the credentials.** Whatever a confined tool can read, a command can
+print: a token in the sandbox is the agent's. The server runs unconfined and holds them; the copies name
+its relay, which adds them. Read only, so the agent cannot publish in the user's name; only registries
+the user's files name, under a key drawn at start (another local account cannot use it); links in what
+a registry answers rewritten to the relay, its cookies dropped. Two routes because the container reaches
+two things: the host's loopback, open by default, and, under `allowedHosts`, its proxy's port alone — the
+proxy hands the reserved host `registry-relay.pi-outpost.invalid` to the relay. Credentials that cannot be
+paired with a URL (Gradle's, Cargo's, encrypted ones) stay out. The user's `NO_PROXY` gains the loopback:
+the company proxy must not carry a request for the relay.
+
 ## Not done
 
 - A system proxy set by PAC or WinHTTP rather than variables: not read.
+- Yarn Berry's `.yarnrc.yml`, bun's `bunfig.toml`, Poetry's and conda's configuration: not carried.
 - `sandbox.allowedHosts` behind a company proxy: the server's proxy connects directly, with no upstream.
 
 ## Exercised on a real project
@@ -67,8 +87,9 @@ denied (78 before), the request built in 47 ms (29 before); each command about a
   opens one.
 - `uv run` in a project whose `.venv` was made outside the sandbox works offline. But uv's user configuration
   is looked for under the sandbox's `APPDATA` (`…\sandbox-cache\appdata\Roaming\uv\uv.toml`): a mirror
-  declared in the user's own `uv.toml`, `pip.ini` or `.npmrc` is not seen in the sandbox, by design ("your
-  mirrors and tokens are not carried in"). Not changed here.
+  declared in the user's own `uv.toml`, `pip.ini` or `.npmrc` was not seen in the sandbox ("your mirrors and
+  tokens are not carried in"). Now carried in, without credentials (Decisions).
+- `dotnet` printed its first-run banner (welcome, telemetry, certificate) into the agent's output: `DOTNET_NOLOGO=1`.
 - Under `allowedHosts`, a program connecting directly fails with 10051, not 10013: named too.
 - Windows PowerShell 5.1: `uv pip install … 2>&1`, `java -version 2>&1` ended 1 though they succeeded.
 - MXC's SDK runs `whoami /user` at import, through the shell's `PATH`: from Git Bash, GNU's `whoami` answers

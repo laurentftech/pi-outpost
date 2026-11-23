@@ -18,12 +18,13 @@ configuration file SHALL never be enumerated.
 ### Requirement: TheIntranetIsReachable
 
 Under MXC on Windows without `sandbox.allowedHosts`, the agent's shell and the confined terminal SHALL reach
-the private network, unless `sandbox.privateNetwork` is `false`, independently of `sandbox.hostLoopback`.
+the private network only when the user set `sandbox.privateNetwork` to `true`, independently of
+`sandbox.hostLoopback`. Absent, it SHALL stay closed.
 
 #### Scenario: TheIntranetIsReachable
 - **GIVEN** the agent's PowerShell confined by MXC on Windows 11 tier 1 on a private IPv4 network, without `sandbox.allowedHosts`
-- **WHEN** a command connects to another address of that network, by default and with `sandbox.privateNetwork: false`
-- **THEN** the sandbox does not refuse it by default, and refuses it (WSAEACCES) when the key is false
+- **WHEN** a command connects to another address of that network, by default and with `sandbox.privateNetwork: true`
+- **THEN** the sandbox refuses it (WSAEACCES) by default, and does not refuse it when the key is true
 
 #### Scenario: PrivateNetworkMustBeABoolean
 - **GIVEN** `sandbox.privateNetwork: "no"`
@@ -41,6 +42,29 @@ opens, unless the proxy already named the refused host.
 - **GIVEN** the agent's PowerShell confined by MXC on Windows 11 tier 1 with `sandbox.privateNetwork: false`
 - **WHEN** a command's connection to the private network is refused and it prints the error
 - **THEN** its output ends with the note naming the sandbox and `sandbox.privateNetwork`; a command that met no refusal gets none
+
+### Requirement: TheUsersMirrorIsSeen
+
+Under MXC on Windows, before each command and confined terminal, the user's configuration of the package
+managers the sandbox sets up SHALL be copied where the confined tool reads it, every credential taken out,
+following the original's edits and removal. No credential of those files SHALL reach a command.
+
+#### Scenario: TheUsersMirrorIsSeen
+- **GIVEN** the user's `uv.toml`, `pip.ini`, `.npmrc`, Cargo `config.toml`, Go `env` and `NuGet.Config` naming a company's mirror, each with credentials
+- **WHEN** a command of the agent's PowerShell confined by MXC asks uv, pip, npm, Cargo, Go and dotnet for their configuration
+- **THEN** each names the company's mirror, and no credential appears in the command's output or in the copies it can read
+
+### Requirement: TheCredentialsStayInTheServer
+
+A registry the user's configuration authenticates to SHALL be named in the copy as the server's
+registry relay, which SHALL add the credentials to each request it forwards. The relay SHALL forward
+only `GET` and `HEAD`, only to registries the user's files name, and only under its own key; it SHALL
+return no cookie and point the registry's links at itself.
+
+#### Scenario: TheCredentialsStayInTheServer
+- **GIVEN** the user's `.npmrc` with an `_authToken` and `uv.toml` with a password for a registry that refuses requests without them
+- **WHEN** a command of the agent's PowerShell confined by MXC installs a package from each, on the loopback and under `sandbox.allowedHosts`, and tries a `PUT`
+- **THEN** both install; no credential appears in its output nor in the copies; the `PUT` is answered 405 and never reaches the registry
 
 ### Requirement: ARedirectedStderrIsNoFailure
 

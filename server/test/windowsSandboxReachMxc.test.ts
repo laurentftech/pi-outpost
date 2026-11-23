@@ -6,12 +6,16 @@
  * Only where `MXC_EXEC` names the runner: no CI runner has MXC tier 1.
  */
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { networkInterfaces, tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import { homedir, networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { confinedBashOperations, type ConfinedBashOptions } from "../src/confinedBash.ts";
-import { checkRunner } from "../src/terminalSandbox.ts";
+import { checkRunner, windowsToolchains } from "../src/terminalSandbox.ts";
+import { startEgressProxy } from "../src/egressProxy.ts";
 
 const RUNNER = process.env.MXC_EXEC;
 const POWERSHELL = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -100,18 +104,167 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
   const PRIVATE = `$c = [Net.Sockets.TcpClient]::new(); try { [void]$c.ConnectAsync("${peer}", 9).Wait(3000); "private: not refused" } catch { $code = $_.Exception.InnerException.InnerException.ErrorCode; if ($code -eq 10013) { "private: refused by the sandbox" } else { "private: not refused ($code)" } }`;
 
   // openlore: scenario=TheIntranetIsReachable spec=sandbox-runner-bash
-  test("TheIntranetIsReachable: the private network is not refused by default; privateNetwork false refuses it", { skip: peer ? false : "this machine is on no private IPv4 network" }, async () => {
-    assert.match((await ps(PRIVATE)).output, /private: not refused/);
-    assert.match((await ps(PRIVATE, { privateNetwork: false })).output, /private: refused by the sandbox/);
+  test("TheIntranetIsReachable: the private network is refused by default; privateNetwork true, the user's choice, opens it", { skip: peer ? false : "this machine is on no private IPv4 network" }, async () => {
+    assert.match((await ps(PRIVATE)).output, /private: refused by the sandbox/);
+    assert.match((await ps(PRIVATE, { privateNetwork: true })).output, /private: not refused/);
   });
 
   // openlore: scenario=ASandboxRefusalIsNamed spec=sandbox-runner-bash
   test("ASandboxRefusalIsNamed: a refused connection's output ends saying it was the sandbox, and which setting", { skip: peer ? false : "this machine is on no private IPv4 network" }, async () => {
     // The program's own words, as uv and Python print them: the error's message, in the user's language.
-    const refused = await ps(`$c = [Net.Sockets.TcpClient]::new(); try { [void]$c.ConnectAsync("${peer}", 9).Wait(3000) } catch { $_.Exception.InnerException.InnerException.Message; exit 1 }`, { privateNetwork: false });
+    const refused = await ps(`$c = [Net.Sockets.TcpClient]::new(); try { [void]$c.ConnectAsync("${peer}", 9).Wait(3000) } catch { $_.Exception.InnerException.InnerException.Message; exit 1 }`);
     assert.match(refused.output, /\[pi-outpost\] the sandbox refused a network connection \(WSAEACCES, 10013\)/, refused.output);
-    assert.match(refused.output, /sandbox\.privateNetwork is false/);
+    assert.match(refused.output, /closed unless the user sets sandbox\.privateNetwork to true/);
+    assert.match(refused.output, /Only the user can open it/);
     const open = await ps(`"connected or not, no refusal"`);
     assert.doesNotMatch(open.output, /the sandbox refused a network connection/);
+  });
+
+  // openlore: scenario=TheUsersMirrorIsSeen spec=sandbox-runner-bash
+  test("TheUsersMirrorIsSeen: uv, pip, npm, Cargo, Go and NuGet in a command see the user's mirror, never its credentials", async () => {
+    // A user of their own: their AppData and home, with a company's mirror and its credentials.
+    const home = path.join(base, "user");
+    const roaming = path.join(home, "AppData", "Roaming");
+    await mkdir(path.join(roaming, "uv"), { recursive: true });
+    await mkdir(path.join(roaming, "pip"), { recursive: true });
+    await writeFile(path.join(roaming, "uv", "uv.toml"), `index-url = "https://alice:uv-s3cret@nexus.corp.example:8446/repository/pypi/simple"\n`);
+    await writeFile(path.join(roaming, "pip", "pip.ini"), "[global]\nindex-url = https://alice:pip-s3cret@nexus.corp.example:8446/repository/pypi/simple\n");
+    await writeFile(path.join(home, ".npmrc"), "registry=https://npm.corp.example/\n//npm.corp.example/:_authToken=npm-s3cret\n");
+    // Cargo's, Go's and NuGet's: an alias proves Cargo read its copy; the others say their source.
+    await mkdir(path.join(home, ".cargo"), { recursive: true });
+    await writeFile(path.join(home, ".cargo", "config.toml"), `[alias]\ncorp-version = "version"\n[registries.corp]\nindex = "sparse+https://cargo.corp.example/index/"\ntoken = "cargo-s3cret"\n`);
+    await mkdir(path.join(roaming, "go"), { recursive: true });
+    await writeFile(path.join(roaming, "go", "env"), "GOPROXY=https://alice:go-s3cret@goproxy.corp.example\nGOPRIVATE=*.corp.example\n");
+    await mkdir(path.join(roaming, "NuGet"), { recursive: true });
+    await writeFile(
+      path.join(roaming, "NuGet", "NuGet.Config"),
+      `<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <packageSources>\n    <add key="corp-feed" value="https://nuget.corp.example/v3/index.json" />\n  </packageSources>\n  <packageSourceCredentials>\n    <corp-feed>\n      <add key="Username" value="alice" />\n      <add key="ClearTextPassword" value="nuget-s3cret" />\n    </corp-feed>\n  </packageSourceCredentials>\n</configuration>\n`,
+    );
+    const serverEnv: NodeJS.ProcessEnv = { ...process.env, APPDATA: roaming, RUSTUP_HOME: process.env.RUSTUP_HOME ?? path.join(homedir(), ".rustup") };
+    for (const moved of ["CARGO_HOME", "GRADLE_USER_HOME", "GOENV", "npm_config_userconfig", "NPM_CONFIG_USERCONFIG"]) delete serverEnv[moved];
+    const toolchains = windowsToolchains({ cacheDir: path.join(base, "sandbox-cache"), serverEnv, home, agentDir });
+    const { output, exitCode } = await ps(
+      [
+        `uv -v pip compile --no-header - 2>&1 | Select-String -Pattern "user configuration" | ForEach-Object { "$_" }`,
+        `"uv.toml: " + (Get-Content -Raw (Join-Path $env:APPDATA 'uv\\uv.toml'))`,
+        `"pip: " + (python -m pip config list 2>&1 | Out-String)`,
+        `"npm: " + (npm config get registry)`,
+        `"npmrc: " + (Get-Content -Raw $env:npm_config_userconfig)`,
+        `"cargo: " + (cargo corp-version)`,
+        `"cargo config: " + (Get-Content -Raw (Join-Path $env:CARGO_HOME 'config.toml'))`,
+        `"go: " + (go env GOPROXY GOPRIVATE | Out-String)`,
+        `"nuget: " + (dotnet nuget list source 2>&1 | Out-String)`,
+        `"nuget config: " + (Get-Content -Raw (Join-Path $env:APPDATA 'NuGet\\NuGet.Config'))`,
+      ].join("; "),
+      { toolchains },
+    );
+    assert.equal(exitCode, 0, output);
+    assert.match(output, /Found user configuration in: .*sandbox-cache\\appdata\\Roaming\\uv\\uv\.toml/, output);
+    assert.match(output, /index-url = "https:\/\/nexus\.corp\.example:8446\/repository\/pypi\/simple"/);
+    assert.match(output, /global\.index-url='https:\/\/nexus\.corp\.example:8446\/repository\/pypi\/simple'/, output);
+    assert.match(output, /npm: https:\/\/npm\.corp\.example\//, output);
+    assert.match(output, /cargo: cargo \d/, "Cargo ran the user's alias: it read the copy");
+    assert.match(output, /go: https:\/\/goproxy\.corp\.example\s+\*\.corp\.example/, output);
+    assert.match(output, /https:\/\/nuget\.corp\.example\/v3\/index\.json/, output);
+    assert.doesNotMatch(output, /s3cret|alice/, "no credential reaches a command");
+  });
+
+  // openlore: scenario=TheCredentialsStayInTheServer spec=sandbox-runner-bash
+  test("TheCredentialsStayInTheServer: npm and uv install from the user's authenticated registry through the relay; the command never holds the token", async () => {
+    // A company's registry on this machine: npm's packument and tarball behind a Bearer token, a
+    // PyPI simple index and wheel behind a password. Unconfined, as the real one is outside.
+    const work = path.join(base, "registry");
+    await mkdir(path.join(work, "pkg"), { recursive: true });
+    await writeFile(path.join(work, "pkg", "package.json"), JSON.stringify({ name: "corp-pkg", version: "1.0.0", main: "index.js" }));
+    await writeFile(path.join(work, "pkg", "index.js"), "module.exports = 'corp-pkg-ok';\n");
+    execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["pack", "--silent"], { cwd: path.join(work, "pkg"), shell: true });
+    const tarball = await readFile(path.join(work, "pkg", "corp-pkg-1.0.0.tgz"));
+    // A wheel is a zip: Python writes one, with the three files pip and uv read.
+    const wheelPath = path.join(work, "corp_py-0.1-py3-none-any.whl");
+    execFileSync("python", ["-c", [
+      "import zipfile, sys",
+      "z = zipfile.ZipFile(sys.argv[1], 'w')",
+      "z.writestr('corp_py.py', 'OK = \"corp-py-ok\"\\n')",
+      "z.writestr('corp_py-0.1.dist-info/METADATA', 'Metadata-Version: 2.1\\nName: corp-py\\nVersion: 0.1\\n')",
+      "z.writestr('corp_py-0.1.dist-info/WHEEL', 'Wheel-Version: 1.0\\nGenerator: test\\nRoot-Is-Purelib: true\\nTag: py3-none-any\\n')",
+      "z.writestr('corp_py-0.1.dist-info/RECORD', '')",
+      "z.close()",
+    ].join("\n"), wheelPath]);
+    const wheel = await readFile(wheelPath);
+    const TOKEN = "npm_c0rp_t0ken";
+    const PYPI = `Basic ${Buffer.from("alice:py-s3cret").toString("base64")}`;
+    const requests: string[] = [];
+    const registry = createServer((req, res) => {
+      requests.push(`${req.method} ${req.url}`);
+      const at = `http://${req.headers.host}`;
+      if (req.url?.startsWith("/npm/")) {
+        if (req.headers.authorization !== `Bearer ${TOKEN}`) return void res.writeHead(401).end();
+        if (req.url === "/npm/corp-pkg") {
+          const sha = createHash("sha1").update(tarball).digest("hex");
+          return void res.writeHead(200, { "content-type": "application/json" }).end(
+            JSON.stringify({ name: "corp-pkg", "dist-tags": { latest: "1.0.0" }, versions: { "1.0.0": { name: "corp-pkg", version: "1.0.0", dist: { tarball: `${at}/npm/corp-pkg/-/corp-pkg-1.0.0.tgz`, shasum: sha } } } }),
+          );
+        }
+        if (req.url === "/npm/corp-pkg/-/corp-pkg-1.0.0.tgz") return void res.writeHead(200, { "content-type": "application/octet-stream" }).end(tarball);
+      }
+      if (req.url?.startsWith("/pypi/")) {
+        if (req.headers.authorization !== PYPI) return void res.writeHead(401).end();
+        const sha = createHash("sha256").update(wheel).digest("hex");
+        if (req.url === "/pypi/simple/corp-py/") return void res.writeHead(200, { "content-type": "text/html" }).end(`<a href="${at}/pypi/files/corp_py-0.1-py3-none-any.whl#sha256=${sha}">corp_py-0.1-py3-none-any.whl</a>`);
+        if (req.url === "/pypi/files/corp_py-0.1-py3-none-any.whl") return void res.writeHead(200, { "content-type": "application/octet-stream" }).end(wheel);
+      }
+      res.writeHead(404).end();
+    });
+    await new Promise<void>((resolve) => registry.listen(0, "127.0.0.1", resolve));
+    const origin = `http://127.0.0.1:${(registry.address() as { port: number }).port}`;
+    try {
+      const home = path.join(base, "relay-user");
+      const roaming = path.join(home, "AppData", "Roaming");
+      await mkdir(path.join(roaming, "uv"), { recursive: true });
+      await writeFile(path.join(home, ".npmrc"), `registry=${origin}/npm/\n//127.0.0.1:${new URL(origin).port}/npm/:_authToken=${TOKEN}\n`);
+      await writeFile(path.join(roaming, "uv", "uv.toml"), `index-url = "${origin.replace("http://", "http://alice:py-s3cret@")}/pypi/simple"\n`);
+      const serverEnv: NodeJS.ProcessEnv = { ...process.env, APPDATA: roaming, RUSTUP_HOME: process.env.RUSTUP_HOME ?? path.join(homedir(), ".rustup") };
+      for (const moved of ["CARGO_HOME", "GRADLE_USER_HOME", "GOENV", "npm_config_userconfig", "NPM_CONFIG_USERCONFIG"]) delete serverEnv[moved];
+      const toolchains = windowsToolchains({ cacheDir: path.join(base, "relay-cache"), serverEnv, home, agentDir, relayRoute: "loopback" });
+      const { output, exitCode } = await ps(
+        [
+          `New-Item -ItemType Directory -Force relayed | Out-Null; Set-Location relayed`,
+          `npm init -y | Out-Null; npm install corp-pkg --no-audit --no-fund 2>&1 | ForEach-Object { "$_" }`,
+          `"npm module: " + (node -e "console.log(require('corp-pkg'))")`,
+          `uv venv -q .v 2>&1 | Out-Null; uv pip install -q --python .v corp-py 2>&1 | ForEach-Object { "$_" }`,
+          `"uv module: " + (.v\\Scripts\\python.exe -c "import corp_py; print(corp_py.OK)")`,
+          `"npmrc: " + (Get-Content -Raw $env:npm_config_userconfig)`,
+          `"uv.toml: " + (Get-Content -Raw (Join-Path $env:APPDATA 'uv\\uv.toml'))`,
+          // Publishing with the user's credentials is refused by the relay.
+          `$registry = (npm config get registry).Trim(); try { Invoke-WebRequest -Method Put -Uri ($registry + 'corp-pkg') -Body '{}' -ErrorAction Stop | Out-Null; "put: accepted" } catch { "put: " + $_.Exception.Response.StatusCode.value__ }`,
+        ].join("; "),
+        { toolchains },
+      );
+      assert.equal(exitCode, 0, output);
+      assert.match(output, /npm module: corp-pkg-ok/, output);
+      assert.match(output, /uv module: corp-py-ok/, output);
+      assert.match(output, /put: 405/, output);
+      assert.doesNotMatch(output, new RegExp(`${TOKEN}|py-s3cret|alice`), "no credential in anything a command saw");
+      assert.ok(requests.includes("GET /npm/corp-pkg") && requests.includes("GET /pypi/simple/corp-py/"), requests.join("\n"));
+      assert.ok(!requests.some((line) => line.startsWith("PUT")), "the PUT never reached the registry");
+
+      // Under sandbox.allowedHosts, listing nothing: the relay is reached through the command's proxy alone.
+      const proxy = await startEgressProxy({ allowedHosts: [] });
+      try {
+        const proxied = windowsToolchains({ cacheDir: path.join(base, "relay-cache-proxy"), serverEnv, home, agentDir, relayRoute: "proxy" });
+        const behind = await ps(
+          `New-Item -ItemType Directory -Force proxied | Out-Null; Set-Location proxied; npm init -y | Out-Null; npm install corp-pkg --no-audit --no-fund 2>&1 | ForEach-Object { "$_" }; "npm module: " + (node -e "console.log(require('corp-pkg'))"); "registry: " + (npm config get registry)`,
+          { toolchains: proxied, networkProxy: proxy, allowedHosts: [] },
+        );
+        assert.equal(behind.exitCode, 0, behind.output);
+        assert.match(behind.output, /npm module: corp-pkg-ok/, behind.output);
+        assert.match(behind.output, /registry: http:\/\/registry-relay\.pi-outpost\.invalid\//);
+        assert.doesNotMatch(behind.output, new RegExp(TOKEN));
+      } finally {
+        await proxy.close();
+      }
+    } finally {
+      await new Promise((resolve) => registry.close(resolve));
+    }
   });
 });

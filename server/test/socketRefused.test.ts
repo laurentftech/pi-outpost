@@ -40,11 +40,12 @@ describe("reportsSocketRefused", () => {
   });
 
   test("the note says it was the sandbox, not to retry, and what this sandbox opens", () => {
-    const open = socketRefusedNote({ proxy: false, hostLoopback: true, privateNetwork: true });
-    assert.match(open, /the sandbox refused a network connection \(WSAEACCES, 10013\)/);
-    assert.match(open, /not a network failure, and retrying will not help/);
     const closed = socketRefusedNote({ proxy: false, hostLoopback: true, privateNetwork: false });
-    assert.match(closed, /the private network is closed \(sandbox\.privateNetwork is false\)/);
+    assert.match(closed, /the sandbox refused a network connection \(WSAEACCES, 10013\)/);
+    assert.match(closed, /not a network failure, and retrying will not help/);
+    assert.match(closed, /closed unless the user sets sandbox\.privateNetwork to true/);
+    assert.match(closed, /Only the user can open it/);
+    assert.match(socketRefusedNote({ proxy: false, hostLoopback: true, privateNetwork: true }), /the private network too/);
     assert.match(socketRefusedNote({ proxy: false, hostLoopback: false, privateNetwork: true }), /sandbox\.hostLoopback is false/);
     assert.match(socketRefusedNote({ proxy: true, hostLoopback: true, privateNetwork: true }), /only through the proxy named in HTTPS_PROXY/);
   });
@@ -61,14 +62,14 @@ describe("the user's proxy variables", () => {
 
   // openlore: scenario=TheCompanyProxyReachesTheCommand spec=sandbox-runner-bash
   test("TheCompanyProxyReachesTheCommand: passed when the network is open, a proxy with credentials never", () => {
-    assert.deepEqual(userProxyEnvironment(env), { HTTPS_PROXY: "http://proxy.corp.example:8080", NO_PROXY: "localhost,.corp.example" });
+    assert.deepEqual(userProxyEnvironment(env), { HTTPS_PROXY: "http://proxy.corp.example:8080", NO_PROXY: "localhost,.corp.example,127.0.0.1,::1", no_proxy: "127.0.0.1,localhost,::1" }, "the loopback, where the registry relay is, never goes through the company proxy");
     assert.deepEqual(userProxyEnvironment({ HTTP_PROXY: "bob:pw@10.0.0.2:3128" }), {}, "credentials without a scheme are seen too");
     assert.deepEqual(proxyCredentialsLeftOut(env), ["http_proxy"]);
 
     const base = { root: "C:\\work\\app", tmp: "C:\\t\\b", shell: "powershell.exe", platform: "win32" as const };
     const passed = confinedEnvironment(env, { ...base, userProxy: true });
     assert.equal(passed.HTTPS_PROXY, "http://proxy.corp.example:8080");
-    assert.equal(passed.NO_PROXY, "localhost,.corp.example");
+    assert.equal(passed.NO_PROXY, "localhost,.corp.example,127.0.0.1,::1");
     assert.equal(passed.http_proxy, undefined);
     assert.equal(passed.OPENAI_API_KEY, undefined);
     // Under sandbox.allowedHosts the server's proxy is the only way out: none of the user's.

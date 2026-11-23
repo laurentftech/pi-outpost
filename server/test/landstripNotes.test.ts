@@ -78,14 +78,17 @@ describe("networkSummary", () => {
 
   // openlore: scenario=TheLineNamesTheAsyncioLimit spec=sandbox-runner-bash
   test("TheLineNamesTheAsyncioLimit: under MXC on Windows a closed loopback says asyncio cannot start", () => {
-    assert.equal(networkSummary({ ...mxc, allowedHosts: ["pypi.org"], grants: "never" }, "win32"), `network only to pypi.org, loopback closed: Python's asyncio cannot start in the shell${cache}`);
-    assert.equal(networkSummary({ ...mxc, hostLoopback: false }, "win32"), `loopback closed: Python's asyncio cannot start in the shell${cache}`);
+    assert.equal(networkSummary({ ...mxc, allowedHosts: ["pypi.org"], grants: "never" }, "win32", [], {}), `network only to pypi.org, loopback closed: Python's asyncio cannot start in the shell${cache}`);
+    assert.equal(networkSummary({ ...mxc, hostLoopback: false }, "win32", [], {}), `loopback closed: Python's asyncio cannot start in the shell${cache}`);
   });
 
-  test("under MXC on Windows a closed private network is named; open, the default, it is not", () => {
-    assert.equal(networkSummary({ ...mxc, privateNetwork: false }, "win32"), `loopback open: services listening on this machine are reachable, private network closed${cache}`);
-    assert.doesNotMatch(networkSummary(mxc, "win32")!, /private network/);
-    assert.doesNotMatch(networkSummary({ ...mxc, privateNetwork: false, allowedHosts: ["pypi.org"], grants: "never" }, "win32")!, /private network/, "under a proxy the list decides");
+  test("under MXC on Windows a private network the user opened is named; closed, the default, it is not", () => {
+    assert.equal(
+      networkSummary({ ...mxc, privateNetwork: true }, "win32", [], {}),
+      `loopback open: services listening on this machine are reachable, private network open: the intranet is reachable, and can reach a command${cache}`,
+    );
+    assert.doesNotMatch(networkSummary(mxc, "win32", [], {})!, /private network/);
+    assert.doesNotMatch(networkSummary({ ...mxc, privateNetwork: true, allowedHosts: ["pypi.org"], grants: "never" }, "win32", [], {})!, /private network/, "under a proxy the list decides");
   });
 
   test("under MXC on Windows the line names the MSYS2 folders left out of PATH, and nothing when there are none", () => {
@@ -95,10 +98,10 @@ describe("networkSummary", () => {
   });
 
   test("under MXC on Windows an open loopback says what it reaches; elsewhere nothing is added", () => {
-    assert.equal(networkSummary(mxc, "win32"), `loopback open: services listening on this machine are reachable${cache}`);
-    assert.equal(networkSummary({ ...mxc, hostLoopback: true }, "win32"), `loopback open: services listening on this machine are reachable${cache}`);
-    assert.equal(networkSummary(mxc, "linux"), undefined, "MXC on Linux: a process reaches its own loopback");
-    assert.equal(networkSummary({ ...mxc, bashImage: "buildpack-deps:bookworm-scm" }, "win32"), undefined, "WSLC has its own network");
+    assert.equal(networkSummary(mxc, "win32", [], {}), `loopback open: services listening on this machine are reachable${cache}`);
+    assert.equal(networkSummary({ ...mxc, hostLoopback: true }, "win32", [], {}), `loopback open: services listening on this machine are reachable${cache}`);
+    assert.equal(networkSummary(mxc, "linux", [], {}), undefined, "MXC on Linux: a process reaches its own loopback");
+    assert.equal(networkSummary({ ...mxc, bashImage: "buildpack-deps:bookworm-scm" }, "win32", [], {}), undefined, "WSLC has its own network");
   });
 });
 

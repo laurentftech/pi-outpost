@@ -33,6 +33,7 @@ import {
   mxcMacCaptureRequest,
   mxcPosixConfig,
   proxyEnvironment,
+  carryUserConfigs,
   seatbeltPolicy,
   mxcTerminalConfig,
   runnerKind,
@@ -585,7 +586,11 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         // it (NO_PROXY) or name a host the container refuses. WSLC's network is its own.
         userProxy: networkProxy === undefined && !wslc,
       });
-      if (toolchains) Object.assign(env, toolchains.env);
+      if (toolchains) {
+        Object.assign(env, toolchains.env);
+        // The user's uv.toml, pip.ini and .npmrc, as they are now, without credentials.
+        await carryUserConfigs(toolchains.carried ?? [], toolchains.relayRoute);
+      }
       // A Linux container holds no folder of the user's: a Windows path there would only mislead.
       if (wslc) delete env.PI_OUTPOST_USER_HOME;
       const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
@@ -796,7 +801,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         if (sqliteCannotOpen && !diagnose && directories.grantedRead.length > 0) onData(Buffer.from(`\n${sqliteReadOnlyNote()}\n`));
         // Not when the proxy named a refused host: that note already says what was refused, and why.
         if (socketRefused && !diagnose && refused.size === 0) {
-          onData(Buffer.from(`\n${socketRefusedNote({ proxy: networkProxy !== undefined, hostLoopback: options.hostLoopback !== false, privateNetwork: options.privateNetwork !== false })}\n`));
+          onData(Buffer.from(`\n${socketRefusedNote({ proxy: networkProxy !== undefined, hostLoopback: options.hostLoopback !== false, privateNetwork: options.privateNetwork === true })}\n`));
         }
         // Last, so the agent reads it after everything else: what it can do about a failure here.
         // Not when the proxy already named a refused host — that is what failed, and a diagnosis
@@ -1103,12 +1108,14 @@ export function socketRefusedNote(network: { proxy: boolean; hostLoopback: boole
     ? "under sandbox.allowedHosts a command connects only through the proxy named in HTTPS_PROXY; a program that ignores it, or connects to an address, is refused"
     : [
         "the Internet is open",
-        network.privateNetwork ? "the private network too" : "the private network is closed (sandbox.privateNetwork is false)",
+        network.privateNetwork
+          ? "the private network too"
+          : "the private network (the intranet: a company's mirror, git server or proxy) is closed unless the user sets sandbox.privateNetwork to true",
         network.hostLoopback ? "this machine's own services too" : "this machine's own services are closed (sandbox.hostLoopback is false)",
       ].join("; ");
   return (
     `[pi-outpost] the sandbox refused a network connection (${network.proxy ? "a direct one: no route but the proxy" : "WSAEACCES, 10013"}): it is not a network failure, and retrying will not help. ` +
-    `Here ${reason}. If the task needs it, tell the user which host it was.`
+    `Here ${reason}. Only the user can open it: if the task needs it, tell them which host it was.`
   );
 }
 

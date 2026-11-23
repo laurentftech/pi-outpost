@@ -383,7 +383,7 @@ describe("confinedBashOperations", () => {
       await exec("0", { ops: operations({ platform: "linux" }) });
       let record = await lastRecord();
       assert.equal(record.env.HTTPS_PROXY, "http://proxy.corp.example:8080");
-      assert.equal(record.env.NO_PROXY, "localhost,.corp.example");
+      assert.equal(record.env.NO_PROXY, "localhost,.corp.example,127.0.0.1,::1", "the user's, and the loopback");
       assert.equal(record.env.ALL_PROXY, undefined, "a proxy with a password is never handed to a command");
       const shared = { url: "http://127.0.0.1:4100", watchRefusals: () => () => {} };
       await exec("0", { ops: operations({ platform: "linux", networkProxy: shared, allowedHosts: [] }) });
