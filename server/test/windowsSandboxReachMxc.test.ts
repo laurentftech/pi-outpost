@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { homedir, networkInterfaces, tmpdir } from "node:os";
@@ -326,6 +327,65 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
       } finally {
         await proxy.close();
       }
+    } finally {
+      await new Promise((resolve) => registry.close(resolve));
+    }
+  });
+
+  /** A program on the search path, found as the shell would: undefined when not installed. */
+  const onPath = (name: string) =>
+    (process.env.PATH ?? "").split(";").map((dir) => path.join(dir, name)).find((file) => existsSync(file));
+  const mvn = onPath("mvn.cmd");
+  const gradle = onPath("gradle.bat");
+
+  // openlore: scenario=TheUsersMirrorIsSeen spec=sandbox-runner-bash
+  test("TheUsersMirrorIsSeen, Maven and Gradle: Maven reads the carried settings.xml and reaches its mirror through the relay; Gradle reads gradle.properties without its secret", { skip: mvn && gradle ? false : "needs mvn and gradle on PATH" }, async () => {
+    const PASSWORD = "mvn-s3cret";
+    const AUTH = `Basic ${Buffer.from(`alice:${PASSWORD}`).toString("base64")}`;
+    const seen: Array<{ url: string; authorized: boolean }> = [];
+    // The company's Maven repository: it answers only with alice's password, and has none of what Maven asks.
+    const registry = createServer((req, res) => {
+      seen.push({ url: req.url ?? "", authorized: req.headers.authorization === AUTH });
+      res.writeHead(req.headers.authorization === AUTH ? 404 : 401).end();
+    });
+    await new Promise<void>((resolve) => registry.listen(0, "127.0.0.1", resolve));
+    const origin = `http://127.0.0.1:${(registry.address() as { port: number }).port}`;
+    try {
+      const home = path.join(base, "jvm-user");
+      await mkdir(path.join(home, ".m2"), { recursive: true });
+      await mkdir(path.join(home, ".gradle"), { recursive: true });
+      await writeFile(
+        path.join(home, ".m2", "settings.xml"),
+        `<?xml version="1.0" encoding="UTF-8"?>\n<settings>\n  <mirrors><mirror><id>corp</id><mirrorOf>*</mirrorOf><url>${origin}/maven/</url></mirror></mirrors>\n  <servers><server><id>corp</id><username>alice</username><password>${PASSWORD}</password></server></servers>\n</settings>\n`,
+      );
+      await writeFile(path.join(home, ".gradle", "gradle.properties"), `corpRepoUrl=${origin}/maven/\ncorpPassword=gradle-s3cret\norg.gradle.daemon=false\n`);
+      const project = path.join(root, "jvm");
+      await mkdir(project, { recursive: true });
+      await writeFile(path.join(project, "settings.gradle"), "rootProject.name = 'jvm'\n");
+      await writeFile(path.join(project, "build.gradle"), "tasks.register('corp') { doLast { println \"corpRepoUrl=\" + findProperty('corpRepoUrl'); println \"corpPassword=\" + findProperty('corpPassword') } }\n");
+      const serverEnv: NodeJS.ProcessEnv = { ...process.env, APPDATA: path.join(home, "AppData", "Roaming") };
+      for (const moved of ["CARGO_HOME", "GRADLE_USER_HOME", "GOENV", "npm_config_userconfig", "NPM_CONFIG_USERCONFIG"]) delete serverEnv[moved];
+      const toolchains = windowsToolchains({ cacheDir: path.join(base, "jvm-cache"), serverEnv, home, agentDir, relayRoute: "loopback" });
+      const ops = confinedBashOperations({ runner: RUNNER!, shell: POWERSHELL, root, allowWrite: true, agentDir, toolchains });
+      let output = "";
+      await ops.exec(
+        [
+          "Set-Location jvm",
+          // -X says which settings file it read; the plugin it asks for goes to the mirror, through the relay.
+          `mvn -X -B -ntp help:help 2>&1 | Select-String -Pattern "Reading user settings|Using mirror corp" | ForEach-Object { "$_" }`,
+          `"settings: " + (Get-Content -Raw (($env:MAVEN_ARGS -replace '^-s "', '') -replace '"$', ''))`,
+          `gradle -q --no-daemon corp 2>&1 | ForEach-Object { "$_" }`,
+        ].join("; "),
+        root,
+        { onData: (data) => (output += data.toString()), timeout: 600 },
+      );
+      assert.match(output, /Reading user settings from .*jvm-cache\\user-config\\settings\.xml/, output);
+      assert.match(output, /Using mirror corp \(http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{48}\/[0-9a-f]{16}\/maven\/\) for central/, "the mirror is the relay's");
+      assert.ok(seen.length > 0 && seen.every((request) => request.authorized), `Maven's requests reached the repository with alice's password, added by the relay: ${JSON.stringify(seen.slice(0, 3))}`);
+      assert.ok(seen.some((request) => request.url.startsWith("/maven/")));
+      assert.match(output, new RegExp(`corpRepoUrl=${origin.replace(/[.:/]/g, "\\$&")}/maven/`), "Gradle read its user home's gradle.properties");
+      assert.match(output, /corpPassword=null/, "its secret property was left out");
+      assert.doesNotMatch(output, /s3cret|<password>/, "no credential reached a command");
     } finally {
       await new Promise((resolve) => registry.close(resolve));
     }

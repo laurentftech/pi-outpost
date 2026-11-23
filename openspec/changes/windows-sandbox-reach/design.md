@@ -126,8 +126,6 @@ known gap, said here so it is not rediscovered.
 - **Not exercised with a real agent in the running app.** The notes the model reads — the refused host,
   the redirected-stderr status, the carried configuration — are checked as text, not by watching an agent
   act on them (CLAUDE.md's running-app rule). Small models are the canary for it.
-- **Maven and Gradle reading their copies** is checked by unit tests only: neither was installed on the
-  test machine.
 
 ### Known limits, kept
 
