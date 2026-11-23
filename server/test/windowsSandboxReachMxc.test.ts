@@ -154,6 +154,15 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
   test("TheIntranetIsReachable: the private network is refused by default; privateNetwork true, the user's choice, opens it", { skip: peer ? false : "this machine is on no private IPv4 network" }, async () => {
     assert.match((await ps(PRIVATE)).output, /private: refused by the sandbox/);
     assert.match((await ps(PRIVATE, { privateNetwork: true })).output, /private: not refused/);
+    // Under sandbox.allowedHosts the request asks `ingress.default: allow`, which MXC requires beside a
+    // proxy and which, microsoft/mxc#830 says, opens the private network both ways. Measured: the proxy
+    // shape closes it all the same, even with privateNetwork true. The list stays the only way out.
+    const proxy = await startEgressProxy({ allowedHosts: [] });
+    try {
+      assert.match((await ps(PRIVATE, { networkProxy: proxy, allowedHosts: [], privateNetwork: true })).output, /private: refused by the sandbox/);
+    } finally {
+      await proxy.close();
+    }
   });
 
   // openlore: scenario=ASandboxRefusalIsNamed spec=sandbox-runner-bash

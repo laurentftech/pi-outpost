@@ -428,8 +428,9 @@ cannot start in the shell`).
 
 Windows refuses a process in MXC's container the private network — the subnets this machine is on,
 and intranet ranges a policy names: a company's package mirror, git server or proxy — unless inbound
-connections from it are allowed too. Outbound alone cannot be asked for. So it stays closed unless you
-open it, which only you can do:
+connections from it are allowed too. Outbound alone cannot be asked for: MXC documents the capability as
+bidirectional by design ([microsoft/mxc#830](https://github.com/microsoft/mxc/issues/830)). So it stays
+closed unless you open it, which only you can do:
 
 ```json
 { "sandbox": { "privateNetwork": true } }
@@ -456,7 +457,8 @@ Where no host can be told but the error is the sandbox's (Windows' own sentence 
 the note says so without a host. A refused connection never offers a file diagnosis.
 
 Under `sandbox.allowedHosts` the key changes nothing: the proxy is the only way out, and it reaches an
-intranet host you list by name. The key and `hostLoopback` are independent. A program there that connects
+intranet host you list by name. A command cannot reach the private network around it, even with
+`privateNetwork: true` (measured, and tested). The key and `hostLoopback` are independent. A program there that connects
 directly, ignoring `HTTPS_PROXY`, fails with "network unreachable" (WSAENETUNREACH, 10051); the same note
 follows, saying so.
 
