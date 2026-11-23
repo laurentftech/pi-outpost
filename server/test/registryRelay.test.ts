@@ -3,7 +3,7 @@
  * staying in the server (`registryRelay.ts`).
  */
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { createServer, request, type IncomingHttpHeaders, type Server } from "node:http";
 import { after, before, describe, test } from "node:test";
 import { startEgressProxy } from "../src/egressProxy.ts";
@@ -78,7 +78,7 @@ describe("the registry relay", () => {
     assert.deepEqual([...wheel.body], [0, 1, 2, 255]);
     // A redirect to the registry stays at the relay; JSON's escaped links are rewritten too.
     assert.equal((await get(`${base}moved`)).headers.location, `${base}simple/six/`);
-    assert.match((await get(`${base}pkg`)).body.toString(), new RegExp(`${base.replaceAll("/", "\\\\/").replace(/[.*+?^${}()|[\]]/g, "\\$&")}pkg`));
+    assert.match((await get(`${base}pkg`)).body.toString(), new RegExp(`${base.replaceAll("/", "\\/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}pkg`));
   });
 
   test("read only, its token required, its registries only", async () => {
@@ -116,7 +116,9 @@ describe("the registry relay", () => {
 });
 
 describe("the user's configuration through the relay", () => {
-  const relay = (origin: string, authorization: string) => `http://relay/${createHash("sha256").update(`${origin}|${authorization}`).digest("hex").slice(0, 12)}/`;
+  // Keyed, not a plain hash: a password run through sha256 reads as an insecure password hash.
+  const routeKey = randomBytes(32);
+  const relay = (origin: string, authorization: string) => `http://relay/${createHmac("sha256", routeKey).update(`${origin}|${authorization}`).digest("hex").slice(0, 12)}/`;
   const basic = (user: string, password: string) => `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`;
 
   // openlore: scenario=TheCredentialsStayInTheServer spec=sandbox-runner-bash
@@ -147,7 +149,7 @@ describe("the user's configuration through the relay", () => {
     assert.doesNotMatch(nuget.text, /alice|s3cret|packageSourceCredentials/);
 
     const go = withoutCredentials("GOPROXY=https://bob:pw@goproxy.corp.example,direct\n", "go env", relay);
-    assert.equal(go.text, `GOPROXY=${relay("https://goproxy.corp.example", basic("bob", "pw"))},direct\n`.replace("/,", "/,"));
+    assert.equal(go.text, `GOPROXY=${relay("https://goproxy.corp.example", basic("bob", "pw"))},direct\n`);
 
     // What cannot be paired with a URL is left out, unrelayed.
     const gradle = withoutCredentials("corpPassword=pw\ncorpUrl=https://nexus.corp.example/maven\n", "gradle.properties", relay);

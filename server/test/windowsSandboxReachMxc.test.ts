@@ -383,7 +383,7 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
       assert.match(output, /Using mirror corp \(http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{48}\/[0-9a-f]{16}\/maven\/\) for central/, "the mirror is the relay's");
       assert.ok(seen.length > 0 && seen.every((request) => request.authorized), `Maven's requests reached the repository with alice's password, added by the relay: ${JSON.stringify(seen.slice(0, 3))}`);
       assert.ok(seen.some((request) => request.url.startsWith("/maven/")));
-      assert.match(output, new RegExp(`corpRepoUrl=${origin.replace(/[.:/]/g, "\\$&")}/maven/`), "Gradle read its user home's gradle.properties");
+      assert.match(output, new RegExp(`corpRepoUrl=${origin.replace(/[.:/\\]/g, "\\$&")}/maven/`), "Gradle read its user home's gradle.properties");
       assert.match(output, /corpPassword=null/, "its secret property was left out");
       assert.doesNotMatch(output, /s3cret|<password>/, "no credential reached a command");
     } finally {
