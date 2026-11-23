@@ -434,7 +434,10 @@ creates the GitHub Release with the executables and the Claude Desktop bundles
 by hand, on `main`.
 
 1. **Merge first.** Every PR meant for the release is merged, and CI on `main` is green.
-   Pull `main` locally; the working tree must be clean.
+   Pull `main` locally; the working tree must be clean. When the release touches the Windows sandbox,
+   also run `npm run sandbox:exercise -- <a real project>` on a Windows 11 machine with MXC: it runs
+   the agent's confined shell with your own configuration, tools and layout, which no CI runner has, and
+   exits 1 on a failure. Set `MXC_EXEC=mxc` for `npm test` there too, so the real-MXC suites run.
 2. **Choose the version.** A `feat` since the last tag makes it a minor release, fixes
    alone a patch. A prerelease (`0.27.0-beta.1`) is published under its own identifier and
    never under `latest` — [`scripts/release-channel.mjs`](../scripts/release-channel.mjs)

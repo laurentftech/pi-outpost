@@ -63,6 +63,53 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
   }
 
   // openlore: scenario=AToolBesideTheRootResolves spec=sandbox-runner-bash
+  test("AToolBesideTheRootResolves, as a user's machine lays it out: a project in the home, a global npm CLI in AppData, the rest of the home out", async () => {
+    // Every root above was in the temporary folder, under AppData: AppData was on the way down and never
+    // denied, which is how a project in the home with its global npm CLIs escaped every test (#553).
+    const userHome = path.join(base, "layout", "Users", "me");
+    const project = path.join(userHome, "projects", "app");
+    const npmBin = path.join(userHome, "AppData", "Roaming", "npm");
+    await mkdir(path.join(npmBin, "node_modules", "corp-cli"), { recursive: true });
+    await writeFile(path.join(npmBin, "node_modules", "corp-cli", "cli.js"), `console.log("corp-cli-ran " + require("node:fs").realpathSync(__filename));\n`);
+    // npm's own shim: node beside it if there, else node on PATH.
+    await writeFile(path.join(npmBin, "corp-cli.ps1"), `$basedir = Split-Path $MyInvocation.MyCommand.Definition -Parent\n& node "$basedir/node_modules/corp-cli/cli.js" @args\nexit $LASTEXITCODE\n`);
+    for (const [dir, file] of [[".ssh", "id_ed25519"], [".cargo", "credentials.toml"], ["Documents", "taxes.pdf"]] as const) {
+      await mkdir(path.join(userHome, dir), { recursive: true });
+      await writeFile(path.join(userHome, dir, file), "secret-content");
+    }
+    await mkdir(path.join(userHome, ".cargo", "bin"), { recursive: true });
+    await mkdir(project, { recursive: true });
+    const saved = { PATH: process.env.PATH, USERPROFILE: process.env.USERPROFILE };
+    process.env.PATH = `${npmBin};${path.join(userHome, ".cargo", "bin")};${saved.PATH}`;
+    process.env.USERPROFILE = userHome;
+    try {
+      const ops = confinedBashOperations({ runner: RUNNER!, shell: POWERSHELL, root: project, allowWrite: true, agentDir });
+      let output = "";
+      const { exitCode } = await ops.exec(
+        [
+          "corp-cli",
+          `try { Get-ChildItem -Force '${path.join(userHome, ".ssh")}' -ErrorAction Stop | Out-Null; "ssh: listed" } catch { "ssh: refused" }`,
+          `try { Get-ChildItem -Force '${path.join(userHome, ".cargo")}' -ErrorAction Stop | Out-Null; "cargo: listed" } catch { "cargo: refused" }`,
+          `try { Get-Content -Raw '${path.join(userHome, "Documents", "taxes.pdf")}' -ErrorAction Stop } catch { "documents: refused" }`,
+          `try { Get-ChildItem -Force '${path.join(userHome, "AppData", "Roaming")}' -Name -ErrorAction Stop } catch { "roaming: refused" }`,
+        ].join("; "),
+        project,
+        { onData: (data) => (output += data.toString()), timeout: 120 },
+      );
+      assert.equal(exitCode, 0, output);
+      assert.match(output, /corp-cli-ran .*cli\.js/, "the global CLI runs and resolves its own path");
+      assert.doesNotMatch(output, /EPERM/);
+      assert.match(output, /ssh: refused/);
+      assert.match(output, /cargo: refused/, "a folder directly in the home is never enumerated: ~\\.cargo holds credentials.toml");
+      assert.match(output, /documents: refused/);
+      assert.doesNotMatch(output, /secret-content/);
+    } finally {
+      process.env.PATH = saved.PATH;
+      process.env.USERPROFILE = saved.USERPROFILE;
+    }
+  });
+
+  // openlore: scenario=AToolBesideTheRootResolves spec=sandbox-runner-bash
   test("AToolBesideTheRootResolves: a script beside the root runs by its launcher on PATH, and what lies beside stays out", async () => {
     const run = await ps("foo");
     assert.equal(run.exitCode, 0, run.output);
