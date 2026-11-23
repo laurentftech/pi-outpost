@@ -82,6 +82,12 @@ describe("networkSummary", () => {
     assert.equal(networkSummary({ ...mxc, hostLoopback: false }, "win32"), `loopback closed: Python's asyncio cannot start in the shell${cache}`);
   });
 
+  test("under MXC on Windows a closed private network is named; open, the default, it is not", () => {
+    assert.equal(networkSummary({ ...mxc, privateNetwork: false }, "win32"), `loopback open: services listening on this machine are reachable, private network closed${cache}`);
+    assert.doesNotMatch(networkSummary(mxc, "win32")!, /private network/);
+    assert.doesNotMatch(networkSummary({ ...mxc, privateNetwork: false, allowedHosts: ["pypi.org"], grants: "never" }, "win32")!, /private network/, "under a proxy the list decides");
+  });
+
   test("under MXC on Windows the line names the MSYS2 folders left out of PATH, and nothing when there are none", () => {
     const gitUsr = String.raw`C:\Program Files\Git\usr\bin`;
     assert.ok(networkSummary(mxc, "win32", [gitUsr])!.endsWith(`, MSYS2 folders left out of PATH: ${gitUsr}`));

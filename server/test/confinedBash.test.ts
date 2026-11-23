@@ -372,6 +372,32 @@ describe("confinedBashOperations", () => {
     assert.equal(record.env.HTTPS_PROXY, undefined);
   });
 
+  // openlore: scenario=TheCompanyProxyReachesTheCommand spec=sandbox-runner-bash
+  test("TheCompanyProxyReachesTheCommand: the user's proxy goes with a command whose network is open, none under the list's", async () => {
+    const saved = { HTTPS_PROXY: process.env.HTTPS_PROXY, ALL_PROXY: process.env.ALL_PROXY, NO_PROXY: process.env.NO_PROXY };
+    // Upper case only: on Windows a process' environment is case-insensitive, and http_proxy would be HTTP_PROXY.
+    process.env.HTTPS_PROXY = "http://proxy.corp.example:8080";
+    process.env.ALL_PROXY = "http://alice:s3cret@proxy.corp.example:8080";
+    process.env.NO_PROXY = "localhost,.corp.example";
+    try {
+      await exec("0", { ops: operations({ platform: "linux" }) });
+      let record = await lastRecord();
+      assert.equal(record.env.HTTPS_PROXY, "http://proxy.corp.example:8080");
+      assert.equal(record.env.NO_PROXY, "localhost,.corp.example");
+      assert.equal(record.env.ALL_PROXY, undefined, "a proxy with a password is never handed to a command");
+      const shared = { url: "http://127.0.0.1:4100", watchRefusals: () => () => {} };
+      await exec("0", { ops: operations({ platform: "linux", networkProxy: shared, allowedHosts: [] }) });
+      record = await lastRecord();
+      assert.equal(record.env.HTTPS_PROXY, "http://127.0.0.1:4100", "the list's proxy, not the user's");
+      assert.equal(record.env.NO_PROXY, undefined, "NO_PROXY would route around the list's proxy");
+    } finally {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
   test("a working directory outside the root starts the command in the root", async () => {
     await exec(`0`, { cwd: base });
     // Compared resolved: the runner reads its directory back through the OS, which

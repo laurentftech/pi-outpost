@@ -84,6 +84,8 @@ export interface ConfinedBashOptions {
   toolchains?: WindowsToolchains;
   /** `sandbox.hostLoopback`: MXC on Windows only, without a proxy (see `mxcTerminalConfig`). */
   hostLoopback?: boolean;
+  /** `sandbox.privateNetwork`: MXC on Windows only, without a proxy (see `mxcTerminalConfig`). */
+  privateNetwork?: boolean;
   /** `sandbox.allowedHosts` itself, which a command's own proxy starts from. */
   allowedHosts?: readonly string[];
   /**
@@ -455,6 +457,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     let tail = "";
     let sqliteCannotOpen = false;
     let sqliteTail = "";
+    // A connection the container refused (WSAEACCES): reads as a network failure otherwise (#552, #554).
+    let socketRefused = false;
+    let socketTail = "";
     const filtered = powerShell ? withoutPowerShellDriveNoise(shown) : undefined;
     const show = filtered ? (data: Buffer) => filtered.write(data) : shown;
     const onData: (data: Buffer) => void = diagnose
@@ -474,6 +479,11 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
             const text = deniedTail + data.toString();
             if (reportsAccessDenied(text)) accessDenied = true;
             deniedTail = text.slice(-64);
+          }
+          if (!socketRefused && diagnosable) {
+            const text = socketTail + data.toString();
+            if (reportsSocketRefused(text)) socketRefused = true;
+            socketTail = text.slice(-96);
           }
           show(data);
         };
@@ -561,6 +571,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         gitConfig: options.gitConfig,
         // MXC derives the container's TEMP from it (see confinedEnvironment); WSLC is a Linux container.
         containerProfileInTmp: kind === "mxc" && !wslc && !isPosixMxc(options.runner),
+        // Under sandbox.allowedHosts the server's proxy is the only way out: the user's would bypass
+        // it (NO_PROXY) or name a host the container refuses. WSLC's network is its own.
+        userProxy: networkProxy === undefined && !wslc,
       });
       if (toolchains) Object.assign(env, toolchains.env);
       // A Linux container holds no folder of the user's: a Windows path there would only mislead.
@@ -662,6 +675,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           readOnlyInside,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
           ...(options.hostLoopback === undefined ? {} : { hostLoopback: options.hostLoopback }),
+          ...(options.privateNetwork === undefined ? {} : { privateNetwork: options.privateNetwork }),
         });
         if (diagnose) reportDir = await mkdtemp(path.join(tmpdir(), "pi-outpost-diagnosis-"));
         const sent = reportDir === undefined
@@ -770,6 +784,10 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         if (msys !== undefined) onData(Buffer.from(`\n${msysNote(msys)}\n`));
         if (bunInstallRefused && diagnosable) onData(Buffer.from(`\n${bunInstallNote()}\n`));
         if (sqliteCannotOpen && !diagnose && directories.grantedRead.length > 0) onData(Buffer.from(`\n${sqliteReadOnlyNote()}\n`));
+        // Not when the proxy named a refused host: that note already says what was refused, and why.
+        if (socketRefused && !diagnose && refused.size === 0) {
+          onData(Buffer.from(`\n${socketRefusedNote({ proxy: networkProxy !== undefined, hostLoopback: options.hostLoopback !== false, privateNetwork: options.privateNetwork !== false })}\n`));
+        }
         // Last, so the agent reads it after everything else: what it can do about a failure here.
         // Not when the proxy already named a refused host — that is what failed, and a diagnosis
         // runs without network: it would contradict "do not retry".
@@ -1033,6 +1051,46 @@ export function withoutPowerShellDriveNoise(next: (data: Buffer) => void): { wri
 
 /** SQLite's message when it cannot open a database: under a read-only grant, a WAL database's sign. */
 const SQLITE_CANNOT_OPEN = "unable to open database file";
+
+/**
+ * Windows' WSAEACCES (10013) on a connection: under MXC's process container, the sandbox's refusal of
+ * a destination it does not open — every program words it its own way (Rust's "os error 10013",
+ * Python's "WinError 10013", .NET's sentence, in the user's language). Never a bare 10013, a port.
+ */
+const SOCKET_REFUSED = new RegExp(
+  [
+    String.raw`os error 10013`,
+    String.raw`winerror 10013`,
+    String.raw`errno 10013`,
+    String.raw`wsaeacces`,
+    String.raw`forbidden by its access permissions`,
+    String.raw`interdite par ses autorisations`,
+  ].join("|"),
+  "i",
+);
+
+export function reportsSocketRefused(output: string): boolean {
+  return SOCKET_REFUSED.test(output);
+}
+
+/**
+ * What ends a command whose connection the sandbox refused: that it was the sandbox, not the network
+ * — the agent otherwise retries, or reports the company's mirror down (#552) — what this sandbox
+ * opens, and the setting that would open the rest, which only the user can change.
+ */
+export function socketRefusedNote(network: { proxy: boolean; hostLoopback: boolean; privateNetwork: boolean }): string {
+  const reason = network.proxy
+    ? "under sandbox.allowedHosts a command connects only through the proxy named in HTTPS_PROXY; a program that ignores it, or connects to an address, is refused"
+    : [
+        "the Internet is open",
+        network.privateNetwork ? "the private network too" : "the private network is closed (sandbox.privateNetwork is false)",
+        network.hostLoopback ? "this machine's own services too" : "this machine's own services are closed (sandbox.hostLoopback is false)",
+      ].join("; ");
+  return (
+    `[pi-outpost] the sandbox refused a network connection (WSAEACCES, 10013): it is not a network failure, and retrying will not help. ` +
+    `Here ${reason}. If the task needs it, tell the user which host it was.`
+  );
+}
 
 /**
  * What ends a command whose SQLite could not open a database while a folder was granted read-only:

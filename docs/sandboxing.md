@@ -123,7 +123,7 @@ Under a runner, a command (or a terminal) may:
 | Write | The writable zone and the private temporary directory. Nothing with `allowWrite: false`. |
 | Not write | The repository's `.git` at the root of the writable zone, when it exists: its configuration and hooks name commands git runs, for you too, later. Reading it, `git status`, `git diff` and `git log` work; a commit asks for a grant on it ([below](#grants-beyond-the-sandbox-when-you-say-so)), and "for this session" covers a session's commits. A repository nested deeper in the project is not held. `sandbox.gitWritable: true` leaves it writable. The terminal is not held. |
 | Never | The agent directory (`auth.json`, the keys) and the configuration file. |
-| Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's, uv's and pip's caches in the temporary directory (`npm_config_cache`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`: never your own cache made writable, where a package left by a command would later run unconfined), the shell's history there too (`HISTFILE`, and `ZDOTDIR` for zsh) so none is left in your project, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity — with the global ignore and attributes files it names in `core.excludesFile` and `core.attributesFile`, read-only too); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory. None of the server's other variables, so no provider key. |
+| Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's, uv's and pip's caches in the temporary directory (`npm_config_cache`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`: never your own cache made writable, where a package left by a command would later run unconfined), the shell's history there too (`HISTFILE`, and `ZDOTDIR` for zsh) so none is left in your project, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity — with the global ignore and attributes files it names in `core.excludesFile` and `core.attributesFile`, read-only too); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory; your proxy variables when the network is open, never one carrying a password ([below](#behind-a-company-proxy)). None of the server's other variables, so no provider key. |
 | Signal | No process outside the sandbox. |
 
 The repository's `.git/config` names commands git runs (`core.fsmonitor`, filters, diff drivers). The agent's commands cannot write it by default (the *Not write* row above). And whatever is written there — with `sandbox.gitWritable`, a grant, or in a repository nested deeper — the git pi-outpost itself runs, unconfined, for the Files badges and the history, overrides every such key: nothing written there runs in the server. Your own tools still read that file: an editor's git integration or a prompt that shows git status would run what it names.
@@ -381,7 +381,13 @@ MXC for no clipboard and no input injection. Limits:
   The same guard applies to each: never your home directory or above it, the agent directory or the
   configuration. Anything else a tool needs — the Pythons uv keeps when no `.venv` names one, a
   program elsewhere — goes in [`sandbox.readOnlyPaths`](#tools-installed-for-you-sandboxreadonlypaths). The Python launcher `py.exe` still finds no
-  interpreter (it reads the registry); `python` runs.
+  interpreter (it reads the registry); `python` runs. scoop's `shims` are followed wherever they are,
+  a global install's (`C:\tools\scoop\shims`) too.
+- The folders above such a tool, when it is beside the root (`C:\dev` for `C:\dev\nodejs` while the
+  project is `C:\projects\app`), can be listed but not read: a path through them resolves, so Node runs
+  a global npm CLI. Everything else in them stays denied by name, as beside the root — another project
+  in `C:\dev` is out of reach. A folder the root's drive already makes readable is left as it is.
+  This needs a Windows whose MXC can list a folder without reading it; MXC says so in its probe.
 - A folder readable but not writable can be neither listed nor entered: leave the whole root writable
   (no narrower `writableRoot`) where git runs.
 - `git push` has no credentials, and signed commits fail: GnuPG for Windows is built without ASLR, which
@@ -416,6 +422,39 @@ Under `sandbox.allowedHosts` the loopback reaches the proxy alone and asyncio ha
 loopback rule beside its proxy ([microsoft/mxc#1731](https://github.com/microsoft/mxc/issues/1731)). The
 server's startup line says which way it is (`loopback open: …` or `loopback closed: Python's asyncio
 cannot start in the shell`).
+
+### The private network
+
+Windows refuses a process in MXC's container the private network — the subnets this machine is on,
+and intranet ranges a policy names: a company's package mirror, git server or proxy — unless inbound
+connections from it are allowed too. Outbound alone cannot be asked for. So by default, without
+`sandbox.allowedHosts`, the agent's shell and the confined terminal run with the private network open,
+as the rest of the network is: a command reaches the intranet, and a server it starts can be reached
+from it, through Windows' firewall like any program. To close it again:
+
+```json
+{ "sandbox": { "privateNetwork": false } }
+```
+
+A connection then refused fails with WSAEACCES — uv's `os error 10013`, Python's `WinError 10013`.
+Whatever the setting, a command whose output shows that error ends with a note saying the sandbox
+refused it, so the agent does not take it for a network failure and retry:
+
+```
+[pi-outpost] the sandbox refused a network connection (WSAEACCES, 10013): it is not a network failure, and retrying will not help. Here the Internet is open; the private network is closed (sandbox.privateNetwork is false); this machine's own services too. If the task needs it, tell the user which host it was.
+```
+
+Under `sandbox.allowedHosts` the key changes nothing: the proxy is the only way out, and it reaches an
+intranet host you list by name. The key and `hostLoopback` are independent.
+
+### Behind a company proxy
+
+A confined command, and the confined terminal, get your `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and
+`NO_PROXY` (either case) when no `sandbox.allowedHosts` proxy is their way out: behind a company's proxy
+nothing else gets out, and every download would time out. A variable whose proxy names a user or password
+(`http://user:password@proxy:8080`) is a credential and is not passed; the startup line names it. A proxy
+set only by a PAC file or WinHTTP, not by these variables, is not read. Under `sandbox.allowedHosts` none
+is passed — `NO_PROXY` would route around the server's proxy — and the server's proxy connects directly.
 
 ### Toolchains and the sandbox cache
 

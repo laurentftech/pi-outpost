@@ -25,7 +25,7 @@ export interface MxcWireRequest {
   network: { egress: { default: "allow" | "deny" }; ingress?: { default: "allow" | "deny"; hostLoopback?: "allow" | "deny" } };
   runtimeConfig?: { networkProxy: string };
   ui?: { disable: boolean; clipboard?: "none" | "read" | "write" | "readwrite"; injection?: boolean };
-  processContainer?: { captureDenials: { mode: "block"; outputPath: string } };
+  processContainer?: { filesystem?: { enumeratePaths: string[] }; captureDenials?: { mode: "block"; outputPath: string } };
   seatbelt?: { extraMachLookups: string[] };
   wslc?: { image: string; storagePath?: string };
 }
@@ -42,7 +42,7 @@ export interface SdkRequest {
   timeoutMs?: number;
   containerName?: string;
   containment:
-    | { type: "processcontainer"; config?: { captureDenials: { mode: "block"; outputPath: string } } }
+    | { type: "processcontainer"; config?: { filesystem?: { enumeratePaths: string[] }; captureDenials?: { mode: "block"; outputPath: string } } }
     | { type: "bubblewrap" }
     | { type: "seatbelt"; config: { extraMachLookups: string[] } }
     | { type: "wslc"; config: { image: string; storagePath?: string } };
@@ -131,7 +131,17 @@ export function sdkRequest(wire: MxcWireRequest, timeoutMs?: number): SdkRequest
   }
   const containment: SdkRequest["containment"] =
     wire.containment === "processcontainer"
-      ? { type: "processcontainer", ...(wire.processContainer ? { config: { captureDenials: { ...wire.processContainer.captureDenials } } } : {}) }
+      ? {
+          type: "processcontainer",
+          ...(wire.processContainer
+            ? {
+                config: {
+                  ...(wire.processContainer.filesystem ? { filesystem: { enumeratePaths: [...wire.processContainer.filesystem.enumeratePaths] } } : {}),
+                  ...(wire.processContainer.captureDenials ? { captureDenials: { ...wire.processContainer.captureDenials } } : {}),
+                },
+              }
+            : {}),
+        }
       : wire.containment === "seatbelt"
         ? { type: "seatbelt", config: { extraMachLookups: [...(wire.seatbelt?.extraMachLookups ?? [])] } }
         : wire.containment === "wslc"

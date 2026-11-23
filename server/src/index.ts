@@ -3111,6 +3111,7 @@ function terminalConfinement(workspace: Workspace): TerminalConfinement | undefi
     agentDir: AGENT_DIR,
     ...(config.configFile ? { configFile: config.configFile } : {}),
     ...(config.sandbox?.hostLoopback === undefined ? {} : { hostLoopback: config.sandbox.hostLoopback }),
+    ...(config.sandbox?.privateNetwork === undefined ? {} : { privateNetwork: config.sandbox.privateNetwork }),
     ...(config.sandbox?.cacheDir === undefined ? {} : { cacheDir: config.sandbox.cacheDir }),
     ...(config.sandbox?.toolEnvironment === undefined ? {} : { toolEnvironment: config.sandbox.toolEnvironment }),
   });
@@ -3988,6 +3989,8 @@ async function handleUpdateConfig(
         ...(config.sandbox?.readOnlyPaths === undefined ? {} : { readOnlyPaths: config.sandbox.readOnlyPaths }),
         // Or an apply would reopen the loopback the file closed.
         ...(config.sandbox?.hostLoopback === undefined ? {} : { hostLoopback: config.sandbox.hostLoopback }),
+        // Or an apply would reopen the private network the file closed.
+        ...(config.sandbox?.privateNetwork === undefined ? {} : { privateNetwork: config.sandbox.privateNetwork }),
         // Or an apply would move the sandbox cache back to its default.
         ...(config.sandbox?.cacheDir === undefined ? {} : { cacheDir: config.sandbox.cacheDir }),
         ...(config.sandbox?.toolEnvironment === undefined ? {} : { toolEnvironment: config.sandbox.toolEnvironment }),

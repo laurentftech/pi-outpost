@@ -194,7 +194,7 @@ async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: (
   const loaded = await load();
   if ("reason" in loaded) return { ok: false, reason: loaded.reason };
   if (mac) return checkPosixMxcRunner({ sdk: loaded.sdk }, "seatbelt");
-  let probe: { tier?: unknown; probes?: { baseContainerSupportsDenyPaths?: unknown }; error?: unknown };
+  let probe: { tier?: unknown; probes?: { baseContainerSupportsDenyPaths?: unknown; baseContainerSupportsEnumeratePaths?: unknown }; error?: unknown };
   try {
     probe = (await loaded.sdk.probe()) as typeof probe;
   } catch (error) {
@@ -218,8 +218,16 @@ async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: (
   if (probe.probes?.baseContainerSupportsDenyPaths === false) {
     return { ok: false, reason: "This Windows build's sandbox cannot deny paths, which the terminal's policy needs" };
   }
+  // Without it a request naming `enumeratePaths` is refused: the folders above a tool stay closed, as before.
+  mxcEnumerates = probe.probes?.baseContainerSupportsEnumeratePaths !== false;
   return { ok: true };
 }
+
+/**
+ * Whether this host's MXC can make a folder listable without making it readable
+ * (`baseContainerSupportsEnumeratePaths`), as its last probe said: assumed until a probe says not.
+ */
+let mxcEnumerates = true;
 
 /** MXC's Linux and macOS self-check: one confined `true`, network open — through the SDK on macOS, the executor on Linux. */
 async function checkPosixMxcRunner(through: { sdk: MxcSdk } | { executor: string; exec: Exec }, containment: "bubblewrap" | "seatbelt"): Promise<RunnerCheck> {
@@ -536,13 +544,20 @@ export interface MxcTerminalConfig {
    */
   network:
     | { egress: { default: "allow" } }
-    | { egress: { default: "allow" }; ingress: { default: "deny"; hostLoopback: "allow" } }
+    | { egress: { default: "allow" }; ingress: { default: "allow" | "deny"; hostLoopback?: "allow" } }
     | { egress: { default: "deny" }; ingress: { default: "allow"; hostLoopback: "allow" } }
     | { egress: { default: "deny" } };
   /** The only way out, with `egress` denied: MXC sets `HTTPS_PROXY` and `HTTP_PROXY` to it. */
   runtimeConfig?: { networkProxy: string };
-  /** A diagnosis only (`mxcDiagnosticConfig`): MXC's report of what it refused, enforcement kept. */
-  processContainer?: { captureDenials: { mode: "block"; outputPath: string } };
+  /**
+   * `filesystem.enumeratePaths`: the folders above a readable one, which a command may list and
+   * query but not read a file of (`ancestorsToEnumerate`). `captureDenials`: a diagnosis only
+   * (`mxcDiagnosticConfig`), MXC's report of what it refused, enforcement kept.
+   */
+  processContainer?: {
+    filesystem?: { enumeratePaths: string[] };
+    captureDenials?: { mode: "block"; outputPath: string };
+  };
 }
 
 /**
@@ -571,7 +586,7 @@ export function mxcDiagnosticConfig(config: MxcTerminalConfig, keep: { root: str
       deniedPaths: config.filesystem.deniedPaths.filter((p) => kept.has(p.toLowerCase())),
     },
     network: { egress: { default: "deny" } },
-    processContainer: { captureDenials: { mode: "block", outputPath: keep.reportPath } },
+    processContainer: { ...config.processContainer, captureDenials: { mode: "block", outputPath: keep.reportPath } },
   };
 }
 
@@ -599,6 +614,11 @@ export interface MxcTerminalInput {
   /** `sandbox.allowedHosts`' proxy: the network closed but for it. The agent's shell only. */
   networkProxy?: string;
   /**
+   * `sandbox.privateNetwork`, without a proxy: the private network reachable (default) — a
+   * company's package mirror, git server or proxy. Windows opens it in both directions only.
+   */
+  privateNetwork?: boolean;
+  /**
    * `sandbox.hostLoopback`, without a proxy: the host's loopback open (default), so a process
    * reaches a port it listens on itself — Python's `socketpair()` and asyncio need it.
    */
@@ -618,6 +638,14 @@ export interface MxcTerminalInput {
   grantedWrite?: string[];
   /** How the installations behind the search path are found (`toolInstallations`): the disk, or a test's. */
   toolReader?: ToolInstallationReader;
+  /**
+   * The folders above each readable one made listable (`ancestorsToEnumerate`). Unset, as this
+   * host's MXC last probed (`baseContainerSupportsEnumeratePaths`): a request naming them where it
+   * cannot would be refused.
+   */
+  enumerateAncestors?: boolean;
+  /** What is in an enumerated folder, to deny by name (`deniableEntries`): the disk, or a test's. */
+  besideEnumerated?: (dir: string) => string[];
 }
 
 /**
@@ -888,8 +916,9 @@ export function toolInstallations(
     // The folder itself a link (nvm-windows' symlink to the active version): its target.
     if (reader.isLink(entry)) take(reader.resolveLink(entry));
     // Only folders of the user's own installs are looked into: links and shims live there, and a
-    // system directory would be thousands of names read on every launch.
-    if (!input.home || !under(entry, input.home)) continue;
+    // system directory would be thousands of names read on every launch. And a folder named `shims`
+    // anywhere: scoop installed globally, or for a machine, keeps them in `C:\…\scoop\shims` (#554).
+    if (name !== "shims" && (!input.home || !under(entry, input.home))) continue;
     const names = reader.list(entry).slice(0, LAUNCHERS_LOOKED_AT);
     for (const file of names) {
       const full = win.join(entry, file);
@@ -938,9 +967,25 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   ];
   const readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? []), ...(input.readOnlyInside ?? [])].filter((p) => !readwritePaths.includes(p)));
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
-  const deniedPaths = unique([...input.siblings, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
+  const enumeratePaths = !(input.enumerateAncestors ?? mxcEnumerates)
+    ? []
+    // What a command opens beside the root by path: the search path's tools and the grants. Not the
+    // temporary directory, under a profile of hundreds of entries each to deny, nor git's single files.
+    : ancestorsToEnumerate([...shellDir, ...tools, ...(input.grantedRead ?? []), ...(input.grantedWrite ?? [])], {
+        root: input.root,
+        siblings: input.siblings,
+        readable: [...readwritePaths, ...readonlyPaths],
+        agentDir: input.agentDir,
+        configFile: input.configFile,
+      });
+  const enumerated = new Set(enumeratePaths.map((p) => p.toLowerCase()));
+  // MXC enumerates a folder's whole subtree: what is beside the way down is denied by name in
+  // each, as the siblings of the path to the root are, so a listing shows those names alone.
+  const onTheWay = new Set([...allowed, ...enumerated].map((p) => p.replace(/[\\/]+$/, "")));
+  const besideTheWay = enumeratePaths.flatMap((dir) => (input.besideEnumerated ?? deniableEntries)(dir).filter((entry) => !onTheWay.has(entry.toLowerCase())));
+  const deniedPaths = unique([...input.siblings, ...besideTheWay, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
-    .filter((p) => !allowed.has(p.toLowerCase()));
+    .filter((p) => !allowed.has(p.toLowerCase()) && !enumerated.has(p.toLowerCase()));
   return {
     version: "1.0.0",
     containment: "processcontainer",
@@ -956,16 +1001,86 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     // Windows lets a contained process reach even its own listener only through it (measured,
     // mxc-sdk 1.1.0 on 10.0.26100: `socketpair()` hangs in `accept` under every other shape;
     // microsoft/mxc#1261). Other loopback services become reachable; the server is not, without
-    // its token. Inbound from the network stays denied.
+    // its token.
+    // And the private network is open unless `sandbox.privateNetwork` is false: Windows refuses an
+    // outbound connection to 10/8, 172.16/12 or 192.168/16 with WSAEACCES (10013) unless inbound
+    // from the private network is allowed too — an egress allow rule naming those ranges does not
+    // do it (measured, same build; issue #552). Inbound then passes the sandbox, not the firewall.
     ...(input.networkProxy === undefined
-      ? input.hostLoopback === false
-        ? { network: { egress: { default: "allow" } } }
-        : { network: { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } } }
+      ? {
+          network: {
+            egress: { default: "allow" },
+            ...(input.hostLoopback === false && input.privateNetwork === false
+              ? {}
+              : { ingress: { default: input.privateNetwork === false ? "deny" : "allow", ...(input.hostLoopback === false ? {} : { hostLoopback: "allow" }) } }),
+          },
+        }
       : {
           network: { egress: { default: "deny" }, ingress: { default: "allow", hostLoopback: "allow" } },
           runtimeConfig: { networkProxy: input.networkProxy },
         }),
+    ...(enumeratePaths.length > 0 ? { processContainer: { filesystem: { enumeratePaths } } } : {}),
   };
+}
+
+/**
+ * The folders above each readable one, up to (not including) its drive's root: listed and queried,
+ * never read (MXC's `enumeratePaths`, `baseContainerSupportsEnumeratePaths`).
+ *
+ * A readable folder beside the root — a tool on `PATH` (`C:\dev\nodejs`), a grant — sits under a
+ * folder the command may not touch: denied by name as a sibling of the path to the root, or under
+ * no allow at all. Opening a file inside works (Windows does not check the folders above), but
+ * resolving a path does not: Node's `realpathSync` `lstat`s every component from the drive down,
+ * so any script or module outside the root died on `EPERM: lstat 'C:\dev'` (issue #553), and
+ * PowerShell's and cmd's command lookup, which query the folder, found nothing there.
+ *
+ * Only a folder nothing else lets the command read: on another drive than the root's, or a sibling
+ * of the path to the root (or inside one) — never one the root's readable drive already covers,
+ * where enumeration, the more specific rule, would take reading away. Enumerating a folder shows the
+ * names in its whole subtree and their metadata, never one byte of a file; `mxcTerminalConfig`
+ * denies by name what lies beside the way down, so only those names show. The agent directory and
+ * the configuration file are never enumerated, nor any folder inside them.
+ */
+export function ancestorsToEnumerate(
+  opened: readonly string[],
+  guard: { root: string; siblings: readonly string[]; readable?: readonly string[]; agentDir?: string; configFile?: string },
+): string[] {
+  const win = path.win32;
+  const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+  const under = (child: string, parent: string) => child === parent || child.startsWith(`${parent}\\`);
+  const secrets = [guard.agentDir, guard.configFile].filter((p): p is string => Boolean(p)).map(lower);
+  const rootDrive = lower(win.parse(guard.root).root);
+  const siblings = guard.siblings.map(lower);
+  // Readable folders other than the drive: a folder inside one is read, not merely enumerated.
+  const reading = (guard.readable ?? opened).filter((p) => win.isAbsolute(p) && lower(p) !== lower(win.parse(p).root)).map(lower);
+  const covered = (key: string) =>
+    reading.some((p) => under(key, p)) || (key.startsWith(rootDrive) && !siblings.some((sibling) => under(key, sibling)));
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of opened) {
+    if (!win.isAbsolute(entry)) continue;
+    const drive = lower(win.parse(entry).root);
+    let dir = win.dirname(entry.replace(/[\\/]+$/, ""));
+    while (lower(dir) !== drive && lower(dir) !== lower(win.dirname(dir))) {
+      const key = lower(dir);
+      if (seen.has(key)) break; // Its own ancestors are already decided.
+      seen.add(key);
+      if (!covered(key) && !secrets.some((secret) => under(key, secret))) found.push(dir);
+      dir = win.dirname(dir);
+    }
+  }
+  return found;
+}
+
+/** The entries of a folder MXC can deny by name (`deniable`), or none when it cannot be listed. */
+export function deniableEntries(dir: string): string[] {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names.map((name) => path.join(dir, name)).filter(deniable);
 }
 
 /**
@@ -1374,6 +1489,35 @@ export function quoteWindowsArgument(argument: string): string {
 /** Variables a shell needs. Everything else of the server's stays out. */
 const PASSED_THROUGH = ["PATH", "LANG", "TERM", "COLORTERM", "TZ"];
 
+const USER_PROXY_VARIABLES = ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "all_proxy", "no_proxy"];
+
+/**
+ * The user's proxy variables, for a confined command whose network is open: behind a company's
+ * proxy nothing else reaches out, and without them every download timed out with no sign of why
+ * (issue #554). A proxy URL naming a user or password is a credential, never passed: none of that
+ * variable, and the server's log says so (`proxyCredentialsLeftOut`).
+ */
+export function userProxyEnvironment(serverEnv: NodeJS.ProcessEnv): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const name of USER_PROXY_VARIABLES) {
+    const value = serverEnv[name];
+    if (value === undefined || value === "") continue;
+    if (/^no_proxy$/i.test(name) || !carriesCredentials(value)) env[name] = value;
+  }
+  return env;
+}
+
+/** The proxy variables `userProxyEnvironment` leaves out because they carry a user or password. */
+export function proxyCredentialsLeftOut(serverEnv: NodeJS.ProcessEnv): string[] {
+  return USER_PROXY_VARIABLES.filter((name) => !/^no_proxy$/i.test(name) && serverEnv[name] && carriesCredentials(serverEnv[name]!));
+}
+
+function carriesCredentials(proxy: string): boolean {
+  // `user:pass@host`, with or without a scheme: anything before an `@` in the authority.
+  const authority = proxy.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[/?#]/)[0] ?? "";
+  return authority.includes("@");
+}
+
 /**
  * What Windows itself needs on top — and what landstrip's runner needs to start an
  * AppContainer at all ("Windows ProgramData is unavailable" without it). Locations and
@@ -1453,6 +1597,11 @@ export function confinedEnvironment(
      * path, or all of `C:Users`): no temporary file could be created. The private temp instead.
      */
     containerProfileInTmp?: boolean;
+    /**
+     * The user's own proxy variables (`userProxyEnvironment`): when no `sandbox.allowedHosts` proxy
+     * is the command's way out. Behind a company's proxy the network is reached only through it.
+     */
+    userProxy?: boolean;
   },
 ): Record<string, string> {
   const windows = (options.platform ?? process.platform) === "win32";
@@ -1461,6 +1610,7 @@ export function confinedEnvironment(
     const value = serverEnv[name];
     if (value !== undefined) env[name] = value;
   }
+  if (options.userProxy) Object.assign(env, userProxyEnvironment(serverEnv));
   for (const [name, value] of Object.entries(serverEnv)) {
     if (name.startsWith("LC_") && value !== undefined) env[name] = value;
   }

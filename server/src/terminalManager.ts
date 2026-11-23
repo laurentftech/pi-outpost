@@ -650,6 +650,8 @@ export async function confinedLaunch(confine: TerminalConfinement, shell: string
       shell,
       gitConfig: confine.gitConfig,
       containerProfileInTmp: confine.kind === "mxc" && process.platform === "win32",
+      // The terminal keeps the user's network, and with it their company's proxy.
+      userProxy: true,
     });
     if (confine.toolchains) Object.assign(shellEnv, confine.toolchains.env);
     return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv });

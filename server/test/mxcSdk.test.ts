@@ -34,7 +34,8 @@ function said(wire: MxcWireRequest, built: Doc) {
     ...(wire.runtimeConfig ? { runtimeConfig: built.runtimeConfig } : {}),
     ...(wire.ui ? { ui: built.ui } : {}),
     ...(wire.containerId ? { containerId: built.containerId } : {}),
-    ...(wire.processContainer ? { captureDenials: (built.processContainer as Doc).captureDenials } : {}),
+    ...(wire.processContainer?.captureDenials ? { captureDenials: (built.processContainer as Doc).captureDenials } : {}),
+    ...(wire.processContainer?.filesystem ? { enumeratePaths: ((built.processContainer as Doc).filesystem as Doc).enumeratePaths } : {}),
     ...(wire.seatbelt ? { extraMachLookups: (built.seatbelt as Doc).extraMachLookups } : {}),
     ...(wire.wslc ? { wslc: pick(built.wslc as Doc, ["image", "storagePath"]) } : {}),
   };
@@ -49,7 +50,8 @@ function expected(wire: MxcWireRequest) {
     ...(wire.runtimeConfig ? { runtimeConfig: wire.runtimeConfig } : {}),
     ...(wire.ui ? { ui: wire.ui } : {}),
     ...(wire.containerId ? { containerId: wire.containerId } : {}),
-    ...(wire.processContainer ? { captureDenials: wire.processContainer.captureDenials } : {}),
+    ...(wire.processContainer?.captureDenials ? { captureDenials: wire.processContainer.captureDenials } : {}),
+    ...(wire.processContainer?.filesystem ? { enumeratePaths: wire.processContainer.filesystem.enumeratePaths } : {}),
     ...(wire.seatbelt ? { extraMachLookups: wire.seatbelt.extraMachLookups } : {}),
     ...(wire.wslc ? { wslc: wire.wslc } : {}),
   };
@@ -94,6 +96,28 @@ describe("sdkRequest", () => {
     ["macOS, Seatbelt", () => mxcPosixConfig("/opt/mxc/mxc-exec-mac", { ...posixInput, developerDir: null, realPath: (p: string) => p }) as MxcWireRequest],
     ["WSLC", () => mxcWslcConfig({ image: "ubuntu:24.04", root: "C:\\work\\app", allowWrite: true, tmp: "C:\\t\\b", script: "C:\\t\\b\\command.sh", cwd: "C:\\work\\app" }) as MxcWireRequest],
   ];
+  // The SDK refuses enumeratePaths off Windows (the process container's alone): built where it runs.
+  if (process.platform === "win32") {
+    const enumerating = () =>
+      mxcTerminalConfig({
+        ...windowsInput,
+        searchPath: "C:\\dev\\nodejs\\current",
+        siblings: ["C:\\dev"],
+        enumerateAncestors: true,
+        besideEnumerated: (dir) => (dir === "C:\\dev" ? ["C:\\dev\\nodejs", "C:\\dev\\other"] : []),
+      });
+    cases.push(["Windows, the folders above a tool enumerated", () => enumerating() as MxcWireRequest]);
+    cases.push([
+      "Windows, a diagnosis keeping the enumerated folders",
+      () => mxcDiagnosticConfig(enumerating(), { root: windowsInput.root, agentDir: windowsInput.agentDir, configFile: windowsInput.configFile, reportPath: "C:\\srv\\d\\report.json" }) as MxcWireRequest,
+    ]);
+    test("the folders above a tool reach the SDK as the process container's enumerated paths", () => {
+      assert.deepEqual(sdkRequest(enumerating() as MxcWireRequest).containment, {
+        type: "processcontainer",
+        config: { filesystem: { enumeratePaths: ["C:\\dev\\nodejs", "C:\\dev"] } },
+      });
+    });
+  }
   for (const [name, build] of cases) {
     test(`${name}: the SDK's own builder turns it back into the same document`, async () => {
       const wire = build();

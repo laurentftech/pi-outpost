@@ -71,7 +71,7 @@ import { createRunWithGrantToolDefinition } from "./sandboxGrantTool.ts";
 import { checkGrantRequest, EMPTY_GRANT, hostGrantsRefusal, mergeGrants, type Grant, type GrantContext } from "./sandboxGrants.ts";
 import type { Refusal } from "./sandboxRefusals.ts";
 import { hostDecision, type SandboxRulesStore } from "./sandboxRules.ts";
-import { defaultSandboxCache, isPosixMxc, runnerKind, userGitConfig, windowsToolchains, type WindowsToolchains } from "./terminalSandbox.ts";
+import { defaultSandboxCache, isPosixMxc, proxyCredentialsLeftOut, runnerKind, userGitConfig, windowsToolchains, type WindowsToolchains } from "./terminalSandbox.ts";
 
 /**
  * Resolve `target` following symlinks in its deepest existing ancestor, so a
@@ -643,6 +643,7 @@ export async function agentBashOptions(
     gitConfig: userGitConfig(),
     ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts), allowedHosts: sandbox.allowedHosts }),
     ...(sandbox.hostLoopback === undefined ? {} : { hostLoopback: sandbox.hostLoopback }),
+    ...(sandbox.privateNetwork === undefined ? {} : { privateNetwork: sandbox.privateNetwork }),
     ...(sandbox.gitWritable ? { gitWritable: true } : {}),
     ...(toolchainsFor(sandbox, neverReadable) ?? {}),
   };
@@ -685,8 +686,16 @@ export function asksAboutHosts(sandbox: SandboxConfig): boolean {
  * loopback is: open, services on it are reachable; closed, Python's asyncio cannot start
  * (microsoft/mxc#1261).
  */
-export function networkSummary(sandbox: SandboxConfig, platform: NodeJS.Platform = process.platform, msys: readonly string[] = []): string | undefined {
+export function networkSummary(
+  sandbox: SandboxConfig,
+  platform: NodeJS.Platform = process.platform,
+  msys: readonly string[] = [],
+  serverEnv: NodeJS.ProcessEnv = process.env,
+): string | undefined {
   const parts: string[] = [];
+  // The user's proxy goes with each command when the network is open — but not one carrying a password.
+  const withCredentials = sandbox.allowedHosts === undefined && sandbox.bashImage === undefined ? proxyCredentialsLeftOut(serverEnv) : [];
+  if (withCredentials.length > 0) parts.push(`${withCredentials.join(", ")} left out: a proxy with credentials is not handed to commands`);
   if (sandbox.allowedHosts !== undefined) {
     const asks = asksAboutHosts(sandbox);
     if (sandbox.allowedHosts.length === 0) parts.push(asks ? "network: every host asked about" : "network closed");
@@ -698,6 +707,7 @@ export function networkSummary(sandbox: SandboxConfig, platform: NodeJS.Platform
         ? "loopback open: services listening on this machine are reachable"
         : "loopback closed: Python's asyncio cannot start in the shell",
     );
+    if (sandbox.allowedHosts === undefined && sandbox.privateNetwork === false) parts.push("private network closed");
     // Where confined commands' tools keep their downloads, so the operator knows what grows, and where.
     parts.push(`sandbox cache ${sandbox.cacheDir ?? defaultSandboxCache()}`);
     // MSYS2 programs cannot start in the container: their folders are left out of the shell's PATH.

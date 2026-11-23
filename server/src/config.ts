@@ -113,6 +113,13 @@ export interface SandboxConfig {
    */
   hostLoopback?: boolean;
   /**
+   * MXC's process container on Windows, without `allowedHosts`: whether a command reaches the
+   * private network (10/8, 172.16/12, 192.168/16: a company's package mirror, git server or proxy).
+   * Windows grants it only together with inbound connections from that network. Absent: `true`, as
+   * the rest of the network is open (issue #552).
+   */
+  privateNetwork?: boolean;
+  /**
    * The repository's `.git` writable to a command, as the rest of the zone. Absent or false: read-only
    * where it exists — its configuration and hooks name commands git runs, for the user too — and a
    * command that writes it (`git commit`) asks with `run_with_grant`. The file only, never Settings.
@@ -1105,6 +1112,8 @@ export function loadConfig(
     }
     const hostLoopback = sandbox.hostLoopback;
     if (hostLoopback !== undefined && typeof hostLoopback !== "boolean") fail(`"sandbox.hostLoopback" must be true or false`);
+    const privateNetwork = sandbox.privateNetwork;
+    if (privateNetwork !== undefined && typeof privateNetwork !== "boolean") fail(`"sandbox.privateNetwork" must be true or false`);
     const gitWritable = sandbox.gitWritable;
     if (gitWritable !== undefined && typeof gitWritable !== "boolean") fail(`"sandbox.gitWritable" must be true or false`);
     const allowedHosts = optionalStringArray(sandbox, "allowedHosts");
@@ -1214,6 +1223,7 @@ export function loadConfig(
       ...(bashImage === undefined ? {} : { bashImage }),
       ...(allowedHosts === undefined ? {} : { allowedHosts: allowedHosts.map((host) => host.toLowerCase()) }),
       ...(hostLoopback === undefined ? {} : { hostLoopback }),
+      ...(privateNetwork === undefined ? {} : { privateNetwork }),
       ...(gitWritable === true ? { gitWritable } : {}),
       ...(resolvedCacheDir === undefined ? {} : { cacheDir: resolvedCacheDir }),
       ...(toolEnvironment === undefined ? {} : { toolEnvironment }),
