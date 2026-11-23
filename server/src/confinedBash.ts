@@ -395,10 +395,20 @@ export function powerShellScript(): string {
     "  foreach ($e in $global:PiOutpostParseErrors) { $p = $e.Extent.StartScriptPosition; [Console]::Error.WriteLine(\"ParserError: line $($p.LineNumber), column $($p.ColumnNumber): $($e.Message)\"); [Console]::Error.WriteLine(\"    $($p.Line)\") }",
     "  exit 1",
     "}",
+    // What failed is read from the errors the command alone raised.
+    "$global:Error.Clear()",
     ". {",
     `. ([ScriptBlock]::Create($global:PiOutpostCommand + "\`n\`n" + '${POWERSHELL_STATUS_LINE}'))`,
     "} | Out-Default",
-    "if (-not $global:PiOutpostCommandOk) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }",
+    "if (-not $global:PiOutpostCommandOk) {",
+    "  if ($LASTEXITCODE) { exit $LASTEXITCODE }",
+    // Windows PowerShell 5.1 turns each line a native program writes to a redirected stderr
+    // (`2>&1`) into an error record, and `$?` false, though the program exited 0: uv, git, java and
+    // pip all print progress there, and every such command ended in 1, read as a failure. A
+    // program's own failure keeps its code (above); a failed cmdlet's error is no such record.
+    "  if ($LASTEXITCODE -eq 0 -and $global:Error.Count -gt 0 -and -not ($global:Error | Where-Object { -not ($_ -is [System.Management.Automation.ErrorRecord] -and \"$($_.FullyQualifiedErrorId)\" -like 'NativeCommandError*') })) { exit 0 }",
+    "  exit 1",
+    "}",
     "exit 0",
     "",
   ].join("\n");
@@ -482,7 +492,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           }
           if (!socketRefused && diagnosable) {
             const text = socketTail + data.toString();
-            if (reportsSocketRefused(text)) socketRefused = true;
+            if (reportsSocketRefused(text, networkProxy !== undefined)) socketRefused = true;
             socketTail = text.slice(-96);
           }
           show(data);
@@ -1069,8 +1079,18 @@ const SOCKET_REFUSED = new RegExp(
   "i",
 );
 
-export function reportsSocketRefused(output: string): boolean {
-  return SOCKET_REFUSED.test(output);
+/**
+ * WSAENETUNREACH (10051): how a direct connection fails under `sandbox.allowedHosts`, where the
+ * container has no route out but the proxy (measured: Python's `create_connection` to pypi.org). Only
+ * then is it the sandbox's; with the network open it is the network's.
+ */
+const NO_ROUTE_BUT_THE_PROXY = new RegExp(
+  [String.raw`os error 10051`, String.raw`winerror 10051`, String.raw`errno 10051`, String.raw`wsaenetunreach`, String.raw`r.seau impossible . atteindre`, String.raw`unreachable network`].join("|"),
+  "i",
+);
+
+export function reportsSocketRefused(output: string, underProxy = false): boolean {
+  return SOCKET_REFUSED.test(output) || (underProxy && NO_ROUTE_BUT_THE_PROXY.test(output));
 }
 
 /**
@@ -1087,7 +1107,7 @@ export function socketRefusedNote(network: { proxy: boolean; hostLoopback: boole
         network.hostLoopback ? "this machine's own services too" : "this machine's own services are closed (sandbox.hostLoopback is false)",
       ].join("; ");
   return (
-    `[pi-outpost] the sandbox refused a network connection (WSAEACCES, 10013): it is not a network failure, and retrying will not help. ` +
+    `[pi-outpost] the sandbox refused a network connection (${network.proxy ? "a direct one: no route but the proxy" : "WSAEACCES, 10013"}): it is not a network failure, and retrying will not help. ` +
     `Here ${reason}. If the task needs it, tell the user which host it was.`
   );
 }

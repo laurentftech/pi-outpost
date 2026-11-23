@@ -756,7 +756,7 @@ describe("mxcTerminalConfig", () => {
 
   // openlore: scenario=TheIntranetIsReachable spec=sandbox-runner-bash
   test("TheIntranetIsReachable: the private network is open by default; privateNetwork false closes it, the loopback kept", () => {
-    assert.equal(mxcTerminalConfig(base).network.ingress?.default, "allow");
+    assert.deepEqual(mxcTerminalConfig(base).network, { egress: { default: "allow" }, ingress: { default: "allow", hostLoopback: "allow" } });
     assert.deepEqual(mxcTerminalConfig({ ...base, privateNetwork: false }).network, { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } });
   });
 
@@ -1047,5 +1047,16 @@ describe("grants, in every policy", () => {
       agentDir: "C:\\secret\\agent",
     });
     assert.deepEqual(found, ["C:\\secret", "D:\\tools\\x", "D:\\tools"], "another drive's folders are enumerated; the agent directory and below are not");
+  });
+
+  test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {
+    const home = "C:\\Users\\me";
+    const found = ancestorsToEnumerate([`${home}\\.cargo\\bin`, `${home}\\AppData\\Roaming\\npm`], {
+      root: `${home}\\work\\app`,
+      siblings: [`${home}\\.cargo`, `${home}\\AppData`],
+      home,
+    });
+    // ~\.cargo holds credentials.toml: its bin is a program's folder, which needs nothing above it.
+    assert.deepEqual(found, [`${home}\\AppData\\Roaming`, `${home}\\AppData`]);
   });
 });

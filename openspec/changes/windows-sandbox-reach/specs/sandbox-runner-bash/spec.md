@@ -32,14 +32,26 @@ the private network, unless `sandbox.privateNetwork` is `false`, independently o
 
 ### Requirement: ASandboxRefusalIsNamed
 
-Under MXC on Windows, when a command's output reports a connection refused with WSAEACCES (10013), the
-output SHALL end with a note saying the sandbox refused it, that it is not a network failure, and what this
-sandbox opens — unless the proxy already named the refused host.
+Under MXC on Windows, when a command's output reports a connection refused with WSAEACCES (10013) — or,
+under `sandbox.allowedHosts`, a direct connection failing with WSAENETUNREACH (10051) — the output SHALL
+end with a note saying the sandbox refused it, that it is not a network failure, and what this sandbox
+opens, unless the proxy already named the refused host.
 
 #### Scenario: ASandboxRefusalIsNamed
 - **GIVEN** the agent's PowerShell confined by MXC on Windows 11 tier 1 with `sandbox.privateNetwork: false`
 - **WHEN** a command's connection to the private network is refused and it prints the error
 - **THEN** its output ends with the note naming the sandbox and `sandbox.privateNetwork`; a command that met no refusal gets none
+
+### Requirement: ARedirectedStderrIsNoFailure
+
+A PowerShell command of the agent's shell whose only errors are a native program's lines written to a
+redirected stderr (`2>&1`), the program having exited 0, SHALL end with status 0. A native program's own
+non-zero code SHALL still be the command's, and a failed cmdlet SHALL still end it with 1.
+
+#### Scenario: ARedirectedStderrIsNoFailure
+- **GIVEN** the agent's shell running Windows PowerShell 5.1 or PowerShell 7
+- **WHEN** a command runs a native program that writes to stderr and exits 0, redirected with `2>&1`; the same exiting 4; and a failing cmdlet after it
+- **THEN** the first ends 0 with the stderr line shown, the second 4, the third 1
 
 ### Requirement: TheCompanyProxyReachesTheCommand
 

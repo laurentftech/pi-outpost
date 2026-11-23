@@ -354,7 +354,8 @@ model writes PowerShell; every command runs from a script, without profile, with
 given for the process (the sandbox cannot read the registry's), progress bars off (drawing one is
 refused inside) and output as plain text (PowerShell 7 colours tables and errors otherwise, and the model
 reads the escape codes). Its exit status is the one it sets with `exit`, else the failed native program's code,
-or 1 for a failed cmdlet.
+or 1 for a failed cmdlet. A native program that writes to a redirected stderr (`2>&1`) and exits 0 is not a
+failure, though Windows PowerShell 5.1 shows each such line as an error.
 
 **For a POSIX shell instead**, name busybox-w32: download `busybox64.exe` from frippery.org, save it as
 `sh.exe` and give its path as `bashShell`; the agent keeps `bash`. busybox is `ash`, not bash: no `[[ ]]`,
@@ -445,7 +446,9 @@ refused it, so the agent does not take it for a network failure and retry:
 ```
 
 Under `sandbox.allowedHosts` the key changes nothing: the proxy is the only way out, and it reaches an
-intranet host you list by name. The key and `hostLoopback` are independent.
+intranet host you list by name. The key and `hostLoopback` are independent. A program there that connects
+directly, ignoring `HTTPS_PROXY`, fails with "network unreachable" (WSAENETUNREACH, 10051); the same note
+follows, saying so.
 
 ### Behind a company proxy
 

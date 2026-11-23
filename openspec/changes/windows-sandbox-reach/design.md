@@ -53,3 +53,23 @@ startup line so the operator knows why the command cannot get out. Under `allowe
 
 - A system proxy set by PAC or WinHTTP rather than variables: not read.
 - `sandbox.allowedHosts` behind a company proxy: the server's proxy connects directly, with no upstream.
+
+## Exercised on a real project
+
+Root `C:\Users\<me>\pi-outpost`, the server's own `PATH` and sandbox cache, 18 folders enumerated, 250 paths
+denied (78 before), the request built in 47 ms (29 before); each command about a second, as before.
+
+- Every global npm CLI (`openspec`, `tsc`, `openlore`, in `AppData\Roaming\npm`) failed before this change on
+  `EPERM: lstat 'C:\Users\<me>\AppData\Roaming'` — `AppData` a denied sibling of a root in the home. #553 was
+  not only a tool on another folder of the drive: it was the common case.
+- `~\.cargo` was enumerated as the folder above `~\.cargo\bin` and `CargoCredentialsStayOut` failed (listed, not
+  read). A folder directly in the home is now never enumerated but `AppData`, as `toolInstallations` never
+  opens one.
+- `uv run` in a project whose `.venv` was made outside the sandbox works offline. But uv's user configuration
+  is looked for under the sandbox's `APPDATA` (`…\sandbox-cache\appdata\Roaming\uv\uv.toml`): a mirror
+  declared in the user's own `uv.toml`, `pip.ini` or `.npmrc` is not seen in the sandbox, by design ("your
+  mirrors and tokens are not carried in"). Not changed here.
+- Under `allowedHosts`, a program connecting directly fails with 10051, not 10013: named too.
+- Windows PowerShell 5.1: `uv pip install … 2>&1`, `java -version 2>&1` ended 1 though they succeeded.
+- MXC's SDK runs `whoami /user` at import, through the shell's `PATH`: from Git Bash, GNU's `whoami` answers
+  and prints `extra operand '/user'`. MXC's, harmless; to report upstream.

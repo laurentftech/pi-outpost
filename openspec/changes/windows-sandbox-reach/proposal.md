@@ -38,13 +38,18 @@ command is refused something the sandbox means to allow, and the error points el
 - **The user's proxy variables go with the command** when no `allowedHosts` proxy is its way out, and to the
   confined terminal — never one carrying a user or password, which the startup line names instead.
 - **scoop's shims outside the home** (`C:\tools\scoop\shims`) are followed to their program, as the home's are.
+- Found exercising the sandbox on a real project: under `allowedHosts` a program connecting directly fails
+  with WSAENETUNREACH (10051), not 10013 — named by the same note, there only. And under Windows PowerShell
+  5.1 a native program's stderr redirected with `2>&1` made `$?` false: `uv … 2>&1`, `java -version 2>&1`
+  ended 1 though they succeeded. Such a command now ends with the program's own code.
 
 ## Capabilities
 
 ### Modified Capabilities
 
 - `sandbox-runner-bash`: adds `AToolBesideTheRootResolves`, `TheIntranetIsReachable`,
-  `PrivateNetworkMustBeABoolean`, `ASandboxRefusalIsNamed`, `TheCompanyProxyReachesTheCommand`.
+  `PrivateNetworkMustBeABoolean`, `ASandboxRefusalIsNamed`, `ARedirectedStderrIsNoFailure`,
+  `TheCompanyProxyReachesTheCommand`.
 
 ## Impact
 

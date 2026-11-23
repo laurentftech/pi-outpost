@@ -977,6 +977,7 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
         readable: [...readwritePaths, ...readonlyPaths],
         agentDir: input.agentDir,
         configFile: input.configFile,
+        ...(input.home ? { home: input.home } : {}),
       });
   const enumerated = new Set(enumeratePaths.map((p) => p.toLowerCase()));
   // MXC enumerates a folder's whole subtree: what is beside the way down is denied by name in
@@ -1003,9 +1004,10 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     // microsoft/mxc#1261). Other loopback services become reachable; the server is not, without
     // its token.
     // And the private network is open unless `sandbox.privateNetwork` is false: Windows refuses an
-    // outbound connection to 10/8, 172.16/12 or 192.168/16 with WSAEACCES (10013) unless inbound
-    // from the private network is allowed too — an egress allow rule naming those ranges does not
-    // do it (measured, same build; issue #552). Inbound then passes the sandbox, not the firewall.
+    // outbound connection to it — the subnets this machine is on, and intranet ranges a policy
+    // names — with WSAEACCES (10013) unless inbound from it is allowed too; an egress allow rule
+    // naming the ranges does not do it (measured, same build; issue #552). Inbound then passes
+    // the sandbox, not the firewall.
     ...(input.networkProxy === undefined
       ? {
           network: {
@@ -1039,11 +1041,13 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
  * where enumeration, the more specific rule, would take reading away. Enumerating a folder shows the
  * names in its whole subtree and their metadata, never one byte of a file; `mxcTerminalConfig`
  * denies by name what lies beside the way down, so only those names show. The agent directory and
- * the configuration file are never enumerated, nor any folder inside them.
+ * the configuration file are never enumerated, nor any folder inside them. Nor a folder directly in
+ * the home but `AppData`, as `toolInstallations` never opens one: `~\.cargo` holds `credentials.toml`,
+ * and a tool there is a program, which needs nothing above its folder — Node's CLIs live in `AppData`.
  */
 export function ancestorsToEnumerate(
   opened: readonly string[],
-  guard: { root: string; siblings: readonly string[]; readable?: readonly string[]; agentDir?: string; configFile?: string },
+  guard: { root: string; siblings: readonly string[]; readable?: readonly string[]; agentDir?: string; configFile?: string; home?: string },
 ): string[] {
   const win = path.win32;
   const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
@@ -1065,7 +1069,8 @@ export function ancestorsToEnumerate(
       const key = lower(dir);
       if (seen.has(key)) break; // Its own ancestors are already decided.
       seen.add(key);
-      if (!covered(key) && !secrets.some((secret) => under(key, secret))) found.push(dir);
+      const inTheHome = guard.home !== undefined && lower(win.dirname(dir)) === lower(guard.home) && win.basename(dir).toLowerCase() !== "appdata";
+      if (!covered(key) && !inTheHome && !secrets.some((secret) => under(key, secret))) found.push(dir);
       dir = win.dirname(dir);
     }
   }

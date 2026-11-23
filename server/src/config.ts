@@ -114,7 +114,8 @@ export interface SandboxConfig {
   hostLoopback?: boolean;
   /**
    * MXC's process container on Windows, without `allowedHosts`: whether a command reaches the
-   * private network (10/8, 172.16/12, 192.168/16: a company's package mirror, git server or proxy).
+   * private network (the subnets the machine is on, and intranet ranges a policy names: a company's
+   * package mirror, git server or proxy).
    * Windows grants it only together with inbound connections from that network. Absent: `true`, as
    * the rest of the network is open (issue #552).
    */

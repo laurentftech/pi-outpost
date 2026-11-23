@@ -30,6 +30,15 @@ describe("reportsSocketRefused", () => {
     }
   });
 
+  test("under the list's proxy a direct connection's 'network unreachable' (10051) is the sandbox's too; with the network open, it is the network's", () => {
+    // Python's create_connection to pypi.org, measured under MXC with sandbox.allowedHosts, on a French machine.
+    const python = "OSError: [WinError 10051] Une opération a été tentée sur un réseau impossible à atteindre";
+    assert.equal(reportsSocketRefused(python, true), true);
+    assert.equal(reportsSocketRefused("Caused by: A socket operation was attempted to an unreachable network. (os error 10051)", true), true);
+    assert.equal(reportsSocketRefused(python, false), false);
+    assert.match(socketRefusedNote({ proxy: true, hostLoopback: true, privateNetwork: true }), /\(a direct one: no route but the proxy\)/);
+  });
+
   test("the note says it was the sandbox, not to retry, and what this sandbox opens", () => {
     const open = socketRefusedNote({ proxy: false, hostLoopback: true, privateNetwork: true });
     assert.match(open, /the sandbox refused a network connection \(WSAEACCES, 10013\)/);
