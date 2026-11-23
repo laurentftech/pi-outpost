@@ -82,7 +82,7 @@ failed, and gets nothing.
 
 ## Not done
 
-- MXC reporting refused connections itself: to ask upstream (microsoft/mxc), then use it instead.
+- MXC reporting refused connections itself: asked in microsoft/mxc#1843; once it does, its report replaces the policy check here.
 
 - A system proxy set by PAC or WinHTTP rather than variables: not read.
 - Yarn Berry's `.yarnrc.yml`, bun's `bunfig.toml`, Poetry's and conda's configuration: not carried.
