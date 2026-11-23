@@ -3,7 +3,6 @@
  * staying in the server (`registryRelay.ts`).
  */
 import assert from "node:assert/strict";
-import { createHmac, randomBytes } from "node:crypto";
 import { createServer, request, type IncomingHttpHeaders, type Server } from "node:http";
 import { after, before, describe, test } from "node:test";
 import { startEgressProxy } from "../src/egressProxy.ts";
@@ -78,7 +77,9 @@ describe("the registry relay", () => {
     assert.deepEqual([...wheel.body], [0, 1, 2, 255]);
     // A redirect to the registry stays at the relay; JSON's escaped links are rewritten too.
     assert.equal((await get(`${base}moved`)).headers.location, `${base}simple/six/`);
-    assert.match((await get(`${base}pkg`)).body.toString(), new RegExp(`${base.replaceAll("/", "\\/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}pkg`));
+    const pkg = (await get(`${base}pkg`)).body.toString();
+    // The packument's tarball URL names the relay, written as JSON escapes it: `\/` per slash, `\\` per backslash.
+    assert.ok(pkg.includes(`${base.replace(/\\/g, "\\\\").replace(/\//g, "\\/")}pkg`), pkg);
   });
 
   test("read only, its token required, its registries only", async () => {
@@ -116,9 +117,14 @@ describe("the registry relay", () => {
 });
 
 describe("the user's configuration through the relay", () => {
-  // Keyed, not a plain hash: a password run through sha256 reads as an insecure password hash.
-  const routeKey = randomBytes(32);
-  const relay = (origin: string, authorization: string) => `http://relay/${createHmac("sha256", routeKey).update(`${origin}|${authorization}`).digest("hex").slice(0, 12)}/`;
+  // A stable fake route per registry, drawn, not hashed: a password run through a hash reads as an insecure password hash.
+  const routeIds = new Map<string, string>();
+  const relay = (origin: string, authorization: string) => {
+    const key = `${origin}|${authorization}`;
+    let id = routeIds.get(key);
+    if (id === undefined) routeIds.set(key, (id = routeIds.size.toString(16).padStart(12, "0")));
+    return `http://relay/${id}/`;
+  };
   const basic = (user: string, password: string) => `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`;
 
   // openlore: scenario=TheCredentialsStayInTheServer spec=sandbox-runner-bash
