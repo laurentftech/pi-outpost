@@ -439,13 +439,21 @@ Then, without `sandbox.allowedHosts`, the agent's shell and the confined termina
 a server a command starts can be reached from it, through Windows' firewall like any program. The
 startup line says so (`private network open: …`).
 
-Closed, a connection there fails with WSAEACCES — uv's `os error 10013`, Python's `WinError 10013`. A
-command whose output shows that error ends with a note saying the sandbox refused it, so the agent does
-not take it for a network failure and retry, and that only you can open it:
+Closed, a connection there fails, and each program says it its own way — uv `os error 10013`, Python
+`WinError 10013`, Node `connect EACCES`, Java `Permission denied: connect`, curl and git only `Couldn't
+connect to server`. MXC reports no refused connection itself (its denial report holds files, registry keys
+and capabilities, never the network). So pi-outpost judges it from its own policy: when a command fails, the
+hosts its command line names — and those its output names in a URL or a connection error — are resolved,
+and one that falls on this machine's private network (its subnets, as Windows counts them) while that is
+closed, or on the machine itself while its loopback is closed, is named in a note at the end of the output,
+so the agent does not take it for a network failure and retry:
 
 ```
-[pi-outpost] the sandbox refused a network connection (WSAEACCES, 10013): it is not a network failure, and retrying will not help. Here the Internet is open; the private network (the intranet: a company's mirror, git server or proxy) is closed unless the user sets sandbox.privateNetwork to true; this machine's own services too. Only the user can open it: if the task needs it, tell them which host it was.
+[pi-outpost] the sandbox refused nexus.corp.example (10.0.0.20): it is on this machine's private network (the intranet), which is closed unless the user sets sandbox.privateNetwork to true. It is not a network failure, and retrying will not help. Only the user can open it: if the task needs it, tell them.
 ```
+
+Where no host can be told but the error is the sandbox's (Windows' own sentence for it, in your language),
+the note says so without a host. A refused connection never offers a file diagnosis.
 
 Under `sandbox.allowedHosts` the key changes nothing: the proxy is the only way out, and it reaches an
 intranet host you list by name. The key and `hostLoopback` are independent. A program there that connects

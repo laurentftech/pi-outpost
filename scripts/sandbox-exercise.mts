@@ -10,7 +10,7 @@
  * saying so. Run it before a release that touches the Windows sandbox; it exits 1 on a failure.
  */
 import { existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "../server/src/config.ts";
@@ -43,6 +43,20 @@ const npmGlobal = (() => {
   }
 })();
 
+/** Another address of this machine's private subnet: what the sandbox calls the private network. */
+const neighbour = (() => {
+  for (const addresses of Object.values(networkInterfaces())) {
+    for (const entry of addresses ?? []) {
+      if (entry.family !== "IPv4" || entry.internal || !/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(entry.address)) continue;
+      const parts = entry.address.split(".");
+      parts[3] = parts[3] === "254" ? "253" : "254";
+      return parts.join(".");
+    }
+  }
+  return undefined;
+})();
+let privateOpen = false;
+
 const checks: Check[] = [
   { name: "a command runs", command: `"ok"`, judge: succeeded(/^ok$/m) },
   { name: "node and npm", command: "node --version; npm --version", needs: onPath("node"), judge: succeeded(/^v\d+/m) },
@@ -68,11 +82,18 @@ const checks: Check[] = [
     command: "foreach ($f in @((Join-Path $env:APPDATA 'uv\\uv.toml'), $env:PIP_CONFIG_FILE, $env:npm_config_userconfig)) { if ($f -and (Test-Path $f)) { Get-Content -Raw $f } }",
     judge: (output) => (/_authToken\s*=|:\/\/[^\s/@]+:[^\s/@]+@|password\s*=/i.test(output) ? "a credential reached a command" : undefined),
   },
+  {
+    name: `a refused intranet connection names its host (${neighbour ?? "none"}), though curl says only it could not connect`,
+    command: `curl.exe -sS -m 5 http://${neighbour}/`,
+    needs: () => (!neighbour ? "this machine is on no private IPv4 network" : privateOpen ? "sandbox.privateNetwork is true: nothing is refused" : undefined),
+    judge: (output) => (output.includes(`the sandbox refused ${neighbour}`) ? undefined : "no note named the refused host"),
+  },
   { name: "the Internet (pypi.org)", command: "(Invoke-WebRequest https://pypi.org/simple/six/ -UseBasicParsing).StatusCode", judge: (output) => (/^200$/m.test(output) ? undefined : /network refused|not in sandbox.allowedHosts/.test(output) ? undefined : "pypi.org unreachable, and not by the list") },
 ];
 
 const config = loadConfig(project, {}, process.env, { quiet: true });
 const sandbox = config.sandbox;
+privateOpen = sandbox?.privateNetwork === true && sandbox.allowedHosts === undefined;
 if (!sandbox?.bashRunner || sandbox.bashRunner === "none") {
   console.error("This configuration runs no confined shell (sandbox.bashRunner): nothing to exercise.");
   process.exit(2);

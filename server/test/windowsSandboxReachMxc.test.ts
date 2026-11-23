@@ -160,11 +160,18 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
   test("ASandboxRefusalIsNamed: a refused connection's output ends saying it was the sandbox, and which setting", { skip: peer ? false : "this machine is on no private IPv4 network" }, async () => {
     // The program's own words, as uv and Python print them: the error's message, in the user's language.
     const refused = await ps(`$c = [Net.Sockets.TcpClient]::new(); try { [void]$c.ConnectAsync("${peer}", 9).Wait(3000) } catch { $_.Exception.InnerException.InnerException.Message; exit 1 }`);
-    assert.match(refused.output, /\[pi-outpost\] the sandbox refused a network connection \(WSAEACCES, 10013\)/, refused.output);
+    const named = new RegExp(`\\[pi-outpost\\] the sandbox refused ${peer!.replaceAll(".", "\\.")}: it is on this machine's private network`);
+    assert.match(refused.output, named, refused.output);
     assert.match(refused.output, /closed unless the user sets sandbox\.privateNetwork to true/);
     assert.match(refused.output, /Only the user can open it/);
+    // curl says only that it could not connect: the host is named from the policy, not from its words.
+    const curl = await ps(`curl.exe -sS -m 5 http://${peer}/`);
+    assert.notEqual(curl.exitCode, 0);
+    assert.match(curl.output, /Couldn't connect to server/, curl.output);
+    assert.match(curl.output, named, curl.output);
+    assert.doesNotMatch(curl.output, /diagnose: true/, "a refused connection is no refused file: no diagnosis offered");
     const open = await ps(`"connected or not, no refusal"`);
-    assert.doesNotMatch(open.output, /the sandbox refused a network connection/);
+    assert.doesNotMatch(open.output, /the sandbox refused/);
   });
 
   // openlore: scenario=TheUsersMirrorIsSeen spec=sandbox-runner-bash

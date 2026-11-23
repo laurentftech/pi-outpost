@@ -11,7 +11,7 @@
  * Fail closed: an unusable runner refuses every command with its reason, and nothing
  * ever runs unconfined.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,6 +24,7 @@ import { RUN_WITH_GRANT_TOOL } from "./sandboxGrantTool.ts";
 import { linuxMxcExecutor, mxcMissingReason, mxcRunsInProcess } from "./mxcExecutor.ts";
 import { mxcSdk, runThroughSdk, SdkDocumentRefused, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
 import { hostRefusal, landstripRefusal, mxcReportFile, mxcReportRefusals, refusalCollector, refusalKey, seatbeltReportRefusals, type Refusal } from "./sandboxRefusals.ts";
+import { refusedHost, type RefusedHost } from "./sandboxNetworkVerdict.ts";
 import {
   checkRunner,
   confinedEnvironment,
@@ -446,6 +447,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
   // MXC on Windows reports what it refused only when asked, at a cost of a second per command:
   // a diagnosis, on the agent's request, after a failure (`mxcDiagnosticConfig`).
   const diagnosable = kind === "mxc" && windows && !wslc && !isPosixMxc(options.runner);
+  // Windows' sentences for a refused connection, in the user's language: asked once, not waited for.
+  let localizedSocketErrors: string[] = [];
+  if (diagnosable) void windowsSocketMessages().then((messages) => (localizedSocketErrors = messages));
   /** The commands whose last run failed with the offer of a diagnosis: the only ones diagnosed. */
   const offered = new Set<string>();
   // macOS: whether MXC's SDK refused the document that asks for Seatbelt's report (`mxcMacCaptureRequest`).
@@ -471,6 +475,8 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     // A connection the container refused (WSAEACCES): reads as a network failure otherwise (#552, #554).
     let socketRefused = false;
     let socketTail = "";
+    // The output's end, where a failed command names the host it could not reach (`refusedHost`).
+    let outputTail = "";
     const filtered = powerShell ? withoutPowerShellDriveNoise(shown) : undefined;
     const show = filtered ? (data: Buffer) => filtered.write(data) : shown;
     const onData: (data: Buffer) => void = diagnose
@@ -491,10 +497,13 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
             if (reportsAccessDenied(text)) accessDenied = true;
             deniedTail = text.slice(-64);
           }
-          if (!socketRefused && diagnosable) {
-            const text = socketTail + data.toString();
-            if (reportsSocketRefused(text, networkProxy !== undefined)) socketRefused = true;
-            socketTail = text.slice(-96);
+          if (diagnosable) {
+            if (!socketRefused) {
+              const text = socketTail + data.toString();
+              if (reportsSocketRefused(text, networkProxy !== undefined, localizedSocketErrors)) socketRefused = true;
+              socketTail = text.slice(-256);
+            }
+            outputTail = (outputTail + data.toString()).slice(-OUTPUT_KEPT_FOR_HOSTS);
           }
           show(data);
         };
@@ -799,10 +808,19 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         if (msys !== undefined) onData(Buffer.from(`\n${msysNote(msys)}\n`));
         if (bunInstallRefused && diagnosable) onData(Buffer.from(`\n${bunInstallNote()}\n`));
         if (sqliteCannotOpen && !diagnose && directories.grantedRead.length > 0) onData(Buffer.from(`\n${sqliteReadOnlyNote()}\n`));
+        // A failed command's named hosts, judged by the policy (`refusedHost`): the sandbox's refusal is
+        // told whatever the program printed — curl and PowerShell say only that they could not connect.
+        const policy = { privateNetwork: options.privateNetwork === true, hostLoopback: options.hostLoopback !== false };
+        const policyRefused =
+          diagnosable && !diagnose && networkProxy === undefined && ((exitCode !== undefined && exitCode !== 0) || socketRefused)
+            ? await refusedHost(command, outputTail, policy).catch(() => undefined)
+            : undefined;
         // Not when the proxy named a refused host: that note already says what was refused, and why.
-        if (socketRefused && !diagnose && refused.size === 0) {
-          onData(Buffer.from(`\n${socketRefusedNote({ proxy: networkProxy !== undefined, hostLoopback: options.hostLoopback !== false, privateNetwork: options.privateNetwork === true })}\n`));
+        if ((policyRefused || socketRefused) && !diagnose && refused.size === 0) {
+          onData(Buffer.from(`\n${socketRefusedNote({ proxy: networkProxy !== undefined, ...policy }, policyRefused)}\n`));
         }
+        // A connection refused is not a file refused: no diagnosis, which runs without network and finds no file.
+        if (policyRefused || socketRefused) accessDenied = false;
         // Last, so the agent reads it after everything else: what it can do about a failure here.
         // Not when the proxy already named a refused host — that is what failed, and a diagnosis
         // runs without network: it would contradict "do not retry".
@@ -1080,9 +1098,35 @@ const SOCKET_REFUSED = new RegExp(
     String.raw`wsaeacces`,
     String.raw`forbidden by its access permissions`,
     String.raw`interdite par ses autorisations`,
+    // Node and npm: `connect EACCES 10.0.0.1:80`; `errno EACCES` beside `syscall connect`.
+    String.raw`\bconnect EACCES\b`,
+    String.raw`errno EACCES[\s\S]{0,160}?syscall connect|syscall connect[\s\S]{0,160}?errno EACCES`,
+    // Java, which the file note took for a refused file.
+    String.raw`Permission denied: connect`,
   ].join("|"),
   "i",
 );
+
+/** How much of a command's output is kept to find the hosts it names (`refusedHost`). */
+const OUTPUT_KEPT_FOR_HOSTS = 16 * 1024;
+
+const normalized = (text: string) => text.replace(/[’‘`´]/g, "'").replace(/\s+/g, " ").toLowerCase();
+
+/**
+ * Windows' own sentence for WSAEACCES and WSAENETUNREACH, in the user's language, as Go and .NET print
+ * it: asked of Windows once, so no language needs listing here. Empty off Windows, or if it cannot say.
+ */
+export function windowsSocketMessages(): Promise<string[]> {
+  if (process.platform !== "win32") return Promise.resolve([]);
+  return new Promise((resolve) => {
+    execFile(
+      path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+      ["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [ComponentModel.Win32Exception]::new(10013).Message; [ComponentModel.Win32Exception]::new(10051).Message"],
+      { encoding: "utf8", timeout: 15_000, windowsHide: true },
+      (error, stdout) => resolve(error ? [] : stdout.split(/\r?\n/).map((line) => normalized(line.trim().replace(/\.$/, ""))).filter((line) => line.length > 20)),
+    );
+  });
+}
 
 /**
  * WSAENETUNREACH (10051): how a direct connection fails under `sandbox.allowedHosts`, where the
@@ -1094,8 +1138,12 @@ const NO_ROUTE_BUT_THE_PROXY = new RegExp(
   "i",
 );
 
-export function reportsSocketRefused(output: string, underProxy = false): boolean {
-  return SOCKET_REFUSED.test(output) || (underProxy && NO_ROUTE_BUT_THE_PROXY.test(output));
+export function reportsSocketRefused(output: string, underProxy = false, windowsMessages: readonly string[] = []): boolean {
+  if (SOCKET_REFUSED.test(output) || (underProxy && NO_ROUTE_BUT_THE_PROXY.test(output))) return true;
+  if (windowsMessages.length === 0) return false;
+  const text = normalized(output);
+  // The first is WSAEACCES's, refused whatever the policy; the second, WSAENETUNREACH's, only under a proxy.
+  return text.includes(windowsMessages[0]!) || (underProxy && windowsMessages[1] !== undefined && text.includes(windowsMessages[1]));
 }
 
 /**
@@ -1103,7 +1151,18 @@ export function reportsSocketRefused(output: string, underProxy = false): boolea
  * — the agent otherwise retries, or reports the company's mirror down (#552) — what this sandbox
  * opens, and the setting that would open the rest, which only the user can change.
  */
-export function socketRefusedNote(network: { proxy: boolean; hostLoopback: boolean; privateNetwork: boolean }): string {
+export function socketRefusedNote(network: { proxy: boolean; hostLoopback: boolean; privateNetwork: boolean }, refused?: RefusedHost): string {
+  if (refused) {
+    const named = refused.address === refused.host ? refused.host : `${refused.host} (${refused.address})`;
+    const why =
+      refused.why === "private network"
+        ? "it is on this machine's private network (the intranet), which is closed unless the user sets sandbox.privateNetwork to true"
+        : "it is this machine itself, whose own services are closed (sandbox.hostLoopback is false)";
+    return (
+      `[pi-outpost] the sandbox refused ${named}: ${why}. It is not a network failure, and retrying will not help. ` +
+      `Only the user can open it: if the task needs it, tell them.`
+    );
+  }
   const reason = network.proxy
     ? "under sandbox.allowedHosts a command connects only through the proxy named in HTTPS_PROXY; a program that ignores it, or connects to an address, is refused"
     : [

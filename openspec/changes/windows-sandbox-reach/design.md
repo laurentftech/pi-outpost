@@ -68,7 +68,21 @@ proxy hands the reserved host `registry-relay.pi-outpost.invalid` to the relay. 
 paired with a URL (Gradle's, Cargo's, encrypted ones) stay out. The user's `NO_PROXY` gains the loopback:
 the company proxy must not carry a request for the relay.
 
+**A refused connection judged by the policy, not by the words.** MXC's denial capture reports no
+connection: measured, its report holds `file`, `other` (registry), `ui` and `capability` entries, the same
+counts with the network open or closed while three connections were refused. And programs word it every
+way, or not at all — of Node, curl, git, Python, Go, uv, npm, PowerShell, Java, a note keyed on the error's
+words named three, and sent Java's `Permission denied: connect` to the file diagnosis. pi-outpost knows
+the policy it asked for: on a failed command it resolves the hosts named in the command line, and in the
+output where a URL or a connection names them (a bare address in a log is not one), and judges each
+address as Windows does in the container — the machine's subnets, its own addresses as loopback. The
+words remain a second signal, with Windows' own sentence asked of Windows in the user's language rather
+than listed. All ten then named the host; the bare `Invoke-WebRequest` caught in a `try` printed nothing
+failed, and gets nothing.
+
 ## Not done
+
+- MXC reporting refused connections itself: to ask upstream (microsoft/mxc), then use it instead.
 
 - A system proxy set by PAC or WinHTTP rather than variables: not read.
 - Yarn Berry's `.yarnrc.yml`, bun's `bunfig.toml`, Poetry's and conda's configuration: not carried.

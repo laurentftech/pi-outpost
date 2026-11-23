@@ -33,15 +33,16 @@ the private network only when the user set `sandbox.privateNetwork` to `true`, i
 
 ### Requirement: ASandboxRefusalIsNamed
 
-Under MXC on Windows, when a command's output reports a connection refused with WSAEACCES (10013) — or,
-under `sandbox.allowedHosts`, a direct connection failing with WSAENETUNREACH (10051) — the output SHALL
-end with a note saying the sandbox refused it, that it is not a network failure, and what this sandbox
-opens, unless the proxy already named the refused host.
+Under MXC on Windows, when a command fails and a host it names falls where the sandbox's own network
+policy refuses it, the output SHALL end with a note naming that host, the setting that refuses it, and
+that it is not a network failure, whatever the program printed. Where no host can be named but the
+output shows the sandbox's refusal, the note SHALL say so without a host. A refused connection SHALL NOT
+offer a file diagnosis.
 
 #### Scenario: ASandboxRefusalIsNamed
-- **GIVEN** the agent's PowerShell confined by MXC on Windows 11 tier 1 with `sandbox.privateNetwork: false`
-- **WHEN** a command's connection to the private network is refused and it prints the error
-- **THEN** its output ends with the note naming the sandbox and `sandbox.privateNetwork`; a command that met no refusal gets none
+- **GIVEN** the agent's PowerShell confined by MXC on Windows 11 tier 1, the private network closed by default
+- **WHEN** a command connects to another address of the machine's private subnet, with .NET's own error, and with curl, which prints only that it could not connect
+- **THEN** each output ends with the note naming that address and `sandbox.privateNetwork`, and offers no diagnosis; a command that met no refusal gets none
 
 ### Requirement: TheUsersMirrorIsSeen
 
