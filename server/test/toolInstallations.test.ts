@@ -7,6 +7,10 @@
  * `…Mxc.test.ts` suites' job.
  */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, test } from "node:test";
 import { msysFolders, msysNote, msysProgramNamed, mxcTerminalConfig, toolInstallations, windowsToolchains, withoutMsysFolders, type ToolInstallationReader } from "../src/terminalSandbox.ts";
 
@@ -267,5 +271,31 @@ describe("MSYS2 folders", () => {
     assert.equal(msysProgramNamed(String.raw`& ${strawberry}\perl.exe -e 1`, gitUsr, disk), undefined);
     assert.equal(msysProgramNamed("perl -e 1", gitUsr, disk), undefined, "a bare name finds no MSYS2 folder: they left the PATH");
     assert.match(msysNote(String.raw`${strawberry}\perl.exe`), /MSYS2 program.*none of them can start in this sandbox.*mxc#1061.*native program/);
+  });
+});
+
+describe("on the real disk, a junction on the search path", { skip: process.platform !== "win32" ? "a junction is a Windows reparse point" : false }, () => {
+  // openlore: scenario=AToolBehindALinkOnTheWayDownResolves spec=sandbox-runner-bash
+  test("AToolBehindALinkOnTheWayDownResolves: scoop's `current` junction is seen as a link even where Node's lstat does not flag it, and its target is taken", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "toolinst-junction-"));
+    try {
+      const versioned = path.join(base, "Scoop", "apps", "nodejs", "26.13.1");
+      const current = path.join(base, "Scoop", "apps", "nodejs", "current");
+      const root = path.join(base, "WRK", "proj");
+      mkdirSync(path.join(versioned, "bin"), { recursive: true });
+      mkdirSync(root, { recursive: true });
+      writeFileSync(path.join(versioned, "bin", "node.exe"), "MZ");
+      execFileSync("cmd", ["/c", "mklink", "/J", current, versioned]);
+      // The default reader, as the server uses it: on Node builds where lstatSync does not
+      // flag a junction as a link, the real path still tells it apart (issue #562).
+      // scoop's nodejs manifest puts both `current\bin` and `current` on the PATH.
+      const found = toolInstallations({ root, searchPath: [path.join(current, "bin"), current].join(";"), home: path.join(base, "Users", "me") });
+      assert.ok(
+        found.some((folder) => folder.toLowerCase() === versioned.toLowerCase()),
+        `the junction's target is taken: ${JSON.stringify(found)}`,
+      );
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });

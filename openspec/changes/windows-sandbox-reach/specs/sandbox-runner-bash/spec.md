@@ -33,6 +33,19 @@ afterwards on that host SHALL ask past it.
 - **WHEN** a command runs
 - **THEN** it runs first on the policy without the grant ancestors' enumeration (the tools' ancestors still listable), and if that is refused too, on the policy without any `enumeratePaths` — with the agent directory and the configuration still denied by name, and the command's own exit code and output; a later policy built on the host stays at the level that ran; and a refusal with nothing enumerated, or another failure, is the command's error, not a replay
 
+### Requirement: AToolBehindALinkOnTheWayDownResolves
+
+Under MXC on Windows, where MXC can enumerate a folder without reading it, when a folder a command opens by
+path beside the root is itself a link on the way down (scoop's `current` junction to the active version,
+nvm-windows' folder), the link's target SHALL be readable like the link, so a path resolved through the
+junction reaches it; the link itself SHALL never be enumerated, because listing it would show its target's
+children, each then denied by name; and everything else beside the way down SHALL stay denied.
+
+#### Scenario: AToolBehindALinkOnTheWayDownResolves
+- **GIVEN** the agent's PowerShell confined by MXC on Windows 11 tier 1, scoop installed in a denied sibling of the root (`D:\WRK\Scoop` beside `D:\Python\isai_oper`), its `shims` and `apps\nodejs\current\bin` on `PATH`, and `current` a junction to `apps\nodejs\<version>`
+- **WHEN** a command resolves `node` on `PATH` (PowerShell's command lookup queries the folder) and runs a Node CLI shim that calls `node.exe` by name
+- **THEN** `node.exe` is found through the junction and runs — the target `apps\nodejs\<version>` is readable, never denied as beside the way, while `node.exe` stays directly executable by its full path too; and the folders beside the way down (`Scoop\buckets`, the other apps' version folders) stay denied by name
+
 ### Requirement: TheIntranetIsReachable
 
 Under MXC on Windows without `sandbox.allowedHosts`, the agent's shell and the confined terminal SHALL reach
