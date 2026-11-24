@@ -7,6 +7,30 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.65.0] - 2026-11-24
+
+### Added
+
+- **On Windows under MXC: your package managers' configuration reaches the agent's confined shell,
+  without its secrets.** `uv.toml`, `pip.ini`, `.npmrc`, Maven's `settings.xml`, `gradle.properties`,
+  Cargo, Go and NuGet configuration are carried in, each credential taken out. A registry that needs
+  them is reached through a relay in the server, which adds them: a command never holds a mirror's
+  password. ([#555](https://github.com/laurentftech/pi-outpost/pull/555))
+- **`"sandbox.privateNetwork": true` opens the private network on Windows** — your company's package
+  mirror, the intranet. Absent, it stays closed, and a refused connection now says so, naming the host
+  and this setting. ([#555](https://github.com/laurentftech/pi-outpost/pull/555))
+
+### Fixed
+
+- On Windows under MXC, a tool installed beside the project — a globally installed npm CLI — runs:
+  the folders above it can be listed, never read. A scoop shim outside your home is followed to its
+  program. ([#555](https://github.com/laurentftech/pi-outpost/pull/555))
+- Behind a company proxy, your `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY` reach the
+  agent's confined commands, so downloads no longer time out. A proxy address that carries a user and
+  password is a credential and is not passed; the startup line names it. ([#555](https://github.com/laurentftech/pi-outpost/pull/555))
+- In PowerShell, a program that writes to a redirected stderr (`2>&1`) and exits 0 no longer reads as
+  a failure. ([#555](https://github.com/laurentftech/pi-outpost/pull/555))
+
 ## [0.64.1] - 2026-11-22
 
 ### Fixed
