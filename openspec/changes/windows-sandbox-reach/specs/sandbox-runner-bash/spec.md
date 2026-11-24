@@ -15,6 +15,22 @@ configuration file SHALL never be enumerated.
 - **WHEN** a command runs the launcher, then reads a file and lists a folder beside the way down to it
 - **THEN** the script runs and resolves its real path; the file and the folder are refused
 
+### Requirement: ARefusedSecurityEnvironmentReplaysWithoutEnumeration
+
+Under MXC on Windows, when Windows refuses to build the process security environment for the policy —
+one of its paths cannot be opened or resolved there, reported by the SDK as
+`CreateProcessSecurityEnvironment failed (HRESULT = 0x8007…)`, nothing having run — the command SHALL be
+run once more on the policy without the folders made listable (`enumeratePaths`, and the entries denied
+beside the way down in them), confined the same: the siblings of the path to the root, the agent directory
+and the configuration SHALL stay denied. A refusal with nothing enumerated, or any other failure, SHALL
+NOT be replayed. Once the narrower policy has run on a host, no policy built afterwards on that host SHALL
+ask for enumeration again.
+
+#### Scenario: ARefusedSecurityEnvironmentReplaysWithoutEnumeration
+- **GIVEN** the agent's shell confined by MXC on Windows, a tool beside the root on another drive than the root's (the policy enumerates the folders above it), and a host where `CreateProcessSecurityEnvironment` fails with 0x80070005 on that policy (measured on a domain-joined account)
+- **WHEN** a command runs
+- **THEN** it runs on the replayed policy without `enumeratePaths`, with the agent directory and the configuration still denied by name, and its exit code and output are the command's own; a later policy built on the host asks for no enumeration, and a refusal with nothing enumerated, or another failure, is the command's error, not a replay
+
 ### Requirement: TheIntranetIsReachable
 
 Under MXC on Windows without `sandbox.allowedHosts`, the agent's shell and the confined terminal SHALL reach

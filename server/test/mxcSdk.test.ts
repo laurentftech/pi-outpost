@@ -10,7 +10,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { describe, test } from "node:test";
-import { mxcPty, NO_TELEMETRY, runThroughSdk, SdkDocumentRefused, sdkRequest, type MxcWireRequest } from "../src/mxcSdk.ts";
+import { isSecurityEnvironmentRefusal, mxcPty, NO_TELEMETRY, runThroughSdk, SdkDocumentRefused, sdkRequest, type MxcWireRequest } from "../src/mxcSdk.ts";
 import { mxcWslcConfig } from "../src/confinedBash.ts";
 import { mxcDiagnosticConfig, mxcPosixConfig, mxcTerminalConfig } from "../src/terminalSandbox.ts";
 
@@ -130,6 +130,25 @@ describe("sdkRequest", () => {
     const request = sdkRequest(windowsWire());
     assert.equal(request.inheritDefaultEnvironment, false);
     assert.equal(request.environment.EQ, "a=b", "split on the first '=' only");
+  });
+});
+
+describe("isSecurityEnvironmentRefusal", () => {
+  test("the SDK's words for a policy Windows cannot build the security environment from: named, with its HRESULT", () => {
+    // As mxc_ffi reported it on a domain-joined machine (build 26200): every request refused.
+    assert.ok(
+      isSecurityEnvironmentRefusal(new Error("MXC launcher: failed to create the process security environment: CreateProcessSecurityEnvironment failed (HRESULT = 0x80070005)")),
+    );
+    assert.ok(isSecurityEnvironmentRefusal(new Error("failed to create the process security environment: CreateProcessSecurityEnvironment failed (HRESULT = 0x80070020)")));
+    assert.ok(isSecurityEnvironmentRefusal(new Error("... CreateProcessSecurityEnvironment failed (HRESULT = 0x8007010B)")));
+  });
+
+  test("anything else is not one: no security environment, no HRESULT, not an Error", () => {
+    assert.ok(!isSecurityEnvironmentRefusal(new Error("backend_unavailable")));
+    assert.ok(!isSecurityEnvironmentRefusal(new Error("the security environment was not built at all")));
+    assert.ok(!isSecurityEnvironmentRefusal(new Error("HRESULT = 0x80070005 somewhere else")));
+    assert.ok(!isSecurityEnvironmentRefusal("failed to create the process security environment: 0x80070005"));
+    assert.ok(!isSecurityEnvironmentRefusal(undefined));
   });
 });
 

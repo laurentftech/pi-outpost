@@ -736,8 +736,12 @@ export interface TerminalConfinement {
   gitConfig?: string;
   /** MXC on Windows: the sandbox cache, created before the launch, and the variables naming it. */
   toolchains?: WindowsToolchains;
-  /** The policy for this terminal, given its private temporary directory and what it runs. */
-  policy: (terminal: ConfinedShell) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy;
+  /**
+   * The policy for this terminal, given its private temporary directory and what it runs.
+   * `enumerateAncestors` false builds it without the folders made listable — MXC on Windows, when
+   * this host refused the policy over them (`isSecurityEnvironmentRefusal`).
+   */
+  policy: (terminal: ConfinedShell, enumerateAncestors?: boolean) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy;
 }
 
 /** What a confined terminal runs, for a policy that has to carry it (MXC's). */

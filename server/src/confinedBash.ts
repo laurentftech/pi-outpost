@@ -22,7 +22,7 @@ import { startEgressProxy, type EgressProxy, type EgressProxyOptions } from "./e
 import { EMPTY_GRANT, forbiddenHost, isApproved, isEmptyGrant, mergeGrants, type Grant } from "./sandboxGrants.ts";
 import { RUN_WITH_GRANT_TOOL } from "./sandboxGrantTool.ts";
 import { linuxMxcExecutor, mxcMissingReason, mxcRunsInProcess } from "./mxcExecutor.ts";
-import { mxcSdk, runThroughSdk, SdkDocumentRefused, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
+import { isSecurityEnvironmentRefusal, mxcSdk, runThroughSdk, SdkDocumentRefused, sdkRequest, type MxcSdk, type MxcWireRequest, type SdkMetadata } from "./mxcSdk.ts";
 import { hostRefusal, landstripRefusal, mxcReportFile, mxcReportRefusals, refusalCollector, refusalKey, seatbeltReportRefusals, type Refusal } from "./sandboxRefusals.ts";
 import { refusedHost, type RefusedHost } from "./sandboxNetworkVerdict.ts";
 import {
@@ -37,10 +37,12 @@ import {
   carryUserConfigs,
   seatbeltPolicy,
   mxcTerminalConfig,
+  noteMxcEnumerateRefusal,
   runnerKind,
   siblingsToDeny,
   terminalPolicy,
   type MxcMacConfig,
+  type MxcTerminalInput,
   type RunnerCheck,
   type WindowsToolchains,
   msysNote,
@@ -574,6 +576,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     let mxcWire: MxcWireRequest | undefined;
     // The same, as a document sent as written: macOS, with Seatbelt's report asked for.
     let mxcJson: string | undefined;
+    // Windows MXC only: rebuilds the request without the folders made listable, when Windows
+    // refuses the policy over them (see the launch below).
+    let rebuildWithoutEnumeration: (() => void) | undefined;
     let sdkReportPath: string | undefined;
     let exitCode: number | null | undefined;
     try {
@@ -680,7 +685,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           args = [policyFile];
         }
       } else if (kind === "mxc") {
-        const request = mxcTerminalConfig({
+        const input: MxcTerminalInput = {
           root: options.root,
           writableRoot: options.writableRoot,
           allowWrite: options.allowWrite,
@@ -700,12 +705,18 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
           ...(options.hostLoopback === undefined ? {} : { hostLoopback: options.hostLoopback }),
           ...(options.privateNetwork === undefined ? {} : { privateNetwork: options.privateNetwork }),
-        });
+        };
         if (diagnose) reportDir = await mkdtemp(path.join(tmpdir(), "pi-outpost-diagnosis-"));
-        const sent = reportDir === undefined
-          ? request
-          : mxcDiagnosticConfig(request, { root: options.root, agentDir: options.agentDir, configFile: options.configFile, reportPath: path.join(reportDir, "report.json") });
-        mxcWire = sent as MxcWireRequest;
+        const build = (enumerateAncestors?: boolean): MxcWireRequest => {
+          const request = mxcTerminalConfig({ ...input, ...(enumerateAncestors === undefined ? {} : { enumerateAncestors }) });
+          return (reportDir === undefined
+            ? request
+            : mxcDiagnosticConfig(request, { root: options.root, agentDir: options.agentDir, configFile: options.configFile, reportPath: path.join(reportDir, "report.json") })) as MxcWireRequest;
+        };
+        mxcWire = build();
+        rebuildWithoutEnumeration = () => {
+          mxcWire = build(false);
+        };
         args = [];
       } else {
         const policy = terminalPolicy({
@@ -739,7 +750,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           // The development contract can change under pi-outpost: an SDK that no longer takes the
           // document started nothing, so the command runs on the stable one, confined the same,
           // and this shell stops asking — it then reports nothing of files.
-          const result =
+          const attempt = async () =>
             mxcJson === undefined
               ? await stable()
               : await runThroughSdk(loadedSdk.sdk, { json: mxcJson }, { onData, signal, timeoutMs, timeout }).catch((error) => {
@@ -747,6 +758,26 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
                   captureRefused = true;
                   return stable();
                 });
+          let result: { exitCode: number | null; metadata: SdkMetadata | undefined };
+          try {
+            result = await attempt();
+          } catch (error) {
+            // Windows builds the process security environment from the policy's paths and refuses
+            // the whole request when one of them cannot be opened there — 0x80070005 on a
+            // domain-joined account, where the folders made listable name entries the machine
+            // cannot open. Nothing ran: send the policy without that layer — the one sent before
+            // it — once more. Confined the same; never unconfined.
+            if (
+              rebuildWithoutEnumeration === undefined ||
+              !isSecurityEnvironmentRefusal(error) ||
+              (mxcWire!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) === 0
+            ) throw error;
+            rebuildWithoutEnumeration();
+            result = await attempt();
+            // The narrower policy ran: this host cannot take the enumeration layer, and no policy
+            // built afterwards on it asks for it.
+            noteMxcEnumerateRefusal();
+          }
           sdkReportPath = result.metadata?.captureDenials?.outputPath;
           return { exitCode: result.exitCode };
         }

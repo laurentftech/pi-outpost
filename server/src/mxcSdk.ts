@@ -173,6 +173,17 @@ export function sdkRequest(wire: MxcWireRequest, timeoutMs?: number): SdkRequest
 export class SdkDocumentRefused extends Error {}
 
 /**
+ * The SDK could not build the process security environment for a request: Windows refuses the whole
+ * policy when one path in it cannot be opened or resolved where the environment is built — measured
+ * HRESULTs: 0x80070005 (a path this account cannot open, seen on a domain-joined machine),
+ * 0x80070020 (a file another process holds open), 0x8007010B (a junction or symlink), 0x80070003 (a
+ * parent that does not exist). Nothing ran, so the caller may send a narrower policy and try again.
+ */
+export function isSecurityEnvironmentRefusal(error: unknown): boolean {
+  return error instanceof Error && /security ?environment/i.test(error.message) && /0x[0-9a-f]{8}/i.test(error.message);
+}
+
+/**
  * Runs one request through the SDK as the executor ran it (`confinedBash.ts`'s `run`) — in the
  * SDK's model, or a request document sent as written (`json`, the development contract): stdout and
  * stderr as they come, ended by the signal or the timeout — which then throw `aborted` or
