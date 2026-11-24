@@ -19,7 +19,7 @@
  * exits 0.
  */
 import { spawnSync } from "node:child_process";
-import { copyFileSync, lstatSync, mkdirSync, realpathSync, writeFileSync, appendFileSync } from "node:fs";
+import { copyFileSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -202,7 +202,7 @@ const checks = {
   nodeResolved: /NODE-SOURCE (?!MISS)/.test(output) && output.includes(`NODE-SOURCE ${current}\\node.exe`),
   rgResolved: output.includes(`RG-SOURCE ${scoop}\\shims\\rg.exe`),
   nodeRan: /NODE-RUN v\d/.test(output),
-  realpathThroughJunction: new RegExp(`REALPATH ${versioned.replaceAll("\\", "\\\\")}\\node.exe`).test(output.trim()),
+  realpathThroughJunction: output.includes(`REALPATH ${versioned}\\node.exe`),
   targetStat: output.includes("TARGET-STAT True"),
   currentStat: output.includes("CURRENT-STAT True"),
   bucketsRefused: output.includes("BUCKETS REFUSED (GOOD)"),
