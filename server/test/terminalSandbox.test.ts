@@ -1040,6 +1040,60 @@ describe("grants, in every policy", () => {
     assert.ok(without.filesystem.deniedPaths.includes("C:\\dev"));
   });
 
+  // openlore: scenario=AToolBehindALinkOnTheWayDownResolves spec=sandbox-runner-bash
+  test("AToolBehindALinkOnTheWayDownResolves: a scoop `current` junction's target is readable and on the way down, the link itself never enumerated", () => {
+    const wroot = "D:\\Python\\isai_oper";
+    const scoop = "D:\\WRK\\Scoop";
+    const current = `${scoop}\\apps\\nodejs\\current`;
+    const versioned = `${scoop}\\apps\\nodejs\\v26.8.2`;
+    const listing: Record<string, string[]> = {
+      "D:\\": ["D:\\WRK", "D:\\Python"],
+      "D:\\Python": ["D:\\Python\\isai_oper", "D:\\Python\\other"],
+      "D:\\WRK": [scoop],
+      [scoop]: [`${scoop}\\shims`, `${scoop}\\apps`, `${scoop}\\buckets`],
+      [`${scoop}\\apps`]: [`${scoop}\\apps\\nodejs`],
+      [`${scoop}\\apps\\nodejs`]: [current, versioned],
+    };
+    const key = (p: string) => p.toLowerCase();
+    const toolReader = {
+      isFile: (p: string) => key(p) === key(`${current}\\npm.cmd`),
+      isDirectory: () => false,
+      readText: (p: string) => (key(p) === key(`${scoop}\\shims\\npm.shim`) ? `path = "${current}\\npm.cmd"\r\n` : undefined),
+      list: (dir: string) => (key(dir) === key(`${scoop}\\shims`) ? ["npm.shim", "npm.ps1", "rg.exe"] : []),
+      isLink: (p: string) => key(p) === key(current),
+      resolveLink: (p: string) => (key(p) === key(current) ? versioned : undefined),
+    };
+    const config = mxcTerminalConfig({
+      root: wroot,
+      allowWrite: true,
+      tmp: "C:\\Users\\me\\AppData\\Local\\Temp\\t",
+      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      shellArgs: [],
+      cwd: wroot,
+      env: {},
+      siblings: ["D:\\WRK", "D:\\Python\\other"],
+      // scoop's shims, and the app's bin behind its `current` junction — node.exe itself lives in the junction's target.
+      searchPath: `C:\\Windows\\System32;${scoop}\\shims;${current}\\bin`,
+      home: "C:\\Users\\me",
+      agentDir: "C:\\Users\\me\\.pi\\agent",
+      enumerateAncestors: true,
+      besideEnumerated: (dir) => listing[dir] ?? [],
+      toolReader,
+    });
+    const enumeratePaths = config.processContainer?.filesystem?.enumeratePaths ?? [];
+    // The way down to the tool behind the junction is enumerated and not denied.
+    for (const onTheWay of ["D:\\WRK", scoop, `${scoop}\\apps`, `${scoop}\\apps\\nodejs`]) {
+      assert.ok(enumeratePaths.includes(onTheWay), `${onTheWay} is enumerated`);
+      assert.ok(!config.filesystem.deniedPaths.includes(onTheWay), `${onTheWay} is not denied`);
+    }
+    assert.ok(!enumeratePaths.includes(current), "a link is never enumerated: listing it would show its target's children");
+    // The junction's target is readable like the link, never denied as beside the way down (#562).
+    assert.ok(config.filesystem.readonlyPaths.includes(current));
+    assert.ok(config.filesystem.readonlyPaths.includes(versioned), "the target of the link is readable");
+    assert.ok(!config.filesystem.deniedPaths.includes(versioned), "the target is not denied");
+    assert.ok(config.filesystem.deniedPaths.includes(`${scoop}\\buckets`), "what lies beside the way down stays denied");
+  });
+
   test("ancestorsToEnumerate never names the agent directory, the configuration, nor a folder inside them", () => {
     const found = ancestorsToEnumerate(["C:\\secret\\agent\\tools\\bin", "D:\\tools\\x\\bin"], {
       root: "C:\\projects\\repo",

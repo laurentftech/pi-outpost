@@ -1328,10 +1328,30 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   const readwritePaths = unique([...writable, ...(input.grantedWrite ?? []), input.tmp]);
   // The search path's folders, and a granted directory beside the root, each a more specific
   // allow inside the denied siblings and profile: `siblings` needs no change.
+  const reader = input.toolReader ?? diskReader;
+  const linkTarget = (folder: string): string | undefined => {
+    try {
+      return reader.isLink(folder) ? reader.resolveLink(folder) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   const tools = [
     ...readableSearchEntries(input.searchPath, { home: input.home, agentDir: input.agentDir, configFile: input.configFile }),
-    ...toolInstallations(input, input.toolReader),
+    ...toolInstallations(input, reader),
   ];
+  // A tool that is itself a link (scoop's `current` junction to the active version, nvm-windows'
+  // folder): where it leads is readable like the link — resolving any path through the junction
+  // needs the target allowed, never denied as beside the way down (issue #562).
+  const toolKeys = new Set(tools.map((p) => p.toLowerCase()));
+  for (let i = 0; i < tools.length; i++) {
+    const target = linkTarget(tools[i]!);
+    if (target === undefined) continue;
+    const key = target.toLowerCase().replace(/[\\/]+$/, "");
+    if (toolKeys.has(key)) continue;
+    toolKeys.add(key);
+    tools.push(target);
+  }
   const readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? []), ...(input.readOnlyInside ?? [])].filter((p) => !readwritePaths.includes(p)));
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const enumeratePaths = !(input.enumerateAncestors ?? mxcEnumerates)
@@ -1347,6 +1367,7 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
           readable: [...readwritePaths, ...readonlyPaths],
           agentDir: input.agentDir,
           configFile: input.configFile,
+          linkTarget,
           ...(input.home ? { home: input.home } : {}),
         },
       );
@@ -1415,10 +1436,23 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
  * the configuration file are never enumerated, nor any folder inside them. Nor a folder directly in
  * the home but `AppData`, as `toolInstallations` never opens one: `~\.cargo` holds `credentials.toml`,
  * and a tool there is a program, which needs nothing above its folder — Node's CLIs live in `AppData`.
+ *
+ * A link on the way down (scoop's `current` junction to the active version) is never enumerated:
+ * listing it would show its target's children, each then denied by name as beside the way. Its
+ * target is readable where it was taken (`mxcTerminalConfig`), and the walk goes on above the link.
  */
 export function ancestorsToEnumerate(
   opened: readonly string[],
-  guard: { root: string; siblings: readonly string[]; readable?: readonly string[]; agentDir?: string; configFile?: string; home?: string },
+  guard: {
+    root: string;
+    siblings: readonly string[];
+    readable?: readonly string[];
+    agentDir?: string;
+    configFile?: string;
+    home?: string;
+    /** Where a folder on the way down leads when it is itself a link (a junction), if anywhere. */
+    linkTarget?: (dir: string) => string | undefined;
+  },
 ): string[] {
   const win = path.win32;
   const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
@@ -1440,6 +1474,11 @@ export function ancestorsToEnumerate(
       const key = lower(dir);
       if (seen.has(key)) break; // Its own ancestors are already decided.
       seen.add(key);
+      // A link on the way down is not enumerated (see above); the walk goes on above it.
+      if (guard.linkTarget !== undefined && guard.linkTarget(dir) !== undefined) {
+        dir = win.dirname(dir);
+        continue;
+      }
       const inTheHome = guard.home !== undefined && lower(win.dirname(dir)) === lower(guard.home) && win.basename(dir).toLowerCase() !== "appdata";
       if (!covered(key) && !inTheHome && !secrets.some((secret) => under(key, secret))) found.push(dir);
       dir = win.dirname(dir);
