@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { carryUserConfigs, confinedEnvironment, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
+import { carryUserConfigs, confinedEnvironment, mxcEnumerateLevel, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -637,7 +637,7 @@ export interface ConfinedLaunch {
  * for this one launch and an environment built from nothing, so no key the server holds reaches
  * it. Shared by the terminal and by the confinement canary, which must check what runs.
  */
-export async function confinedLaunch(confine: TerminalConfinement, shell: string, givenArgs: string[], cwd: string): Promise<ConfinedLaunch> {
+export async function confinedLaunch(confine: TerminalConfinement, shell: string, givenArgs: string[], cwd: string, enumerateLevel: 0 | 1 | 2 = mxcEnumerateLevel()): Promise<ConfinedLaunch> {
   // A starting directory outside the root could not be entered from inside.
   const startIn = isInside(path.resolve(cwd), confine.root) ? path.resolve(cwd) : confine.root;
   const shellArgs = confine.kind === "mxc" && process.platform === "win32" ? withTemporaryDirectoryRestored(shell, givenArgs) : givenArgs;
@@ -658,7 +658,7 @@ export async function confinedLaunch(confine: TerminalConfinement, shell: string
       userProxy: true,
     });
     if (confine.toolchains) Object.assign(shellEnv, confine.toolchains.env);
-    return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv });
+    return confine.policy({ tmp, shell, shellArgs, cwd: startIn, env: shellEnv }, enumerateLevel);
   });
   // MXC's request carries the command line and the environment itself: its executor hands
   // the child none of its own.
@@ -738,10 +738,11 @@ export interface TerminalConfinement {
   toolchains?: WindowsToolchains;
   /**
    * The policy for this terminal, given its private temporary directory and what it runs.
-   * `enumerateAncestors` false builds it without the folders made listable — MXC on Windows, when
-   * this host refused the policy over them (`isSecurityEnvironmentRefusal`).
+   * `enumerateLevel`: MXC on Windows, the enumeration level this host proved it can take
+   * (0 full, 1 the tools' ancestors only, 2 none — see `mxcEnumerateLevel`), when it refused the
+   * policy over the folders made listable (`isSecurityEnvironmentRefusal`).
    */
-  policy: (terminal: ConfinedShell, enumerateAncestors?: boolean) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy;
+  policy: (terminal: ConfinedShell, enumerateLevel?: 0 | 1 | 2) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy;
 }
 
 /** What a confined terminal runs, for a policy that has to carry it (MXC's). */

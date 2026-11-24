@@ -37,7 +37,9 @@ import {
   carryUserConfigs,
   seatbeltPolicy,
   mxcTerminalConfig,
-  noteMxcEnumerateRefusal,
+  enumerateLevelFlags,
+  mxcEnumerateLevel,
+  noteMxcEnumerateLevel,
   runnerKind,
   siblingsToDeny,
   terminalPolicy,
@@ -576,9 +578,10 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     let mxcWire: MxcWireRequest | undefined;
     // The same, as a document sent as written: macOS, with Seatbelt's report asked for.
     let mxcJson: string | undefined;
-    // Windows MXC only: rebuilds the request without the folders made listable, when Windows
-    // refuses the policy over them (see the launch below).
-    let rebuildWithoutEnumeration: (() => void) | undefined;
+    // Windows MXC only: rebuilds the request at a lower enumeration level, when Windows refuses
+    // the policy over the folders made listable (see the launch below).
+    let rebuildPolicy: ((level: 0 | 1 | 2) => void) | undefined;
+    let enumLevel: 0 | 1 | 2 = 0;
     let sdkReportPath: string | undefined;
     let exitCode: number | null | undefined;
     try {
@@ -707,15 +710,17 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           ...(options.privateNetwork === undefined ? {} : { privateNetwork: options.privateNetwork }),
         };
         if (diagnose) reportDir = await mkdtemp(path.join(tmpdir(), "pi-outpost-diagnosis-"));
-        const build = (enumerateAncestors?: boolean): MxcWireRequest => {
-          const request = mxcTerminalConfig({ ...input, ...(enumerateAncestors === undefined ? {} : { enumerateAncestors }) });
+        enumLevel = mxcEnumerateLevel();
+        const build = (level: 0 | 1 | 2): MxcWireRequest => {
+          const request = mxcTerminalConfig({ ...input, ...enumerateLevelFlags(level) });
           return (reportDir === undefined
             ? request
             : mxcDiagnosticConfig(request, { root: options.root, agentDir: options.agentDir, configFile: options.configFile, reportPath: path.join(reportDir, "report.json") })) as MxcWireRequest;
         };
-        mxcWire = build();
-        rebuildWithoutEnumeration = () => {
-          mxcWire = build(false);
+        mxcWire = build(enumLevel);
+        rebuildPolicy = (level) => {
+          enumLevel = level;
+          mxcWire = build(level);
         };
         args = [];
       } else {
@@ -759,25 +764,30 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
                   return stable();
                 });
           let result: { exitCode: number | null; metadata: SdkMetadata | undefined };
-          try {
-            result = await attempt();
-          } catch (error) {
-            // Windows builds the process security environment from the policy's paths and refuses
-            // the whole request when one of them cannot be opened there — 0x80070005 on a
-            // domain-joined account, where the folders made listable name entries the machine
-            // cannot open. Nothing ran: send the policy without that layer — the one sent before
-            // it — once more. Confined the same; never unconfined.
-            if (
-              rebuildWithoutEnumeration === undefined ||
-              !isSecurityEnvironmentRefusal(error) ||
-              (mxcWire!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) === 0
-            ) throw error;
-            rebuildWithoutEnumeration();
-            result = await attempt();
-            // The narrower policy ran: this host cannot take the enumeration layer, and no policy
-            // built afterwards on it asks for it.
-            noteMxcEnumerateRefusal();
+          const startLevel = enumLevel;
+          for (;;) {
+            try {
+              result = await attempt();
+              break;
+            } catch (error) {
+              // Windows builds the process security environment from the policy's paths and refuses
+              // the whole request when one of them cannot be opened there — 0x80070005 on a
+              // domain-joined account, where the folders made listable name entries the machine
+              // cannot open. Nothing ran: step the enumeration down one level — first the
+              // ancestors of the grants (the profile's folders), then all of it, the policy sent
+              // before the layer — and try again. Confined the same at every level; never unconfined.
+              if (
+                rebuildPolicy === undefined ||
+                !isSecurityEnvironmentRefusal(error) ||
+                enumLevel >= 2 ||
+                (mxcWire!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) === 0
+              ) throw error;
+              rebuildPolicy((enumLevel + 1) as 0 | 1 | 2);
+            }
           }
+          // A lower level ran: this host cannot take more, and no policy built afterwards on it
+          // asks for it.
+          if (enumLevel > startLevel) noteMxcEnumerateLevel(enumLevel);
           sdkReportPath = result.metadata?.captureDenials?.outputPath;
           return { exitCode: result.exitCode };
         }

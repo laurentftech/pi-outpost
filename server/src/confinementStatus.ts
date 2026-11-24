@@ -17,10 +17,12 @@ import { confinedLaunch, type TerminalConfinement } from "./terminalManager.ts";
 import {
   defaultSandboxCache,
   gitReadOnlyFiles,
+  enumerateLevelFlags,
   isPosixMxc,
+  mxcEnumerateLevel,
   mxcPosixConfig,
   mxcTerminalConfig,
-  noteMxcEnumerateRefusal,
+  noteMxcEnumerateLevel,
   runnerKind,
   type RunnerCheck,
   seatbeltPolicy,
@@ -84,7 +86,7 @@ export function buildTerminalConfinement(input: {
         : kind === "mxc" && isPosixMxc(runner)
           ? (terminal) => mxcPosixConfig(runner, { ...limits, ...terminal, searchPath: terminal.env.PATH })
           : kind === "mxc"
-            ? (terminal, enumerateAncestors) =>
+            ? (terminal, enumerateLevel) =>
                 mxcTerminalConfig({
                   ...limits,
                   ...terminal,
@@ -94,7 +96,7 @@ export function buildTerminalConfinement(input: {
                   ...(toolchains ? { grantedWrite: [toolchains.cacheDir], grantedRead: toolchains.readable } : {}),
                   searchPath: terminal.env.PATH,
                   ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
-                  ...(enumerateAncestors === undefined ? {} : { enumerateAncestors }),
+                  ...enumerateLevelFlags(enumerateLevel ?? mxcEnumerateLevel()),
                 })
             : ({ tmp }) => terminalPolicy({ ...limits, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot, userProfile: process.env.USERPROFILE }),
   };
@@ -142,28 +144,39 @@ export async function agentShellVerdict(sandbox: SandboxConfig, neverReadable: {
  * The canary's one command through a terminal's MXC launch, in process through the SDK: what the
  * canary tries is what a command would. Windows builds the process security environment from the
  * policy's paths and refuses the whole request when one of them cannot be opened there
- * (`isSecurityEnvironmentRefusal`): the launch is then retried once without the folders made
- * listable — confined the same, never unconfined.
+ * (`isSecurityEnvironmentRefusal`): the launch is then retried at a lower enumeration level —
+ * first without the ancestors of the grants, then without any listable folder — confined the same
+ * at every level, never unconfined.
  */
 async function canaryThroughMxc(confine: TerminalConfinement, shell: string, shellArgs: string[]): Promise<string> {
-  const launch = await confinedLaunch(confine, shell, shellArgs, confine.root);
-  try {
-    const loaded = await mxcSdk();
-    if ("reason" in loaded) return loaded.reason;
-    let said = "";
-    const write = (data: Buffer) => void (said += data.toString());
+  const startLevel = mxcEnumerateLevel();
+  let level = startLevel;
+  for (;;) {
+    const launch = await confinedLaunch(confine, shell, shellArgs, confine.root, level);
     try {
-      await runThroughSdk(loaded.sdk, sdkRequest(launch.mxc!), { onData: write, timeoutMs: CANARY_TIMEOUT_MS, timeout: CANARY_TIMEOUT_MS / 1000 });
-    } catch (error) {
-      if (isSecurityEnvironmentRefusal(error) && (launch.mxc!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) > 0) {
-        noteMxcEnumerateRefusal();
-        return await canaryThroughMxc({ ...confine, policy: (terminal) => confine.policy(terminal, false) }, shell, shellArgs);
+      const loaded = await mxcSdk();
+      if ("reason" in loaded) return loaded.reason;
+      let said = "";
+      const write = (data: Buffer) => void (said += data.toString());
+      try {
+        await runThroughSdk(loaded.sdk, sdkRequest(launch.mxc!), { onData: write, timeoutMs: CANARY_TIMEOUT_MS, timeout: CANARY_TIMEOUT_MS / 1000 });
+      } catch (error) {
+        // Windows builds the process security environment from the policy's paths and refuses the
+        // whole request when one of them cannot be opened there: step the enumeration down one
+        // level — first the ancestors of the grants, then all of it — and try again. Confined the
+        // same at every level; never unconfined.
+        if (isSecurityEnvironmentRefusal(error) && level < 2 && (launch.mxc!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) > 0) {
+          level = (level + 1) as 0 | 1 | 2;
+          continue;
+        }
+        said += (error as Error).message;
       }
-      said += (error as Error).message;
+      // A lower level ran: this host cannot take more, and no policy built afterwards asks for it.
+      if (level > startLevel) noteMxcEnumerateLevel(level);
+      return said;
+    } finally {
+      await launch.files.dispose().catch(() => {});
     }
-    return said;
-  } finally {
-    await launch.files.dispose().catch(() => {});
   }
 }
 
