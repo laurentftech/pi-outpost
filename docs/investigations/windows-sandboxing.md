@@ -277,7 +277,7 @@ Run together on this repository (writable), MXC tier 1 with `C:\` readable, the 
 | network | denied by default (`getaddrinfo() thread failed to start`); with `network.egress.default: "allow"`, `git ls-remote` works |
 | `npm view` with egress allowed | fails: its cache defaults to the container's own `AppData\Local\Packages\sandbox.…\AC`, which the deny list covers; give it a writable cache |
 | `~\.ssh`, the rest of the profile | refused |
-| `git commit` with `commit.gpgsign = true` | fails (gpg and its keyring are denied) |
+| `git commit` with `commit.gpgsign = true` | signs through the server's relay since 0.66.0 (#565); before, failed (gpg and its keyring are denied) |
 | warnings | git cannot read `~\.config\git\ignore` (harmless; can be made readable) |
 
 Not tried: `git push` (credentials: Git Credential Manager, or an SSH key, both outside the policy). busybox
@@ -298,6 +298,31 @@ The SDK has `spawnWithPty`, which is what the confined terminal needs.
 4. Measure how much of Node works inside (`npm --version`, `npm ls`, a pi extension).
 5. Not yet run on this machine: the landstrip probes (`landstrip-git-nul.ps1`, `landstrip-shells.ps1`), to
    see whether Windows 11 changes anything for landstrip's AppContainer.
+
+## Stress runs with a real agent (2026-11-24)
+
+Beyond the probes, the sandbox was stressed with a real agent on this machine (Windows 11 26100, MXC
+tier 1 via `MXC_EXEC=…/wxc-exec.exe`), the way a user runs it:
+
+```
+MXC_EXEC=<mxc sdk>/bin/x64/wxc-exec.exe PATH="C:\Program Files\Git\cmd;$PATH" \
+  node cli/dist/pi-outpost.mjs -p - --cwd <project> --config <project>/pi-outpost.config.json \
+  --grants refuse --model mistral/mistral-large-latest < prompt.txt
+```
+
+with the project config `{"sandbox":{"root":…,"allowWrite":true,"allowBash":true,"bashRunner":"mxc",
+"bashShell":"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"}}` (add `"gitWritable":true`
+when the agent must commit). Projects lived under `C:\zz562\WRK\`.
+
+| Stress run | Result |
+| --- | --- |
+| Hello-world per toolchain, one project each: Python (uv venv), Node + TypeScript, `javac`, Maven, Go, Cargo, `dotnet`, gcc (Strawberry) | 8/8 built and ran inside the container |
+| Maven and Gradle with a mirror in the user's `settings.xml` / `gradle.properties` | read the carried copies and reached the mirror through the registry relay, without the secret in them |
+| Global Node tools through scoop's `current` junction (#562) | `node`, `npm`, `npx` resolve on `PATH` through the link since #563 |
+| `git commit` with `commit.gpgsign=true` carried from the user's `~/.gitconfig`, a real gpg key on the host (#565) | the agent's commit carried a `gpgsig` header with no signing error; `git verify-commit` outside the sandbox: **Good signature**; the startup line named the relay |
+| `git add -A` in a project holding `pi-outpost.config.json` | fails on that one file: the config is read-protected from the sandbox, so git cannot hash it; adding the other files works |
+| `git commit` without `gitWritable` | `index.lock: Permission denied` — the intended default (`.git` read-only; hooks/config there name commands that run outside the sandbox too); a grant or `sandbox.gitWritable: true` lifts it |
+| `gpg.exe` invoked directly in the container | `Function not implemented` (no ASLR) — the reason signing goes through the relay |
 
 ## Probes
 
