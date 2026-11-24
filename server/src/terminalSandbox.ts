@@ -1220,7 +1220,11 @@ export function windowsToolchains(
     gradleHome: env.GRADLE_USER_HOME,
     cargoHome: env.CARGO_HOME,
   });
-  const copyOf = (name: CarriedConfig["name"]) => carried.find((config) => config.name === name)?.to;
+  // Named only when the user's file exists: a MAVEN_ARGS pointing at no settings.xml breaks every mvn.
+  const copyOf = (name: CarriedConfig["name"]) => {
+    const found = carried.find((config) => config.name === name);
+    return found && reader.isFile(found.from) ? found.to : undefined;
+  };
   const npmrc = copyOf(".npmrc");
   if (npmrc) env.npm_config_userconfig = npmrc;
   const pipIni = copyOf("pip.ini");
