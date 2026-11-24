@@ -20,18 +20,34 @@ Filled from the `mxc-windows-ci-spike` workflow's artifacts (`results/<label>/pr
 
 ## Runner: `windows-11-arm` (Windows 11 ARM64)
 
-- Run: https://github.com/laurentftech/pi-outpost/actions/runs/45374635075 (job
-  `probe (windows-11-arm)`) — build **10.0.26200** (Windows 11 25H2, arm64), Node 24.22.3 —
-  SDK probe: **`tier: "base-container"`, `baseContainerApiPresent: true`,
-  `baseContainerSupportsDenyPaths: true`, `baseContainerSupportsEnumeratePaths: true`** —
-  `checkRunner("mxc")`: **ok** — the 7 real-MXC suites started with `MXC_EXEC` at the SDK's
-  `bin/arm64/wxc-exec.exe`, then the **spot runner was preempted again** at 11:10 UTC
-  (37 min in; the first run 45366944884 was preempted too). Suite results lost with the
-  kill; `probe.mjs` now appends each suite's log as it finishes so the next run keeps them.
+- Run: https://github.com/laurentftech/pi-outpost/actions/runs/45374635075 (probe) and
+  **45382547956** (probe + suites, artifact `mxc-windows-ci-windows-11-arm`) — build
+  **10.0.26200** (Windows 11 25H2, arm64), Node 24.22.3 — SDK probe: **`tier: "base-container"`,
+  `baseContainerApiPresent: true`, `baseContainerSupportsDenyPaths: true`,
+  `baseContainerSupportsEnumeratePaths: true`** — `checkRunner("mxc")`: **ok** — the SDK's
+  arm64 `wxc-exec.exe`/`mxc_ffi.dll` load, and the real-MXC suites **ran confined commands
+  through the real tier 1** (`MXC_EXEC=…/bin/arm64/wxc-exec.exe`).
+- Suite results (run 45382547956, per suite, before the third preemption): reach 0 pass / 6
+  fail / 1 skip; terminal 5 pass / 1 fail; diagnosis 0/9; powershell 1/4; loopback 2/5;
+  network 1/8. Two environmental causes, both GitHub-runner-specific:
+  1. **51× `Access to the path 'C:\Users\RUNNER~1\…' is denied`** — the runner's `TEMP` uses
+     the 8.3 alias `RUNNER~1` for `runneradmin`, so a test root under it is built with the
+     short name, `siblingsToDeny` does not recognize that component as the profile folder, and
+     the deny list names the profile itself: the confined root is denied. On a normal machine
+     `TEMP` uses the long name, so this is a runner artifact — but it shows the deny list is
+     name-based and a short-name alias defeats it (follow-up: resolve `realpath` before
+     computing the siblings).
+  2. **6× `Error: AttachConsole failed`** (node-pty `conpty_console_list_agent.ts`) — the known
+     Windows console-list race (microsoft/node-pty#1007) that aborts a terminal test worker;
+     hit `terminalSandboxMxc` here.
+- The spot runner was preempted **3/3 times** (~35–45 min into the job); the incremental
+  logging in `probe.mjs` (results written per stage and per suite) preserved all of the above.
 - Notes: `windows-11-arm` **has MXC tier 1 and pi-outpost's gate passes there** — a hosted
-  runner can exercise the real process container. But ARM spot runners are preempted
-  routinely (~35–45 min in, twice), so the suites need either retries or a non-spot
-  (self-hosted) Windows 11 runner.
+  runner can exercise the real process container, and the enumeration layer added in 0.65.0
+  is supported by its probe (`baseContainerSupportsEnumeratePaths: true`). But ARM spot
+  runners are preempted routinely and the suite failures above are environmental, so a stable
+  `mxc-windows` job wants a **self-hosted Windows 11 runner** (x64 or arm64, long-name profile
+  path) — or `windows-11-arm` with retries and those two causes worked around in the suites.
 
 ## Runner: `windows-latest` (Server edition)
 
