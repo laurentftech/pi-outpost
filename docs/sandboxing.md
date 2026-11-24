@@ -692,6 +692,7 @@ would start, is the "Remaining work" of the `windows-sandbox-reach` change's `de
 | A proxy configured by PAC or WinHTTP alone is not seen | set `HTTPS_PROXY` (and `NO_PROXY`) for the server |
 | A connection refused to a host the command never names (a library's, deep in a build) is told only when the program's own error says so — MXC does not report refused connections ([microsoft/mxc#1843](https://github.com/microsoft/mxc/issues/1843)) | if a build fails on the network, check the intranet hosts it uses against `sandbox.privateNetwork` |
 | Two pi-outpost servers of the same Windows user share the sandbox cache, and with it the carried configuration: one's commands may meet the other's relay and get a 404 | run one server per user, or give each its own `sandbox.cacheDir` |
+| On a machine where Windows refuses the policy over the folders made listable (a domain-joined account, `CreateProcessSecurityEnvironment` `0x80070005`), pi-outpost replays each command once on the policy without them: the folders above a tool beside the root are then not listable, and `realpath` of the tool's folder fails | nothing to do: the command runs, confined the same; a tool beside the root that needs its folder resolved by path takes a grant (`run_with_grant`) |
 
 ## Older Windows
 

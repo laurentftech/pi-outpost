@@ -230,6 +230,16 @@ async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: (
  */
 let mxcEnumerates = true;
 
+/**
+ * The host's MXC refused a policy that made folders listable: Windows could not build the process
+ * security environment over the paths that layer adds (`isSecurityEnvironmentRefusal`). Remembered,
+ * so no policy built afterwards asks for it — the folders above a tool stay closed, as before it
+ * was asked. Confinement is not loosened: the siblings of the path to the root stay denied.
+ */
+export function noteMxcEnumerateRefusal(): void {
+  mxcEnumerates = false;
+}
+
 /** MXC's Linux and macOS self-check: one confined `true`, network open — through the SDK on macOS, the executor on Linux. */
 async function checkPosixMxcRunner(through: { sdk: MxcSdk } | { executor: string; exec: Exec }, containment: "bubblewrap" | "seatbelt"): Promise<RunnerCheck> {
   const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-mxc-check-"));
@@ -1804,6 +1814,18 @@ function deniable(entry: string): boolean {
     // Windows cannot open directory handles this way; retain directory entries, but
     // do the fallback metadata check only after the attempted open.
     if (process.platform === "win32") {
+      // A plain open (full sharing) succeeds wherever reading is allowed, directories included
+      // (libuv opens them with FILE_FLAG_BACKUP_SEMANTICS). One it fails on — access denied — is
+      // never denied by name: MXC opens every denied path where it builds the security
+      // environment, and a single one it cannot open fails the whole policy (0x80070005).
+      let plain: number | undefined;
+      try {
+        plain = openSync(entry, fsConstants.O_RDONLY);
+      } catch {
+        return false;
+      } finally {
+        if (plain !== undefined) closeSync(plain);
+      }
       try {
         const stats = lstatSync(entry);
         return !stats.isSymbolicLink() && stats.isDirectory();

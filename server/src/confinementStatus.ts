@@ -3,7 +3,7 @@
  * shell through `confinedBashOperations` with the options its tools are built with, the terminal
  * through the launch a terminal gets (`confinedLaunch`), without a pty. See `confinementCanary.ts`.
  */
-import { mxcSdk, runThroughSdk, sdkRequest } from "./mxcSdk.ts";
+import { isSecurityEnvironmentRefusal, mxcSdk, runThroughSdk, sdkRequest } from "./mxcSdk.ts";
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -20,6 +20,7 @@ import {
   isPosixMxc,
   mxcPosixConfig,
   mxcTerminalConfig,
+  noteMxcEnumerateRefusal,
   runnerKind,
   type RunnerCheck,
   seatbeltPolicy,
@@ -83,7 +84,7 @@ export function buildTerminalConfinement(input: {
         : kind === "mxc" && isPosixMxc(runner)
           ? (terminal) => mxcPosixConfig(runner, { ...limits, ...terminal, searchPath: terminal.env.PATH })
           : kind === "mxc"
-            ? (terminal) =>
+            ? (terminal, enumerateAncestors) =>
                 mxcTerminalConfig({
                   ...limits,
                   ...terminal,
@@ -93,6 +94,7 @@ export function buildTerminalConfinement(input: {
                   ...(toolchains ? { grantedWrite: [toolchains.cacheDir], grantedRead: toolchains.readable } : {}),
                   searchPath: terminal.env.PATH,
                   ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
+                  ...(enumerateAncestors === undefined ? {} : { enumerateAncestors }),
                 })
             : ({ tmp }) => terminalPolicy({ ...limits, tmp, searchPath: process.env.PATH, systemRoot: process.env.SystemRoot, userProfile: process.env.USERPROFILE }),
   };
@@ -136,6 +138,35 @@ export async function agentShellVerdict(sandbox: SandboxConfig, neverReadable: {
   }
 }
 
+/**
+ * The canary's one command through a terminal's MXC launch, in process through the SDK: what the
+ * canary tries is what a command would. Windows builds the process security environment from the
+ * policy's paths and refuses the whole request when one of them cannot be opened there
+ * (`isSecurityEnvironmentRefusal`): the launch is then retried once without the folders made
+ * listable — confined the same, never unconfined.
+ */
+async function canaryThroughMxc(confine: TerminalConfinement, shell: string, shellArgs: string[]): Promise<string> {
+  const launch = await confinedLaunch(confine, shell, shellArgs, confine.root);
+  try {
+    const loaded = await mxcSdk();
+    if ("reason" in loaded) return loaded.reason;
+    let said = "";
+    const write = (data: Buffer) => void (said += data.toString());
+    try {
+      await runThroughSdk(loaded.sdk, sdkRequest(launch.mxc!), { onData: write, timeoutMs: CANARY_TIMEOUT_MS, timeout: CANARY_TIMEOUT_MS / 1000 });
+    } catch (error) {
+      if (isSecurityEnvironmentRefusal(error) && (launch.mxc!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) > 0) {
+        noteMxcEnumerateRefusal();
+        return await canaryThroughMxc({ ...confine, policy: (terminal) => confine.policy(terminal, false) }, shell, shellArgs);
+      }
+      said += (error as Error).message;
+    }
+    return said;
+  } finally {
+    await launch.files.dispose().catch(() => {});
+  }
+}
+
 /** The terminal: its runner and policy, the shell a terminal opens, the canary passed as its command. */
 export async function terminalVerdict(confine: TerminalConfinement, shell: string, agentDir: string | undefined, writableRoot?: string): Promise<ConfinementVerdict> {
   const name = path.win32.basename(shell).toLowerCase();
@@ -153,17 +184,9 @@ export async function terminalVerdict(confine: TerminalConfinement, shell: strin
     exec: async (command) => {
       const oneLine = command.split(/\r?\n/).filter(Boolean).join("; ");
       const shellArgs = powerShell ? ["-NoProfile", "-NonInteractive", "-Command", oneLine] : ["-c", oneLine];
+      if (confine.kind === "mxc") return await canaryThroughMxc(confine, shell, shellArgs);
       const launch = await confinedLaunch(confine, shell, shellArgs, confine.root);
       try {
-        if (launch.mxc) {
-          // MXC in process, through its SDK: what the canary tries is what a command would.
-          const loaded = await mxcSdk();
-          if ("reason" in loaded) return loaded.reason;
-          let said = "";
-          const write = (data: Buffer) => void (said += data.toString());
-          await runThroughSdk(loaded.sdk, sdkRequest(launch.mxc), { onData: write, timeoutMs: CANARY_TIMEOUT_MS, timeout: CANARY_TIMEOUT_MS / 1000 }).catch((error: Error) => void (said += error.message));
-          return said;
-        }
         return await new Promise<string>((resolve) => {
           const child = execFile(launch.file, launch.args, { env: launch.env, cwd: launch.cwd, timeout: CANARY_TIMEOUT_MS, windowsHide: true }, (_error, stdout, stderr) =>
             resolve(`${stdout}${stderr}`),
