@@ -117,21 +117,21 @@ describe("networkSummary", () => {
       assert.ok(off!.includes("commit.gpgsign off in the sandbox: GnuPG cannot run there — re-sign outside it"), off);
       // gpg reachable (a gpg.exe on PATH, as on Windows): commits sign through the server's relay.
       await writeFile(path.join(bin, "gpg.exe"), "");
-      const on = networkSummary(mxc, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".EXE" });
+      const on = networkSummary(mxc, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".exe" });
       assert.ok(on!.includes("commit.gpgsign on: commits signed through pi-outpost's relay"), on);
       // The loopback closed, the relay is unreachable: off again.
       assert.ok(
-        networkSummary({ ...mxc, hostLoopback: false }, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".EXE" })!.includes("off in the sandbox"),
+        networkSummary({ ...mxc, hostLoopback: false }, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".exe" })!.includes("off in the sandbox"),
         "hostLoopback false: the shim cannot reach the relay",
       );
       // gpg.format=ssh names another signer the relay does not take: off.
       await writeFile(path.join(home, ".gitconfig"), "[gpg]\n\tformat = ssh\n[commit]\n\tgpgsign = true\n");
       assert.ok(
-        networkSummary(mxc, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".EXE" })!.includes("off in the sandbox"),
+        networkSummary(mxc, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".exe" })!.includes("off in the sandbox"),
         "ssh format: the relay runs gpg's arguments only",
       );
       await rm(path.join(home, ".gitconfig"));
-      assert.doesNotMatch(networkSummary(mxc, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".EXE" })!, /gpgsign/);
+      assert.doesNotMatch(networkSummary(mxc, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".exe" })!, /gpgsign/);
       assert.doesNotMatch(networkSummary(mxc, "win32", [], {})!, /gpgsign/, "no home named: nothing is read");
     } finally {
       await rm(home, { recursive: true, force: true });

@@ -109,7 +109,7 @@ export function signingArgs(args: readonly string[]): string[] | undefined {
 const crlf = (lines: string[]): string => lines.join("\r\n") + "\r\n";
 
 /** The shim git starts: hands git's args to the inner PowerShell script, which POSTs the payload. */
-function shimScript(port: number, token: string): string {
+function shimScript(): string {
   return crlf([
     "@echo off",
     "rem pi-outpost's signing relay shim: git's gpg.program in the sandbox. The key stays in the server.",
@@ -188,7 +188,7 @@ export async function startSigningRelay(options: SigningRelayOptions): Promise<S
     request.on("end", () => {
       if (over) return answer(response, 413, "the payload is over the relay's cap");
       void (async () => {
-        const env = { ...process.env, ...(options.serverEnv ?? {}) };
+        const env = { ...process.env, ...options.serverEnv };
         const result = await runSigner(args, Buffer.concat(chunks), env);
         if (result.code === 0) response.writeHead(200, { "content-type": "text/plain" }).end(result.stdout);
         else answer(response, 500, `the signer failed: ${result.stderr.toString().split(/\r?\n/)[0] ?? result.code}`);
@@ -209,7 +209,7 @@ export async function startSigningRelay(options: SigningRelayOptions): Promise<S
   port = (server.address() as { port: number }).port;
   server.unref();
   await mkdir(options.cacheDir, { recursive: true });
-  await writeFile(shim, shimScript(port, token), { mode: 0o644 });
+  await writeFile(shim, shimScript(), { mode: 0o644 });
   await writeFile(inner, shimInnerScript(port, token), { mode: 0o644 });
 
   return {
