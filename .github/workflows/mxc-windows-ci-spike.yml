@@ -1,0 +1,63 @@
+name: MXC on Windows CI spike
+
+# Spike, not a check: nothing here is required. It answers, by measurement, whether a
+# GitHub-hosted Windows runner carries MXC's tier 1 and can run the real-MXC server suites
+# (server/test/*Mxc.test.ts, skipped in CI for want of MXC_EXEC). Triggered manually, or by
+# pushing this spike branch with changes under spikes/mxc-windows-ci/.
+on:
+  push:
+    branches: [vibe/mxc-windows-ci-spike-5c5e57]
+    paths:
+      - spikes/mxc-windows-ci/**
+      - .github/workflows/mxc-windows-ci-spike.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mxc-windows-ci-spike-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows 11 ARM64: the SDK ships arm64 native parts (wxc-exec.exe, mxc_ffi.dll).
+          - { label: windows-11-arm, os: windows-11-arm }
+          # Server edition: never measured for MXC's tier 1; the spike says which it is.
+          - { label: windows-latest, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      SPIKE_LABEL: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
+      # --foreground-scripts: koffi and the SDK's native parts install through scripts.
+      - run: npm ci --foreground-scripts
+      - name: Probe MXC on this runner; run the real-MXC suites where the gate passes
+        run: node --import tsx/esm spikes/mxc-windows-ci/probe.mjs
+      - name: Publish spike summary
+        if: always()
+        shell: pwsh
+        run: |
+          $dir = "spikes/mxc-windows-ci/results/$env:SPIKE_LABEL"
+          if (Test-Path "$dir/summary.md") { Get-Content "$dir/summary.md" -Raw >> $env:GITHUB_STEP_SUMMARY }
+          else { "The probe produced no summary; see the job log." >> $env:GITHUB_STEP_SUMMARY }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mxc-windows-ci-${{ matrix.label }}
+          path: spikes/mxc-windows-ci/results/${{ matrix.label }}/
+          retention-days: 7
+          if-no-files-found: warn
