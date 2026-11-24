@@ -112,7 +112,9 @@ const searchPath = ["C:\\Windows\\System32", "C:\\Windows", `${scoop}\\shims`, c
 env.PATH = searchPath;
 
 // The probe script the confined PowerShell runs: command lookup and execution through the junction.
+// (Paths are interpolated here, in JS — inside the ps1's single quotes they would stay literal.)
 const probePs1 = `${projectRoot}\\probe.ps1`;
+writeFileSync(path.join(projectRoot, "realpath.js"), 'console.log(require("fs").realpathSync(process.execPath))\n');
 writeFileSync(
   probePs1,
   [
@@ -124,12 +126,12 @@ writeFileSync(
     'if ($r) { "RG-SOURCE $($r.Source)" } else { "RG-SOURCE MISS" }',
     'if ($n) {',
     '  "NODE-RUN $(& $n.Source -v 2>&1 | Out-String)"',
-    "  \"REALPATH $(& $n.Source -e 'console.log(require(\"fs\").realpathSync(process.execPath))' 2>&1 | Out-String)\"",
-    "  \"TARGET-STAT $(Test-Path '${versioned}\\node.exe')\"",
-    "  \"CURRENT-STAT $(Test-Path '${current}\\node.exe')\"",
+    '  "REALPATH $(& $n.Source realpath.js 2>&1 | Out-String)"',
+    `  "TARGET-STAT $(Test-Path '${versioned}\\node.exe')"`,
+    `  "CURRENT-STAT $(Test-Path '${current}\\node.exe')"`,
     '}',
-    "try { Get-ChildItem '${scoop}\\buckets' -ErrorAction Stop | Out-Null; 'BUCKETS LISTED (BAD)' } catch { 'BUCKETS REFUSED (GOOD)' }",
-    "try { (Get-ChildItem '${scoop}\\apps' -ErrorAction Stop | ForEach-Object Name) -join ', ' | ForEach-Object { \"APPS-LIST $_\" } } catch { \"APPS ERR $($_.Exception.Message)\" }",
+    `try { Get-ChildItem '${scoop}\\buckets' -ErrorAction Stop | Out-Null; 'BUCKETS LISTED (BAD)' } catch { 'BUCKETS REFUSED (GOOD)' }`,
+    `try { (Get-ChildItem '${scoop}\\apps' -ErrorAction Stop | ForEach-Object Name) -join ', ' | ForEach-Object { "APPS-LIST $_" } } catch { "APPS ERR $($_.Exception.Message)" }`,
     "'DONE'",
     "",
   ].join("\r\n"),
