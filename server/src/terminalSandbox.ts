@@ -713,6 +713,12 @@ export interface ToolInstallationReader {
   resolveLink(target: string): string | undefined;
 }
 
+/** Two Windows paths are the same one, without case or a trailing separator. */
+function samePath(a: string, b: string): boolean {
+  const clean = (p: string) => p.replace(/[\\/]+$/, "").toLowerCase();
+  return clean(a) === clean(b);
+}
+
 const diskReader: ToolInstallationReader = {
   isFile: (file) => {
     try {
@@ -750,7 +756,11 @@ const diskReader: ToolInstallationReader = {
   },
   isLink: (target) => {
     try {
-      return lstatSync(target).isSymbolicLink();
+      const stats = lstatSync(target);
+      if (stats.isSymbolicLink()) return true;
+      // A junction (scoop's `current`): a directory that Node 24 does not flag as a link,
+      // but whose real path is its target's, not its own.
+      return stats.isDirectory() && !samePath(realpathSync(target), target);
     } catch {
       return false;
     }
