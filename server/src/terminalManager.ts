@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { carryUserConfigs, confinedEnvironment, mxcEnumerateLevel, prepareConfinedTerminal, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
+import { carryUserConfigs, confinedEnvironment, mxcEnumerateLevel, prepareConfinedTerminal, signingShimFor, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -647,12 +647,18 @@ export async function confinedLaunch(confine: TerminalConfinement, shell: string
     // The user's uv.toml, pip.ini and .npmrc, as they are now, without credentials.
     await carryUserConfigs(confine.toolchains.carried ?? [], confine.toolchains.relayRoute);
   }
+  // Under MXC's process container on Windows, signed commits go through the server's signing relay.
+  const signingShim =
+    confine.kind === "mxc" && process.platform === "win32" && confine.toolchains !== undefined
+      ? await signingShimFor({ cacheDir: confine.toolchains.cacheDir, gitConfig: confine.gitConfig, serverEnv: process.env, loopbackOpen: confine.hostLoopback !== false })
+      : undefined;
   const files = await prepareConfinedTerminal((tmp) => {
     shellEnv = confinedEnvironment(process.env, {
       root: confine.root,
       tmp,
       shell,
       gitConfig: confine.gitConfig,
+      ...(signingShim === undefined ? {} : { signingShim }),
       containerProfileInTmp: confine.kind === "mxc" && process.platform === "win32",
       // The terminal keeps the user's network, and with it their company's proxy.
       userProxy: true,
@@ -734,6 +740,8 @@ export interface TerminalConfinement {
   root: string;
   /** The user's git configuration, read-only inside (see `userGitConfig`): git's identity. */
   gitConfig?: string;
+  /** `sandbox.hostLoopback`: MXC on Windows only — the signing relay on the host's loopback needs it open. */
+  hostLoopback?: boolean;
   /** MXC on Windows: the sandbox cache, created before the launch, and the variables naming it. */
   toolchains?: WindowsToolchains;
   /**

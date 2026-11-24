@@ -3,6 +3,9 @@
  * The real runner's lines are `confinedNetworkLandstrip.test.ts`'s.
  */
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, test } from "node:test";
 import { landstripNote, landstripStderr } from "../src/confinedBash.ts";
 import { networkSummary, toolchainsFor } from "../src/sandbox.ts";
@@ -102,6 +105,38 @@ describe("networkSummary", () => {
     assert.equal(networkSummary({ ...mxc, hostLoopback: true }, "win32", [], {}), `loopback open: services listening on this machine are reachable${cache}`);
     assert.equal(networkSummary(mxc, "linux", [], {}), undefined, "MXC on Linux: a process reaches its own loopback");
     assert.equal(networkSummary({ ...mxc, bashImage: "buildpack-deps:bookworm-scm" }, "win32", [], {}), undefined, "WSLC has its own network");
+  });
+
+  test("under MXC on Windows the line says commits sign through the relay when gpg is on the host, and are off when it is not", async () => {
+    const home = await mkdtemp(path.join(tmpdir(), "git-home-"));
+    const bin = await mkdtemp(path.join(tmpdir(), "bin-"));
+    try {
+      await writeFile(path.join(home, ".gitconfig"), "[commit]\n\tgpgsign = true\n");
+      // No gpg on the host's search path: the shell's env turns the key off, and the line says so.
+      const off = networkSummary(mxc, "win32", [], { USERPROFILE: home });
+      assert.ok(off!.includes("commit.gpgsign off in the sandbox: GnuPG cannot run there — re-sign outside it"), off);
+      // gpg reachable (a gpg.exe on PATH, as on Windows): commits sign through the server's relay.
+      await writeFile(path.join(bin, "gpg.exe"), "");
+      const on = networkSummary(mxc, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".EXE" });
+      assert.ok(on!.includes("commit.gpgsign on: commits signed through pi-outpost's relay"), on);
+      // The loopback closed, the relay is unreachable: off again.
+      assert.ok(
+        networkSummary({ ...mxc, hostLoopback: false }, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".EXE" })!.includes("off in the sandbox"),
+        "hostLoopback false: the shim cannot reach the relay",
+      );
+      // gpg.format=ssh names another signer the relay does not take: off.
+      await writeFile(path.join(home, ".gitconfig"), "[gpg]\n\tformat = ssh\n[commit]\n\tgpgsign = true\n");
+      assert.ok(
+        networkSummary(mxc, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".EXE" })!.includes("off in the sandbox"),
+        "ssh format: the relay runs gpg's arguments only",
+      );
+      await rm(path.join(home, ".gitconfig"));
+      assert.doesNotMatch(networkSummary(mxc, "win32", [], { USERPROFILE: home, PATH: bin, PATHEXT: ".EXE" })!, /gpgsign/);
+      assert.doesNotMatch(networkSummary(mxc, "win32", [], {})!, /gpgsign/, "no home named: nothing is read");
+    } finally {
+      await rm(home, { recursive: true, force: true });
+      await rm(bin, { recursive: true, force: true });
+    }
   });
 });
 

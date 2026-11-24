@@ -13,7 +13,6 @@ import {
   gitReadOnlyFiles,
   isLinuxMxc,
   isMacMxc,
-  mxcErrorMessage,
   ancestorsToEnumerate,
   mxcLinuxConfig,
   mxcMacCaptureRequest,
@@ -30,6 +29,7 @@ import {
   siblingsToDeny,
   terminalPolicy,
   userGitConfig,
+  gitSigningKeysEnabled,
 } from "../src/terminalSandbox.ts";
 import { gitCredentialsPath } from "../src/gitHostCredentials.ts";
 
@@ -857,6 +857,36 @@ describe("git's identity inside", () => {
       assert.ok(mxc.filesystem.readonlyPaths.includes("C:\\Users\\me\\.gitconfig"));
       assert.ok(!mxc.filesystem.readwritePaths.includes("C:\\Users\\me\\.gitconfig"), "read-only");
       assert.deepEqual(mxc.filesystem.deniedPaths, ["C:\\Users\\me\\.ssh"], "the rest of the home stays denied");
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  test("on Windows, a gitconfig asking for signed commits gets the gpgsign keys turned off in the shell's env; elsewhere and without them, nothing", async () => {
+    const home = await mkdtemp(path.join(tmpdir(), "git-sign-"));
+    try {
+      const gitConfig = path.join(home, ".gitconfig");
+      await writeFile(gitConfig, "[user]\n\tname = Me\n[commit]\n\tgpgsign = true\n[tag]\n\tgpgsign = yes # signed tags too\n");
+      assert.deepEqual(gitSigningKeysEnabled(gitConfig), ["commit.gpgsign", "tag.gpgsign"]);
+      const env = confinedEnvironment({}, { root, tmp, shell: "powershell.exe", platform: "win32", gitConfig });
+      assert.equal(env.GIT_CONFIG_GLOBAL, gitConfig);
+      assert.equal(env.GIT_CONFIG_COUNT, "2", "env entries win over the file");
+      assert.equal(env.GIT_CONFIG_KEY_0, "commit.gpgsign");
+      assert.equal(env.GIT_CONFIG_VALUE_0, "false");
+      assert.equal(env.GIT_CONFIG_KEY_1, "tag.gpgsign");
+      assert.equal(env.GIT_CONFIG_VALUE_1, "false");
+      // With the signing relay's shim, the gpgsign keys stay on and gpg.program points at it instead.
+      const shim = confinedEnvironment({}, { root, tmp, shell: "powershell.exe", platform: "win32", gitConfig, signingShim: "C:\\cache\\gpg-relay.cmd" });
+      assert.equal(shim.GIT_CONFIG_COUNT, "1", "one env entry: gpg.program");
+      assert.equal(shim.GIT_CONFIG_KEY_0, "gpg.program");
+      assert.equal(shim.GIT_CONFIG_VALUE_0, "C:\\cache\\gpg-relay.cmd");
+      assert.equal(shim.GIT_CONFIG_KEY_1, undefined, "the gpgsign keys are left on, not turned off");
+      // POSIX runners leave signing alone, and a gitconfig without gpgsign changes nothing.
+      assert.equal(confinedEnvironment({}, { root, tmp, shell: "/bin/bash", platform: "linux", gitConfig }).GIT_CONFIG_COUNT, undefined);
+      assert.equal(confinedEnvironment({}, { root, tmp, shell: "/bin/bash", platform: "linux", gitConfig, signingShim: "/cache/gpg-relay" }).GIT_CONFIG_COUNT, undefined, "a shim on POSIX is ignored");
+      await writeFile(gitConfig, "[user]\n\tname = Me\n[commit]\n\tgpgsign = false\n");
+      assert.deepEqual(gitSigningKeysEnabled(gitConfig), []);
+      assert.equal(confinedEnvironment({}, { root, tmp, shell: "powershell.exe", platform: "win32", gitConfig }).GIT_CONFIG_COUNT, undefined);
     } finally {
       await rm(home, { recursive: true, force: true });
     }

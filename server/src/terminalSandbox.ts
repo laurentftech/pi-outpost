@@ -31,6 +31,7 @@ import type { ConfinementRemedy } from "@pi-outpost/shared";
 import { linuxMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
 import { mxcSdk, runThroughSdk, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
 import { registryOrigin, registryRelay, type RegistryRelay, type RelayRoute } from "./registryRelay.ts";
+import { startSigningRelay } from "./signingRelay.ts";
 
 /** Whether terminals can be confined, and if not, the reason a user is shown. */
 export type RunnerCheck = { ok: true } | { ok: false; reason: string; remedy?: ConfinementRemedy };
@@ -1996,6 +1997,148 @@ export function userGitConfig(home: string = homedir()): string | undefined {
 }
 
 /**
+ * The `*.gpgsign` keys the git configuration file sets to true (`[commit] gpgsign`, `[tag]
+ * gpgsign`). GnuPG for Windows is built without ASLR, which MXC's container enforces, so signing
+ * cannot run there; the private keys stay out of the sandbox anyway.
+ */
+export function gitSigningKeysEnabled(file: string, read: (file: string) => string | undefined = readTextFile): string[] {
+  const text = read(file);
+  if (!text) return [];
+  const keys: string[] = [];
+  let section = "";
+  for (const line of text.split(/\r?\n/)) {
+    const header = line.match(/^\s*\[([^\]]+)\]/);
+    if (header) {
+      section = header[1]!.trim().toLowerCase();
+      continue;
+    }
+    const entry = line.match(/^\s*([A-Za-z.]+)\s*=\s*(.*)$/);
+    if (!entry || entry[1]!.toLowerCase() !== "gpgsign") continue;
+    const value = entry[2]!.replace(/\s[;#].*$/, "").trim().toLowerCase();
+    if (!["true", "yes", "on", "1"].includes(value)) continue;
+    if (section === "commit" && !keys.includes("commit.gpgsign")) keys.push("commit.gpgsign");
+    if (section === "tag" && !keys.includes("tag.gpgsign")) keys.push("tag.gpgsign");
+  }
+  return keys;
+}
+
+function readTextFile(file: string): string | undefined {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether `name` resolves on the server's own search path (on Windows, with its `PATHEXT`): gpg for
+ * the signing relay, which runs unconfined on the host. Checked by path, not by running it.
+ */
+export function onServerPath(name: string, serverEnv: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): boolean {
+  const pathValue = serverEnv.PATH;
+  if (!pathValue) return false;
+  const separator = platform === "win32" ? ";" : ":";
+  const exts = platform === "win32" ? (serverEnv.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";") : [""];
+  return pathValue.split(separator).some((dir) => {
+    if (dir === "") return false;
+    return exts.some((ext) => existsSync(path.join(dir, name + ext)));
+  });
+}
+
+/**
+ * The `gpg.format` the git configuration file sets, lowercased (`openpgp` when unset). The signing
+ * relay runs gpg's argument shape only: `ssh` (and anything else) names a different signer with
+ * different arguments, so signing under it falls back to off in the sandbox.
+ */
+export function gitGpgFormat(file: string, read: (file: string) => string | undefined = readTextFile): string {
+  const text = read(file);
+  if (!text) return "openpgp";
+  let section = "";
+  let format = "openpgp";
+  for (const line of text.split(/\r?\n/)) {
+    const header = line.match(/^\s*\[([^\]]+)\]/);
+    if (header) {
+      section = header[1]!.trim().toLowerCase();
+      continue;
+    }
+    const entry = line.match(/^\s*([A-Za-z.]+)\s*=\s*(.*)$/);
+    if (!entry || section !== "gpg" || entry[1]!.toLowerCase() !== "format") continue;
+    format = entry[2]!.replace(/\s[;#].*$/, "").trim().toLowerCase() || "openpgp";
+  }
+  return format;
+}
+
+/** The `gpg.program` the git configuration file sets, when it names one: the relay runs that, unconfined. */
+export function gitGpgProgram(file: string, read: (file: string) => string | undefined = readTextFile): string | undefined {
+  const text = read(file);
+  if (!text) return undefined;
+  let section = "";
+  for (const line of text.split(/\r?\n/)) {
+    const header = line.match(/^\s*\[([^\]]+)\]/);
+    if (header) {
+      section = header[1]!.trim().toLowerCase();
+      continue;
+    }
+    const entry = line.match(/^\s*([A-Za-z.]+)\s*=\s*(.*)$/);
+    if (!entry || section !== "gpg" || entry[1]!.toLowerCase() !== "program") continue;
+    const value = entry[2]!.replace(/\s[;#].*$/, "").trim();
+    if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) return value.slice(1, -1);
+    return value || undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Whether the signing relay can serve this git configuration on this host: OpenPGP (not
+ * `gpg.format=ssh`) and a signer to run — the user's own `gpg.program` when the file names one,
+ * else `gpg` on the server's search path. The loopback is checked by the caller.
+ */
+export function signingRelayRunnable(gitConfig: string, serverEnv: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): boolean {
+  if (platform !== "win32" || gitGpgFormat(gitConfig) !== "openpgp") return false;
+  const program = gitGpgProgram(gitConfig);
+  if (program !== undefined) return path.isAbsolute(program) ? existsSync(program) : onServerPath(program, serverEnv, platform);
+  return onServerPath("gpg", serverEnv, platform);
+}
+
+const sharedSigningRelays = new Map<string, Promise<string | undefined>>();
+
+/**
+ * The signing relay's shim for a confined shell under MXC's process container on Windows, when the
+ * user's gitconfig asks for signed commits, gpg is on the server's search path, the relay's signer
+ * is one it takes (OpenPGP, not `gpg.format=ssh`), and the host's loopback is open to the sandbox:
+ * the relay starts once per sandbox cache and its shim path is returned for `gpg.program`
+ * (`signingRelay.ts`). Undefined otherwise — the shell's env then turns the gpgsign keys off.
+ */
+export function signingShimFor(options: {
+  cacheDir: string;
+  gitConfig?: string;
+  serverEnv?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+  /** `sandbox.hostLoopback !== false`: the shim reaches the relay on the host's loopback. */
+  loopbackOpen?: boolean;
+}): Promise<string | undefined> {
+  const serverEnv = options.serverEnv ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const loopbackOpen = options.loopbackOpen ?? true;
+  const home = platform === "win32" ? serverEnv.USERPROFILE ?? serverEnv.HOME : serverEnv.HOME;
+  const gitConfig = options.gitConfig ?? (home ? userGitConfig(home) : undefined);
+  const key = `${options.cacheDir}\0${loopbackOpen}`;
+  let shim = sharedSigningRelays.get(key);
+  if (!shim) {
+    shim =
+      platform === "win32" &&
+      loopbackOpen &&
+      gitConfig !== undefined &&
+      gitSigningKeysEnabled(gitConfig).length > 0 &&
+      signingRelayRunnable(gitConfig, serverEnv, platform)
+        ? startSigningRelay({ cacheDir: options.cacheDir, serverEnv, program: gitGpgProgram(gitConfig) }).then((relay) => relay.shim)
+        : Promise.resolve(undefined);
+    sharedSigningRelays.set(key, shim);
+  }
+  return shim;
+}
+
+/**
  * What a confined shell may read of the user's git setup: the configuration, and the files it
  * names for every repository — `core.excludesFile` (a global `.gitignore`) and
  * `core.attributesFile`. Unreadable, git warns "unable to access" on every call.
@@ -2039,6 +2182,12 @@ export function confinedEnvironment(
     shell: string;
     platform?: NodeJS.Platform;
     gitConfig?: string;
+    /**
+     * On Windows, the signing relay's shim (`signingRelay.ts`): when set, the user's gpgsign keys
+     * stay on and `gpg.program` is pointed here, so commits sign through the server. Unset, the
+     * keys are turned off instead (no gpg can run in the container).
+     */
+    signingShim?: string;
     /**
      * MXC on Windows: its container keeps its profile — and the `TEMP` it sets — under the
      * `LOCALAPPDATA` it is given (`<LOCALAPPDATA>Packagessandbox.{…}ACTemp`), replacing ours.
@@ -2087,7 +2236,26 @@ export function confinedEnvironment(
     env.HISTFILE = path.join(options.tmp, ".shell_history");
     env.ZDOTDIR = options.tmp;
   }
-  if (options.gitConfig) env.GIT_CONFIG_GLOBAL = options.gitConfig;
+  if (options.gitConfig) {
+    env.GIT_CONFIG_GLOBAL = options.gitConfig;
+    // On Windows the sandbox cannot run GnuPG (built without ASLR, which the container enforces),
+    // and the private keys stay out of it anyway. Where the user's own configuration asks for
+    // signed commits: with the signing relay up, point gpg.program at its shim — env entries win
+    // over the file; without it, turn the gpgsign keys off so no commit fails on a missing gpg.
+    // POSIX runners leave signing alone.
+    const signing = windows ? gitSigningKeysEnabled(options.gitConfig) : [];
+    if (signing.length > 0) {
+      const entries: [string, string][] = options.signingShim
+        ? [["gpg.program", options.signingShim]]
+        : signing.map((key) => [key, "false"]);
+      const base = Number.parseInt(env.GIT_CONFIG_COUNT ?? serverEnv.GIT_CONFIG_COUNT ?? "0", 10) || 0;
+      env.GIT_CONFIG_COUNT = String(base + entries.length);
+      entries.forEach(([key, value], index) => {
+        env[`GIT_CONFIG_KEY_${base + index}`] = key;
+        env[`GIT_CONFIG_VALUE_${base + index}`] = value;
+      });
+    }
+  }
   if (windows) {
     // The private temp, not the root: Windows and PowerShell keep a profile's data under
     // USERPROFILE (AppData\Roaming\…\PSReadLine history, the container's own

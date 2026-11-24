@@ -79,6 +79,7 @@ export function buildTerminalConfinement(input: {
     kind,
     root,
     ...(gitConfig ? { gitConfig } : {}),
+    ...(hostLoopback === undefined ? {} : { hostLoopback }),
     ...(toolchains ? { toolchains } : {}),
     policy:
       kind === "seatbelt"
