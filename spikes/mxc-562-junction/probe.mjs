@@ -68,6 +68,13 @@ const check = await checkRunner("mxc").catch((error) => ({ ok: false, reason: St
 findings.checkRunner = check;
 say(`- checkRunner("mxc"): ${check.ok ? "ok" : `refused — ${check.reason}`}`);
 save();
+if (!check.ok) {
+  // A host without MXC tier 1 (the Server control runner carries no PSEC) has nothing to
+  // measure: not a failure.
+  say("- E2E-SKIP: no MXC process container on this host; nothing to measure.");
+  save();
+  process.exit(0);
+}
 
 // The layout: a project root, and beside it a denied sibling with a scoop tree whose
 // apps\nodejs\current is a junction to the versioned folder.
@@ -78,7 +85,7 @@ const scoop = `${base}\\WRK\\Scoop`;
 const nodejs = `${scoop}\\apps\\nodejs`;
 const versioned = `${nodejs}\\v26.8.2`;
 const current = `${nodejs}\\current`;
-for (const dir of [projectRoot, tmp, `${scoop}\\shims`, versioned, `${current}\\bin`, `${scoop}\\buckets`]) mkdirSync(dir, { recursive: true });
+for (const dir of [projectRoot, tmp, `${scoop}\\shims`, `${versioned}\\bin`, `${scoop}\\buckets`]) mkdirSync(dir, { recursive: true });
 copyFileSync(process.execPath, `${versioned}\\node.exe`);
 copyFileSync(process.execPath, `${scoop}\\shims\\rg.exe`);
 writeFileSync(`${scoop}\\buckets\\secret.txt`, "beside the way down\n");
@@ -92,6 +99,11 @@ findings.layout = {
 };
 say(`- layout: junction current -> ${findings.layout.currentRealpath} (isLink ${findings.layout.currentIsLink})`);
 save();
+if (findings.layout.currentRealpath.replace(/[\\/]+$/, "").toLowerCase() === current.toLowerCase()) {
+  say(`- E2E-FAIL: the junction was not created (mklink: ${findings.layout.mklink.trim()}); current is a plain folder, nothing to probe.`);
+  save();
+  process.exit(1);
+}
 
 // The confined shell's environment, then a PATH that points into the scoop tree.
 const shell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
@@ -154,7 +166,7 @@ for (let level = 0; level <= 2; level++) {
   const relevant = (p) => p.toLowerCase().startsWith(`${base}\\`);
   findings[`policy-level-${level}`] = {
     enumeratePaths: enumPaths.filter(relevant),
-    readonlyPaths: config.filesystem.readonlyPaths.filter(relevant),
+    readonlyPaths: (config.processContainer?.filesystem?.readonlyPaths ?? config.filesystem?.readonlyPaths ?? []).filter(relevant),
     deniedPaths: config.filesystem.deniedPaths.filter(relevant),
   };
   say(`- level ${level}: enumeratePaths=${JSON.stringify(findings[`policy-level-${level}`].enumeratePaths)} denied=${JSON.stringify(findings[`policy-level-${level}`].deniedPaths)}`);
