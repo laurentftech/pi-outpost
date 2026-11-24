@@ -229,15 +229,33 @@ async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: (
  * (`baseContainerSupportsEnumeratePaths`), as its last probe said: assumed until a probe says not.
  */
 let mxcEnumerates = true;
+/**
+ * Whether this host also took the enumerated ancestors of the *grants* (the sandbox cache, the
+ * toolchain homes — folders under the profile, whose entries a domain machine often ACLs away from
+ * the account). Level 1 keeps enumeration for the search path's tools alone; level 2 drops all of it.
+ */
+let mxcEnumerateGrants = true;
+
+/** The enumeration level this host proved it can build a policy with: 0 full, 1 tools only, 2 none. */
+export function mxcEnumerateLevel(): 0 | 1 | 2 {
+  return !mxcEnumerates ? 2 : mxcEnumerateGrants ? 0 : 1;
+}
+
+/** A policy's enumeration flags for a level: 0 full, 1 the tools' ancestors only, 2 none. */
+export function enumerateLevelFlags(level: 0 | 1 | 2): { enumerateAncestors?: boolean; enumerateGrants?: boolean } {
+  return level === 0 ? {} : level === 1 ? { enumerateAncestors: true, enumerateGrants: false } : { enumerateAncestors: false };
+}
 
 /**
- * The host's MXC refused a policy that made folders listable: Windows could not build the process
- * security environment over the paths that layer adds (`isSecurityEnvironmentRefusal`). Remembered,
- * so no policy built afterwards asks for it — the folders above a tool stay closed, as before it
- * was asked. Confinement is not loosened: the siblings of the path to the root stay denied.
+ * The host's MXC refused a policy over the enumeration layer — Windows could not build the process
+ * security environment over the paths it adds (`isSecurityEnvironmentRefusal`) — at `level`: 1 when
+ * only the ancestors of the grants failed, 2 when any enumeration failed. Remembered, so no policy
+ * built afterwards on this host asks past that level; 0 resets, for tests. Confinement is not
+ * loosened: the siblings of the path to the root stay denied whatever the level.
  */
-export function noteMxcEnumerateRefusal(): void {
-  mxcEnumerates = false;
+export function noteMxcEnumerateLevel(level: 0 | 1 | 2): void {
+  mxcEnumerates = level < 2;
+  mxcEnumerateGrants = level < 1;
 }
 
 /** MXC's Linux and macOS self-check: one confined `true`, network open — through the SDK on macOS, the executor on Linux. */
@@ -655,6 +673,12 @@ export interface MxcTerminalInput {
    * cannot would be refused.
    */
   enumerateAncestors?: boolean;
+  /**
+   * The folders above the *grants* (the sandbox cache, the toolchain homes) made listable too.
+   * Unset, as this host last proved (`mxcEnumerateLevel`): level 1 enumerates the tools' ancestors
+   * only — the profile's folders are the entries a domain machine most often refuses.
+   */
+  enumerateGrants?: boolean;
   /** What is in an enumerated folder, to deny by name (`deniableEntries`): the disk, or a test's. */
   besideEnumerated?: (dir: string) => string[];
 }
@@ -1312,16 +1336,20 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const enumeratePaths = !(input.enumerateAncestors ?? mxcEnumerates)
     ? []
-    // What a command opens beside the root by path: the search path's tools and the grants. Not the
-    // temporary directory, under a profile of hundreds of entries each to deny, nor git's single files.
-    : ancestorsToEnumerate([...shellDir, ...tools, ...(input.grantedRead ?? []), ...(input.grantedWrite ?? [])], {
-        root: input.root,
-        siblings: input.siblings,
-        readable: [...readwritePaths, ...readonlyPaths],
-        agentDir: input.agentDir,
-        configFile: input.configFile,
-        ...(input.home ? { home: input.home } : {}),
-      });
+    // What a command opens beside the root by path: the search path's tools and — at level 0 — the
+    // grants. Not the temporary directory, under a profile of hundreds of entries each to deny, nor
+    // git's single files.
+    : ancestorsToEnumerate(
+        [...shellDir, ...tools, ...((input.enumerateGrants ?? mxcEnumerateGrants) ? [...(input.grantedRead ?? []), ...(input.grantedWrite ?? [])] : [])],
+        {
+          root: input.root,
+          siblings: input.siblings,
+          readable: [...readwritePaths, ...readonlyPaths],
+          agentDir: input.agentDir,
+          configFile: input.configFile,
+          ...(input.home ? { home: input.home } : {}),
+        },
+      );
   const enumerated = new Set(enumeratePaths.map((p) => p.toLowerCase()));
   // MXC enumerates a folder's whole subtree: what is beside the way down is denied by name in
   // each, as the siblings of the path to the root are, so a listing shows those names alone.
