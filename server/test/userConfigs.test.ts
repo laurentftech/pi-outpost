@@ -71,7 +71,7 @@ describe("the user's package manager configuration", () => {
     assert.doesNotMatch(nuget.text, /alice|s3cret|packageSourceCredentials/);
   });
 
-  test("each is looked for where the user's tool keeps it, and copied where the confined one reads it", () => {
+  test("each is looked for where the user's tool keeps it, and copied where the confined one reads it", async () => {
     const toolchains = windowsToolchains({ cacheDir: "C:\\cache", serverEnv: { APPDATA: "C:\\Users\\me\\AppData\\Roaming" }, home: "C:\\Users\\me" });
     assert.deepEqual(toolchains.carried, [
       { name: "uv.toml", from: "C:\\Users\\me\\AppData\\Roaming\\uv\\uv.toml", to: "C:\\cache\\appdata\\Roaming\\uv\\uv.toml" },
@@ -83,10 +83,20 @@ describe("the user's package manager configuration", () => {
       { name: "go env", from: "C:\\Users\\me\\AppData\\Roaming\\go\\env", to: "C:\\cache\\appdata\\Roaming\\go\\env" },
       { name: "NuGet.Config", from: "C:\\Users\\me\\AppData\\Roaming\\NuGet\\NuGet.Config", to: "C:\\cache\\appdata\\Roaming\\NuGet\\NuGet.Config" },
     ]);
-    assert.equal(toolchains.env.npm_config_userconfig, "C:\\cache\\user-config\\npmrc", "npm is told where its copy is");
-    assert.equal(toolchains.env.PIP_CONFIG_FILE, "C:\\cache\\user-config\\pip.ini", "pip asks Windows for its folder, not APPDATA: told too");
-    assert.equal(toolchains.env.MAVEN_ARGS, `-s "C:\\cache\\user-config\\settings.xml"`, "Maven 3.9 reads its settings file from MAVEN_ARGS");
+    assert.equal(toolchains.env.npm_config_userconfig, undefined, "no ~/.npmrc on this disk: npm is not pointed at a copy that will never exist");
+    assert.equal(toolchains.env.PIP_CONFIG_FILE, undefined, "same for pip");
+    assert.equal(toolchains.env.MAVEN_ARGS, undefined, "no ~/.m2/settings.xml: MAVEN_ARGS would break every mvn on a file that is never copied");
     assert.equal(toolchains.env.APPDATA, "C:\\cache\\appdata\\Roaming", "uv and Go find theirs under the sandbox's APPDATA");
+    // With the user's files present, each tool is told where its copy is.
+    const base = await mkdtemp(path.join(tmpdir(), "toolchains-"));
+    made.push(base);
+    const home = path.join(base, "home");
+    await mkdir(path.join(home, ".m2"), { recursive: true });
+    await writeFile(path.join(home, ".m2", "settings.xml"), "<settings/>\n");
+    await writeFile(path.join(home, ".npmrc"), "registry=https://npm.corp.example/\n");
+    const withFiles = windowsToolchains({ cacheDir: "C:\\cache", serverEnv: { APPDATA: path.join(home, "AppData", "Roaming") }, home });
+    assert.equal(withFiles.env.npm_config_userconfig, "C:\\cache\\user-config\\npmrc");
+    assert.equal(withFiles.env.MAVEN_ARGS, `-s "C:\\cache\\user-config\\settings.xml"`, "Maven 3.9 reads its settings file from MAVEN_ARGS");
     // The user's own homes, when they moved them.
     const moved = userConfigsToCarry({ serverEnv: { CARGO_HOME: "D:\\rust\\cargo", GRADLE_USER_HOME: "D:\\gradle" }, home: "C:\\Users\\me", cacheDir: "C:\\cache", sandboxAppData: "C:\\a", gradleHome: "C:\\cache\\gradle", cargoHome: "C:\\cache\\cargo" });
     assert.ok(moved.some((config) => config.from === "D:\\rust\\cargo\\config.toml"));
