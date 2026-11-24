@@ -7,6 +7,18 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.65.1] - 2026-11-24
+
+### Fixed
+
+- **On Windows under MXC, the agent's shell runs again on machines where Windows refuses the sandbox
+  policy over the listable folders** — a domain-joined, non-admin account, where every command was
+  refused with `CreateProcessSecurityEnvironment failed (HRESULT = 0x80070005)`. pi-outpost now replays
+  the command once on the policy without that layer, confined the same (the folders beside the path to
+  the project stay denied, the agent directory and the configuration too), and remembers the host: later
+  policies skip the layer. On such a host, a tool installed beside the project is no longer resolvable by
+  path until granted (`run_with_grant` or `sandbox.readOnlyPaths`). ([#557](https://github.com/laurentftech/pi-outpost/pull/557))
+
 ## [0.65.0] - 2026-11-24
 
 ### Added
