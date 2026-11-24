@@ -20,13 +20,18 @@ Filled from the `mxc-windows-ci-spike` workflow's artifacts (`results/<label>/pr
 
 ## Runner: `windows-11-arm` (Windows 11 ARM64)
 
-- Run: https://github.com/laurentftech/pi-outpost/actions/runs/45366944884 (job
-  `probe (windows-11-arm)`) — `npm ci --foreground-scripts` completed (koffi built its arm64
-  prebuild, node-pty moved `conpty.dll` for arm64), then the **runner was preempted**
-  ("The operation was canceled", 10:22 UTC) during the probe step: no probe output, no
-  artifact. Retried by re-running the spike workflow; ARM runners are spot instances and
-  may be preempted again.
-- Notes: _(to fill from a completed run: build, SDK probe tier/flags, checkRunner, suites)_
+- Run: https://github.com/laurentftech/pi-outpost/actions/runs/45374635075 (job
+  `probe (windows-11-arm)`) — build **10.0.26200** (Windows 11 25H2, arm64), Node 24.22.3 —
+  SDK probe: **`tier: "base-container"`, `baseContainerApiPresent: true`,
+  `baseContainerSupportsDenyPaths: true`, `baseContainerSupportsEnumeratePaths: true`** —
+  `checkRunner("mxc")`: **ok** — the 7 real-MXC suites started with `MXC_EXEC` at the SDK's
+  `bin/arm64/wxc-exec.exe`, then the **spot runner was preempted again** at 11:10 UTC
+  (37 min in; the first run 45366944884 was preempted too). Suite results lost with the
+  kill; `probe.mjs` now appends each suite's log as it finishes so the next run keeps them.
+- Notes: `windows-11-arm` **has MXC tier 1 and pi-outpost's gate passes there** — a hosted
+  runner can exercise the real process container. But ARM spot runners are preempted
+  routinely (~35–45 min in, twice), so the suites need either retries or a non-spot
+  (self-hosted) Windows 11 runner.
 
 ## Runner: `windows-latest` (Server edition)
 
@@ -43,9 +48,14 @@ Filled from the `mxc-windows-ci-spike` workflow's artifacts (`results/<label>/pr
 
 ## Conclusion for a real `mxc-windows` CI job
 
-- Runner label to use, and whether a self-hosted Windows 11 x64 runner is still needed:
+- `windows-latest` (Server 2025, 26100.33828): **no tier 1** — cannot. `windows-11-arm`
+  (Windows 11 25H2, 26200, arm64): **tier 1 present, gate passes** — can, but preempted
+  twice mid-suites; add retries or prefer a self-hosted Windows 11 runner (x64 or arm64)
+  for a stable job.
 - Job shape (from the spike workflow, minus the probing): checkout → setup-node 24 → pinned
-  npm → `npm ci --foreground-scripts` → `MXC_EXEC=<sdk bin>/wxc-exec.exe` → the real-MXC
-  suites; plus the guard: run `checkRunner` first and skip when the host has no base
-  container, so an unpatched image skips rather than fails.
-- Cost: _(job minutes)_.
+  npm → `npm ci --foreground-scripts` → `MXC_EXEC=<sdk bin>/<arch>/wxc-exec.exe` → the
+  real-MXC suites; plus the guard: run `checkRunner` first and skip when the host has no
+  base container, so an unpatched image skips rather than fails (proven on `windows-latest`:
+  the gate refuses with the missing-build reason).
+- Cost: probe ~7 min after `npm ci` (~9 min on arm64); suites were still running at 37 min
+  when preempted — budget the job's 45 min accordingly, or split the suites.

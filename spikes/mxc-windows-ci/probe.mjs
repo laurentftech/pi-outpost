@@ -17,7 +17,7 @@
  * host it records the platform and exits 0.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -33,6 +33,12 @@ const lines = [];
 const say = (line) => {
   lines.push(line);
   console.log(line);
+};
+// ARM runners are spot instances and get preempted mid-run: persist after every stage, and
+// append each suite's log as it finishes, so a preemption still leaves what was measured.
+const save = () => {
+  writeFileSync(path.join(outDir, "probe.json"), JSON.stringify(findings, null, 2));
+  writeFileSync(path.join(outDir, "summary.md"), `${lines.join("\n")}\n`);
 };
 
 say(`# MXC-on-Windows-CI probe — ${label}`);
@@ -68,6 +74,7 @@ try {
   findings.sdkProbeError = String(error);
   say(`- SDK probe failed: ${String(error).split("\n")[0]}`);
 }
+save();
 
 // pi-outpost's gate: what `checkRunner("mxc")` answers on this host.
 let check;
@@ -81,8 +88,10 @@ try {
   say(`- checkRunner threw: ${String(error).split("\n")[0]}`);
   finish(0);
 }
+save();
 
 // Where the gate passes, the real-MXC suites, exactly as a developer runs them (MXC_EXEC set).
+// One process per suite, log appended after each: a preempted spot runner keeps what finished.
 if (check.ok) {
   const suites = [
     "windowsSandboxReachMxc",
@@ -94,18 +103,29 @@ if (check.ok) {
     "windowsToolchainsMxc",
     // Needs MXC_SHELL (busybox-w32's sh.exe) beside MXC_EXEC; runs only when both are set.
     ...(process.env.MXC_SHELL ? ["confinedBashMxc"] : []),
-  ].map((name) => path.join("test", `${name}.test.ts`));
-  say(`- running the real-MXC suites with MXC_EXEC=${wxcExec}: ${suites.map((s) => path.basename(s)).join(", ")}`);
-  const run = spawnSync(
-    process.execPath,
-    ["--import", "tsx/esm", "--test", "--test-timeout=300000", ...suites],
-    { cwd: path.join(root, "server"), env: { ...process.env, MXC_EXEC: wxcExec }, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
-  );
-  const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
-  writeFileSync(path.join(outDir, "suites.log"), output);
-  const count = (name) => Number(/^# ${name} (\d+)$/m.exec(output)?.[1] ?? 0);
-  findings.suites = { tests: count("tests"), pass: count("pass"), fail: count("fail"), skipped: count("skipped"), exitCode: run.status };
-  say(`- suites: ${findings.suites.pass} pass, ${findings.suites.fail} fail, ${findings.suites.skipped} skipped (exit ${run.status}); full log in results/${label}/suites.log`);
+  ];
+  say(`- running the real-MXC suites with MXC_EXEC=${wxcExec}: ${suites.join(", ")}`);
+  findings.suites = { perFile: {}, tests: 0, pass: 0, fail: 0, skipped: 0 };
+  const log = path.join(outDir, "suites.log");
+  for (const name of suites) {
+    const run = spawnSync(
+      process.execPath,
+      ["--import", "tsx/esm", "--test", "--test-timeout=300000", path.join("test", `${name}.test.ts`)],
+      { cwd: path.join(root, "server"), env: { ...process.env, MXC_EXEC: wxcExec }, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
+    );
+    const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+    appendFileSync(log, `\n===== ${name} (exit ${run.status}) =====\n${output}\n`);
+    const count = (key) => Number(new RegExp(`^# ${key} (\\d+)$`, "m").exec(output)?.[1] ?? 0);
+    const entry = { tests: count("tests"), pass: count("pass"), fail: count("fail"), skipped: count("skipped"), exitCode: run.status };
+    findings.suites.perFile[name] = entry;
+    findings.suites.tests += entry.tests;
+    findings.suites.pass += entry.pass;
+    findings.suites.fail += entry.fail;
+    findings.suites.skipped += entry.skipped;
+    say(`- ${name}: ${entry.pass} pass, ${entry.fail} fail, ${entry.skipped} skipped (exit ${run.status})`);
+    save();
+  }
+  say(`- suites total: ${findings.suites.pass} pass, ${findings.suites.fail} fail, ${findings.suites.skipped} skipped; full log in results/${label}/suites.log`);
   finish(findings.suites.fail > 0 ? 1 : 0);
 } else {
   say("- checkRunner refused: the real suites would assert on the gate and fail rather than skip; not run.");
@@ -113,7 +133,6 @@ if (check.ok) {
 }
 
 function finish(code) {
-  writeFileSync(path.join(outDir, "probe.json"), JSON.stringify(findings, null, 2));
-  writeFileSync(path.join(outDir, "summary.md"), `${lines.join("\n")}\n`);
+  save();
   process.exit(code);
 }
