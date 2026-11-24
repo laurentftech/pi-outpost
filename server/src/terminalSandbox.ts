@@ -30,6 +30,7 @@ import path from "node:path";
 import type { ConfinementRemedy } from "@pi-outpost/shared";
 import { linuxMxcExecutor, mxcMissingReason } from "./mxcExecutor.ts";
 import { mxcSdk, runThroughSdk, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
+import { registryOrigin, registryRelay, type RegistryRelay, type RelayRoute } from "./registryRelay.ts";
 
 /** Whether terminals can be confined, and if not, the reason a user is shown. */
 export type RunnerCheck = { ok: true } | { ok: false; reason: string; remedy?: ConfinementRemedy };
@@ -194,7 +195,7 @@ async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: (
   const loaded = await load();
   if ("reason" in loaded) return { ok: false, reason: loaded.reason };
   if (mac) return checkPosixMxcRunner({ sdk: loaded.sdk }, "seatbelt");
-  let probe: { tier?: unknown; probes?: { baseContainerSupportsDenyPaths?: unknown }; error?: unknown };
+  let probe: { tier?: unknown; probes?: { baseContainerSupportsDenyPaths?: unknown; baseContainerSupportsEnumeratePaths?: unknown }; error?: unknown };
   try {
     probe = (await loaded.sdk.probe()) as typeof probe;
   } catch (error) {
@@ -218,8 +219,16 @@ async function checkMxcRunner(runner: string, platform: NodeJS.Platform, load: (
   if (probe.probes?.baseContainerSupportsDenyPaths === false) {
     return { ok: false, reason: "This Windows build's sandbox cannot deny paths, which the terminal's policy needs" };
   }
+  // Without it a request naming `enumeratePaths` is refused: the folders above a tool stay closed, as before.
+  mxcEnumerates = probe.probes?.baseContainerSupportsEnumeratePaths !== false;
   return { ok: true };
 }
+
+/**
+ * Whether this host's MXC can make a folder listable without making it readable
+ * (`baseContainerSupportsEnumeratePaths`), as its last probe said: assumed until a probe says not.
+ */
+let mxcEnumerates = true;
 
 /** MXC's Linux and macOS self-check: one confined `true`, network open — through the SDK on macOS, the executor on Linux. */
 async function checkPosixMxcRunner(through: { sdk: MxcSdk } | { executor: string; exec: Exec }, containment: "bubblewrap" | "seatbelt"): Promise<RunnerCheck> {
@@ -536,13 +545,20 @@ export interface MxcTerminalConfig {
    */
   network:
     | { egress: { default: "allow" } }
-    | { egress: { default: "allow" }; ingress: { default: "deny"; hostLoopback: "allow" } }
+    | { egress: { default: "allow" }; ingress: { default: "allow" | "deny"; hostLoopback?: "allow" } }
     | { egress: { default: "deny" }; ingress: { default: "allow"; hostLoopback: "allow" } }
     | { egress: { default: "deny" } };
   /** The only way out, with `egress` denied: MXC sets `HTTPS_PROXY` and `HTTP_PROXY` to it. */
   runtimeConfig?: { networkProxy: string };
-  /** A diagnosis only (`mxcDiagnosticConfig`): MXC's report of what it refused, enforcement kept. */
-  processContainer?: { captureDenials: { mode: "block"; outputPath: string } };
+  /**
+   * `filesystem.enumeratePaths`: the folders above a readable one, which a command may list and
+   * query but not read a file of (`ancestorsToEnumerate`). `captureDenials`: a diagnosis only
+   * (`mxcDiagnosticConfig`), MXC's report of what it refused, enforcement kept.
+   */
+  processContainer?: {
+    filesystem?: { enumeratePaths: string[] };
+    captureDenials?: { mode: "block"; outputPath: string };
+  };
 }
 
 /**
@@ -571,7 +587,7 @@ export function mxcDiagnosticConfig(config: MxcTerminalConfig, keep: { root: str
       deniedPaths: config.filesystem.deniedPaths.filter((p) => kept.has(p.toLowerCase())),
     },
     network: { egress: { default: "deny" } },
-    processContainer: { captureDenials: { mode: "block", outputPath: keep.reportPath } },
+    processContainer: { ...config.processContainer, captureDenials: { mode: "block", outputPath: keep.reportPath } },
   };
 }
 
@@ -599,6 +615,11 @@ export interface MxcTerminalInput {
   /** `sandbox.allowedHosts`' proxy: the network closed but for it. The agent's shell only. */
   networkProxy?: string;
   /**
+   * `sandbox.privateNetwork`, without a proxy: the private network reachable — a company's package
+   * mirror, git server or proxy — only when the user set it true. Windows opens it in both directions only.
+   */
+  privateNetwork?: boolean;
+  /**
    * `sandbox.hostLoopback`, without a proxy: the host's loopback open (default), so a process
    * reaches a port it listens on itself — Python's `socketpair()` and asyncio need it.
    */
@@ -618,6 +639,14 @@ export interface MxcTerminalInput {
   grantedWrite?: string[];
   /** How the installations behind the search path are found (`toolInstallations`): the disk, or a test's. */
   toolReader?: ToolInstallationReader;
+  /**
+   * The folders above each readable one made listable (`ancestorsToEnumerate`). Unset, as this
+   * host's MXC last probed (`baseContainerSupportsEnumeratePaths`): a request naming them where it
+   * cannot would be refused.
+   */
+  enumerateAncestors?: boolean;
+  /** What is in an enumerated folder, to deny by name (`deniableEntries`): the disk, or a test's. */
+  besideEnumerated?: (dir: string) => string[];
 }
 
 /**
@@ -762,6 +791,316 @@ export interface WindowsToolchains {
   env: Record<string, string>;
   /** Toolchain homes that hold no credentials, readable, read only. */
   readable: string[];
+  /** The user's package manager configuration, copied in at each launch without credentials (`carryUserConfigs`). */
+  carried?: CarriedConfig[];
+  /** How a command reaches the registry relay holding the credentials those name; none, and they are left out. */
+  relayRoute?: RelayRoute;
+}
+
+/** A user's configuration file and where a confined command's tool reads it (`carryUserConfigs`). */
+export interface CarriedConfig {
+  name: "uv.toml" | "pip.ini" | ".npmrc" | "settings.xml" | "gradle.properties" | "config.toml" | "go env" | "NuGet.Config";
+  from: string;
+  to: string;
+}
+
+/** The first line of every copy: what it is, and that the original is the one to edit. */
+const CARRIED_MARK = "# pi-outpost: carried from";
+/** The same, in XML: Maven's settings.xml, NuGet's NuGet.Config. */
+const CARRIED_XML_MARK = "<!-- pi-outpost: carried from";
+
+/**
+ * The user's own configuration of the package managers the sandbox sets up, where a confined command's
+ * tool reads it: uv's `uv.toml`, Go's `env` and NuGet's `NuGet.Config` under the sandbox's `APPDATA`
+ * (dotnet reads that variable for it, measured), Gradle's `gradle.properties`
+ * and Cargo's `config.toml` in their homes in the sandbox cache, and pip's `pip.ini`, npm's `.npmrc` and
+ * Maven's `settings.xml` where a variable names them (`windowsToolchains`). Without them a company's
+ * mirror declared there is not seen, and every install goes to the public registry the company's
+ * firewall refuses.
+ */
+export function userConfigsToCarry(input: {
+  serverEnv: NodeJS.ProcessEnv;
+  home?: string;
+  cacheDir: string;
+  sandboxAppData: string;
+  /** Where the sandbox puts Gradle's and Cargo's homes (`GRADLE_USER_HOME`, `CARGO_HOME`). */
+  gradleHome?: string;
+  cargoHome?: string;
+}): CarriedConfig[] {
+  const win = path.win32;
+  const env = input.serverEnv;
+  const roaming = env.APPDATA || (input.home ? win.join(input.home, "AppData", "Roaming") : undefined);
+  const inHome = (...parts: string[]) => (input.home ? win.join(input.home, ...parts) : undefined);
+  const config = (name: CarriedConfig["name"], from: string | undefined, to: string | undefined): CarriedConfig[] => (from && to ? [{ name, from, to }] : []);
+  const userConfig = (file: string) => win.join(input.cacheDir, "user-config", file);
+  return [
+    ...config("uv.toml", roaming && win.join(roaming, "uv", "uv.toml"), win.join(input.sandboxAppData, "uv", "uv.toml")),
+    // pip asks Windows for the roaming folder rather than reading APPDATA: told where its copy is.
+    ...config("pip.ini", roaming && win.join(roaming, "pip", "pip.ini"), userConfig("pip.ini")),
+    ...config(".npmrc", env.npm_config_userconfig || env.NPM_CONFIG_USERCONFIG || inHome(".npmrc"), userConfig("npmrc")),
+    ...config("settings.xml", inHome(".m2", "settings.xml"), userConfig("settings.xml")),
+    ...config("gradle.properties", win.join(env.GRADLE_USER_HOME || inHome(".gradle") || "", "gradle.properties"), input.gradleHome && win.join(input.gradleHome, "gradle.properties")),
+    ...config("config.toml", win.join(env.CARGO_HOME || inHome(".cargo") || "", "config.toml"), input.cargoHome && win.join(input.cargoHome, "config.toml")),
+    // Go reads `go env -w`'s file under APPDATA, which is the sandbox's.
+    ...config("go env", env.GOENV || (roaming && win.join(roaming, "go", "env")), win.join(input.sandboxAppData, "go", "env")),
+    ...config("NuGet.Config", roaming && win.join(roaming, "NuGet", "NuGet.Config"), win.join(input.sandboxAppData, "NuGet", "NuGet.Config")),
+  ].filter((carried) => win.isAbsolute(carried.from) && win.dirname(carried.from) !== win.parse(carried.from).root);
+}
+
+/** A key that authenticates, in a `.npmrc`, `gradle.properties`, Cargo's `config.toml` or Go's `env`. */
+const SECRET_KEY: Record<CarriedConfig["name"], RegExp | undefined> = {
+  "uv.toml": undefined,
+  "pip.ini": undefined,
+  ".npmrc": /^\s*(?:\/\/[^=]*:)?(?:_authToken|_auth|_password|password|username)\s*=/i,
+  "settings.xml": undefined,
+  "gradle.properties": /^\s*[^#!=:\s]*(?:password|passwd|pwd|secret|token|credential|apikey|api[._-]key|auth)[^=:\s]*\s*[=:]/i,
+  "config.toml": /^\s*(?:token|secret-key|secret_key)\s*=/i,
+  "go env": /^\s*GOAUTH\s*=/i,
+  "NuGet.Config": undefined,
+};
+
+/**
+ * A configuration with its credentials taken out: a user and password in any URL
+ * (`https://user:pass@mirror/…`); every key that authenticates, by the file's own format — npm's
+ * tokens, Gradle's `*Password` and `*Token` properties, Cargo's registry `token`, Go's `GOAUTH`; and in
+ * Maven's `settings.xml` the `<servers>` section and every `<username>`, `<password>`, `<passphrase>`
+ * and `<privateKey>`; in `NuGet.Config` the `<packageSourceCredentials>` section, and an account's key
+ * wherever it stands. The mirror's address stays: one that asks for credentials answers 401, which says
+ * what is missing.
+ */
+export function withoutCredentials(text: string, name: CarriedConfig["name"], relay?: RelayFor): { text: string; leftOut: boolean; relayed: boolean } {
+  let leftOut = false;
+  const relayedText = relay ? throughRelay(text, name, relay) : { text, relayed: false };
+  let body = relayedText.text;
+  if (name === "NuGet.Config") {
+    const stripped = body
+      .replace(/<packageSourceCredentials\b[\s\S]*?<\/packageSourceCredentials>/gi, "")
+      .replace(/<add\b[^>]*\bkey\s*=\s*"(?:Username|Password|ClearTextPassword)"[^>]*\/>/gi, "");
+    if (stripped !== body) leftOut = true;
+    body = stripped;
+  }
+  if (name === "settings.xml") {
+    const stripped = body
+      .replace(/<servers\b[\s\S]*?<\/servers>/gi, "")
+      .replace(/<servers\s*\/>/gi, "")
+      .replace(/<(username|password|passphrase|privateKey)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+    if (stripped !== body) leftOut = true;
+    body = stripped;
+  }
+  const secret = SECRET_KEY[name];
+  const lines = body.split(/\r?\n/).flatMap((line) => {
+    if (secret?.test(line)) {
+      leftOut = true;
+      return [];
+    }
+    const cleaned = line.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@"'#<>]+@/gi, "$1");
+    if (cleaned !== line) leftOut = true;
+    return [cleaned];
+  });
+  return { text: lines.join("\n"), leftOut: leftOut || relayedText.relayed, relayed: relayedText.relayed };
+}
+
+/** The base URL a command uses for a registry and its credentials (`RegistryRelay.register`), or none. */
+export type RelayFor = (origin: string, authorization: string) => string | undefined;
+
+const basicAuthorization = (user: string, password: string) => `Basic ${Buffer.from(`${user}:${password}`, "utf8").toString("base64")}`;
+const xmlText = (value: string) => value.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+const xmlAttribute = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+/** `url` at the relay, for that registry and those credentials; undefined when it cannot be relayed. */
+function relayedUrl(url: string, authorization: string, relay: RelayFor): string | undefined {
+  const origin = registryOrigin(url);
+  if (!origin) return undefined;
+  const base = relay(origin, authorization);
+  if (!base) return undefined;
+  const parsed = new URL(url);
+  return base + `${parsed.pathname}${parsed.search}`.replace(/^\//, "");
+}
+
+/**
+ * Each registry the file authenticates to, named at the relay instead (`registryRelay.ts`): the
+ * credentials go to the server, the copy keeps none. By the file's own format — a `user:pass@` in a URL
+ * anywhere; npm's `//registry/:_authToken`, `_auth`, `username` and `_password` for the `registry`
+ * lines they cover; Maven's `<server>` for the `<mirror>`, `<repository>` and `<pluginRepository>` of
+ * its id; NuGet's `<packageSourceCredentials>` for the source of its key. A credential this cannot
+ * pair with a URL (an encrypted Maven or NuGet password, Gradle's properties, Cargo's tokens) stays
+ * out of the copy, unrelayed.
+ */
+function throughRelay(text: string, name: CarriedConfig["name"], relay: RelayFor): { text: string; relayed: boolean } {
+  let relayed = false;
+  const swap = (url: string, authorization: string) => {
+    const through = relayedUrl(url, authorization, relay);
+    if (through) relayed = true;
+    return through;
+  };
+  let out = text;
+  if (name === ".npmrc") out = npmThroughRelay(out, swap);
+  if (name === "settings.xml") {
+    const servers = new Map<string, string>();
+    for (const [, body] of out.matchAll(/<server>([\s\S]*?)<\/server>/gi)) {
+      const id = /<id>\s*([^<]*?)\s*<\/id>/i.exec(body!)?.[1];
+      const user = /<username>([^<]*)<\/username>/i.exec(body!)?.[1];
+      const password = /<password>([^<]*)<\/password>/i.exec(body!)?.[1];
+      // `{…}` is encrypted with the user's master password: nothing here can use it.
+      if (id && user !== undefined && password !== undefined && !/^\{.*\}$/.test(password.trim())) servers.set(id, basicAuthorization(xmlText(user), xmlText(password)));
+    }
+    out = out.replace(/<(mirror|repository|pluginRepository)>([\s\S]*?)<\/\1>/gi, (block, _tag: string, body: string) => {
+      const authorization = servers.get(/<id>\s*([^<]*?)\s*<\/id>/i.exec(body)?.[1] ?? "");
+      if (!authorization) return block;
+      return block.replace(/<url>\s*([^<]*?)\s*<\/url>/i, (whole, url: string) => {
+        const through = swap(xmlText(url), authorization);
+        return through ? `<url>${xmlAttribute(through)}</url>` : whole;
+      });
+    });
+  }
+  if (name === "NuGet.Config") {
+    const credentials = new Map<string, string>();
+    for (const [, section] of out.matchAll(/<packageSourceCredentials>([\s\S]*?)<\/packageSourceCredentials>/gi)) {
+      for (const [, element, body] of section!.matchAll(/<([\w.:-]+)>([\s\S]*?)<\/\1>/g)) {
+        const value = (key: string) => new RegExp(`<add\\s+key="${key}"\\s+value="([^"]*)"`, "i").exec(body!)?.[1];
+        const user = value("Username");
+        const password = value("ClearTextPassword");
+        // A source's name is its element's, spaces written `_x0020_`. `Password` is DPAPI-encrypted: not usable here.
+        const source = element!.replace(/_x([0-9a-f]{4})_/gi, (_m, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+        if (user !== undefined && password !== undefined) credentials.set(source.toLowerCase(), basicAuthorization(xmlText(user), xmlText(password)));
+      }
+    }
+    out = out.replace(/<packageSources>([\s\S]*?)<\/packageSources>/gi, (sources) =>
+      sources.replace(/<add\b([^>]*?)\/>/gi, (add, attributes: string) => {
+        const key = /\bkey\s*=\s*"([^"]*)"/i.exec(attributes)?.[1];
+        const url = /\bvalue\s*=\s*"([^"]*)"/i.exec(attributes)?.[1];
+        const authorization = key && credentials.get(xmlText(key).toLowerCase());
+        if (!authorization || url === undefined) return add;
+        const through = swap(xmlText(url), authorization);
+        if (!through) return add;
+        // The relay speaks HTTP on the loopback; NuGet refuses an HTTP source unless told.
+        const insecure = /allowInsecureConnections/i.test(attributes) ? "" : ' allowInsecureConnections="true"';
+        return `<add${attributes.replace(/\bvalue\s*=\s*"[^"]*"/i, `value="${xmlAttribute(through)}"`).trimEnd()}${insecure} />`;
+      }),
+    );
+  }
+  // A user and password in a URL, in any of them: uv's indexes, pip's, Go's GOPROXY, a Maven URL.
+  out = out.replace(/\bhttps?:\/\/[^\s/@"'#<>]+@[^\s"'<>,;]+/gi, (whole) => {
+    if (!URL.canParse(whole)) return whole;
+    const parsed = new URL(whole);
+    if (!parsed.username && !parsed.password) return whole;
+    const authorization = basicAuthorization(decodeURIComponent(parsed.username), decodeURIComponent(parsed.password));
+    parsed.username = "";
+    parsed.password = "";
+    return swap(parsed.toString().replace(/\/$/, whole.endsWith("/") ? "/" : ""), authorization) ?? whole;
+  });
+  return { text: out, relayed };
+}
+
+/** npm's registries at the relay, with the credentials its `//registry/:…` keys give them. */
+function npmThroughRelay(text: string, swap: (url: string, authorization: string) => string | undefined): string {
+  const expand = (value: string) => value.trim().replace(/^"(.*)"$/, "$1").replace(/\$\{([^}]+)\}/g, (_m, variable: string) => process.env[variable] ?? "");
+  const scoped = new Map<string, { token?: string; auth?: string; username?: string; password?: string }>();
+  const top: { auth?: string; username?: string; password?: string } = {};
+  for (const line of text.split(/\r?\n/)) {
+    const keyed = /^\s*(\/\/[^=]+?):(_authToken|_auth|username|_password)\s*=\s*(.*)$/i.exec(line);
+    if (keyed) {
+      const entry = scoped.get(keyed[1]!) ?? {};
+      const value = expand(keyed[3]!);
+      const field = keyed[2]!.toLowerCase();
+      if (field === "_authtoken") entry.token = value;
+      else if (field === "_auth") entry.auth = value;
+      else if (field === "username") entry.username = value;
+      else entry.password = value;
+      scoped.set(keyed[1]!, entry);
+      continue;
+    }
+    const plain = /^\s*(_auth|username|_password)\s*=\s*(.*)$/i.exec(line);
+    if (plain) {
+      const field = plain[1]!.toLowerCase();
+      if (field === "_auth") top.auth = expand(plain[2]!);
+      else if (field === "username") top.username = expand(plain[2]!);
+      else top.password = expand(plain[2]!);
+    }
+  }
+  const authorizationFor = (url: string): string | undefined => {
+    if (!URL.canParse(url)) return undefined;
+    const parsed = new URL(url);
+    const at = `//${parsed.host}${parsed.pathname}`.toLowerCase();
+    const match = [...scoped.entries()].filter(([key]) => at.startsWith(key.toLowerCase().replace(/\/?$/, "/")) || at === key.toLowerCase()).sort((a, b) => b[0].length - a[0].length)[0]?.[1];
+    const entry = match ?? top;
+    if ("token" in entry && entry.token) return `Bearer ${entry.token}`;
+    if (entry.auth) return `Basic ${entry.auth}`;
+    if (entry.username && entry.password) return basicAuthorization(entry.username, Buffer.from(entry.password, "base64").toString("utf8"));
+    return undefined;
+  };
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const registry = /^(\s*(?:@[^:=\s]+:)?registry\s*=\s*)(\S+)\s*$/i.exec(line);
+      if (!registry) return line;
+      const authorization = authorizationFor(registry[2]!);
+      const through = authorization ? swap(registry[2]!, authorization) : undefined;
+      return through ? `${registry[1]}${through}` : line;
+    })
+    .join("\n");
+}
+
+/** The copy as written: its mark first, in the file's own comment syntax. */
+function carriedCopy(config: CarriedConfig, text: string, leftOut: boolean, relayed = false): string {
+  const said = `${config.from}${relayed ? ", its registries through pi-outpost's relay, which keeps the credentials" : leftOut ? ", credentials left out" : ""}; edit that one.`;
+  if (config.name === "settings.xml" || config.name === "NuGet.Config") {
+    // A comment may not precede the XML declaration: it goes, the document is UTF-8 either way.
+    return `${CARRIED_XML_MARK} ${said.replaceAll("--", "- -")} -->\n${text.replace(/^﻿?\s*<\?xml[^>]*\?>\s*/i, "")}`;
+  }
+  return `${CARRIED_MARK} ${said}\n${text}`;
+}
+
+/**
+ * Each configuration copied where the confined tool reads it, at each launch so an edit of the
+ * original applies to the next command; the copy of one the user removed is removed. Only a file
+ * bearing the copy's mark is ever replaced or removed: one a command wrote there is left alone.
+ * Best effort: a configuration that cannot be copied leaves the tool on its defaults.
+ */
+export async function carryUserConfigs(carried: readonly CarriedConfig[], route?: RelayRoute, relayed: () => Promise<RegistryRelay> = registryRelay): Promise<void> {
+  const fsp = await import("node:fs/promises");
+  // The relay starts with the first configuration that authenticates to a registry.
+  let relay: RegistryRelay | undefined;
+  for (const config of carried) {
+    try {
+      const existing = await fsp.readFile(config.to, "utf8").catch(() => undefined);
+      const ours = existing === undefined || existing.startsWith(CARRIED_MARK) || existing.startsWith(CARRIED_XML_MARK);
+      const source = await fsp.readFile(config.from, "utf8").catch(() => undefined);
+      if (source === undefined) {
+        if (existing !== undefined && ours) await fsp.rm(config.to, { force: true });
+        continue;
+      }
+      if (!ours) continue;
+      let result = withoutCredentials(source, config.name);
+      if (route && result.leftOut) {
+        relay ??= await relayed();
+        const through = relay;
+        result = withoutCredentials(source, config.name, (origin, authorization) => through.register(origin, authorization, route));
+      }
+      const copy = carriedCopy(config, result.text, result.leftOut, result.relayed);
+      if (copy === existing) continue;
+      await fsp.mkdir(path.win32.dirname(config.to), { recursive: true });
+      // Commands start side by side: each writes its own file and renames it into place.
+      const temporary = `${config.to}.${process.pid}.${Math.random().toString(36).slice(2)}`;
+      await fsp.writeFile(temporary, copy);
+      await fsp.rename(temporary, config.to).catch(async () => fsp.rm(temporary, { force: true }));
+    } catch {
+      // The tool keeps its defaults.
+    }
+  }
+}
+
+/** For the startup line: which configurations are carried in, and which lose their credentials. */
+export function carriedSummary(carried: readonly CarriedConfig[], read: (file: string) => string | undefined = diskReader.readText, route?: RelayRoute): string | undefined {
+  const present = carried.flatMap((config) => {
+    const text = read(config.from);
+    if (text === undefined) return [];
+    if (!withoutCredentials(text, config.name).leftOut) return [config.name];
+    // Whether its registries would go through the relay: a stand-in relay that names every one.
+    const relayed = route !== undefined && withoutCredentials(text, config.name, () => "http://relay/").relayed;
+    return [`${config.name} (${relayed ? "credentials kept in the server, its registries relayed" : "credentials left out"})`];
+  });
+  return present.length === 0 ? undefined : `your ${present.join(", ")} carried in`;
 }
 
 /**
@@ -784,6 +1123,8 @@ export function windowsToolchains(
     configFile?: string;
     /** `sandbox.toolEnvironment`, checked at load: applied last, `${cache}` standing for `cacheDir`. */
     toolEnvironment?: Record<string, string>;
+    /** How a command reaches the registry relay (`registryRelay.ts`): its proxy, or the host's loopback. */
+    relayRoute?: RelayRoute;
   },
   reader: ToolInstallationReader = diskReader,
 ): WindowsToolchains {
@@ -798,6 +1139,8 @@ export function windowsToolchains(
     MAVEN_OPTS: `-Dmaven.repo.local=${at("m2", "repository")}`,
     NUGET_PACKAGES: at("nuget", "packages"),
     DOTNET_CLI_HOME: at("dotnet"),
+    // Its first-run banner (welcome, telemetry, certificate) is otherwise the first thing the agent reads.
+    DOTNET_NOLOGO: "1",
     BUN_INSTALL_CACHE_DIR: at("bun", "install-cache"),
     // bun moves what it downloads from its temporary folder into its cache: the same volume.
     BUN_TMPDIR: at("bun", "tmp"),
@@ -823,9 +1166,27 @@ export function windowsToolchains(
   const roaming = input.serverEnv.APPDATA || (input.home ? win.join(input.home, "AppData", "Roaming") : undefined);
   home("RUSTUP_HOME", input.home ? win.join(input.home, ".rustup") : undefined);
   home("UV_PYTHON_INSTALL_DIR", roaming ? win.join(roaming, "uv", "python") : undefined);
+  // The user's package manager configuration, without credentials (`carryUserConfigs`): where each
+  // confined tool reads it, or named to it.
+  const carried = userConfigsToCarry({
+    serverEnv: input.serverEnv,
+    home: input.home,
+    cacheDir: input.cacheDir,
+    sandboxAppData: env.APPDATA!,
+    gradleHome: env.GRADLE_USER_HOME,
+    cargoHome: env.CARGO_HOME,
+  });
+  const copyOf = (name: CarriedConfig["name"]) => carried.find((config) => config.name === name)?.to;
+  const npmrc = copyOf(".npmrc");
+  if (npmrc) env.npm_config_userconfig = npmrc;
+  const pipIni = copyOf("pip.ini");
+  if (pipIni) env.PIP_CONFIG_FILE = pipIni;
+  // Maven 3.9 and later read arguments from MAVEN_ARGS: the settings file is one.
+  const mavenSettings = copyOf("settings.xml");
+  if (mavenSettings) env.MAVEN_ARGS = `-s "${mavenSettings}"`;
   // The operator's own, for tools the table does not name or to replace its entries.
   for (const [name, value] of Object.entries(input.toolEnvironment ?? {})) env[name] = value.replaceAll("${cache}", input.cacheDir);
-  return { cacheDir: input.cacheDir, env, readable };
+  return { cacheDir: input.cacheDir, env, readable, carried, ...(input.relayRoute ? { relayRoute: input.relayRoute } : {}) };
 }
 
 /** A search-path folder by one of these names is part of an installation, the folder above it. */
@@ -888,8 +1249,9 @@ export function toolInstallations(
     // The folder itself a link (nvm-windows' symlink to the active version): its target.
     if (reader.isLink(entry)) take(reader.resolveLink(entry));
     // Only folders of the user's own installs are looked into: links and shims live there, and a
-    // system directory would be thousands of names read on every launch.
-    if (!input.home || !under(entry, input.home)) continue;
+    // system directory would be thousands of names read on every launch. And a folder named `shims`
+    // anywhere: scoop installed globally, or for a machine, keeps them in `C:\…\scoop\shims` (#554).
+    if (name !== "shims" && (!input.home || !under(entry, input.home))) continue;
     const names = reader.list(entry).slice(0, LAUNCHERS_LOOKED_AT);
     for (const file of names) {
       const full = win.join(entry, file);
@@ -938,9 +1300,26 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   ];
   const readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? []), ...(input.readOnlyInside ?? [])].filter((p) => !readwritePaths.includes(p)));
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
-  const deniedPaths = unique([...input.siblings, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
+  const enumeratePaths = !(input.enumerateAncestors ?? mxcEnumerates)
+    ? []
+    // What a command opens beside the root by path: the search path's tools and the grants. Not the
+    // temporary directory, under a profile of hundreds of entries each to deny, nor git's single files.
+    : ancestorsToEnumerate([...shellDir, ...tools, ...(input.grantedRead ?? []), ...(input.grantedWrite ?? [])], {
+        root: input.root,
+        siblings: input.siblings,
+        readable: [...readwritePaths, ...readonlyPaths],
+        agentDir: input.agentDir,
+        configFile: input.configFile,
+        ...(input.home ? { home: input.home } : {}),
+      });
+  const enumerated = new Set(enumeratePaths.map((p) => p.toLowerCase()));
+  // MXC enumerates a folder's whole subtree: what is beside the way down is denied by name in
+  // each, as the siblings of the path to the root are, so a listing shows those names alone.
+  const onTheWay = new Set([...allowed, ...enumerated].map((p) => p.replace(/[\\/]+$/, "")));
+  const besideTheWay = enumeratePaths.flatMap((dir) => (input.besideEnumerated ?? deniableEntries)(dir).filter((entry) => !onTheWay.has(entry.toLowerCase())));
+  const deniedPaths = unique([...input.siblings, ...besideTheWay, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
-    .filter((p) => !allowed.has(p.toLowerCase()));
+    .filter((p) => !allowed.has(p.toLowerCase()) && !enumerated.has(p.toLowerCase()));
   return {
     version: "1.0.0",
     containment: "processcontainer",
@@ -956,16 +1335,90 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     // Windows lets a contained process reach even its own listener only through it (measured,
     // mxc-sdk 1.1.0 on 10.0.26100: `socketpair()` hangs in `accept` under every other shape;
     // microsoft/mxc#1261). Other loopback services become reachable; the server is not, without
-    // its token. Inbound from the network stays denied.
+    // its token.
+    // And the private network is closed unless the user opened it (`sandbox.privateNetwork: true`):
+    // Windows refuses an outbound connection to it — the subnets this machine is on, and intranet
+    // ranges a policy names — with WSAEACCES (10013) unless inbound from it is allowed too; an
+    // egress allow rule naming the ranges does not do it (measured, same build; issue #552).
+    // Opened, inbound passes the sandbox, not the firewall.
     ...(input.networkProxy === undefined
-      ? input.hostLoopback === false
-        ? { network: { egress: { default: "allow" } } }
-        : { network: { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } } }
+      ? {
+          network: {
+            egress: { default: "allow" },
+            ...(input.hostLoopback === false && input.privateNetwork !== true
+              ? {}
+              : { ingress: { default: input.privateNetwork === true ? "allow" : "deny", ...(input.hostLoopback === false ? {} : { hostLoopback: "allow" }) } }),
+          },
+        }
       : {
           network: { egress: { default: "deny" }, ingress: { default: "allow", hostLoopback: "allow" } },
           runtimeConfig: { networkProxy: input.networkProxy },
         }),
+    ...(enumeratePaths.length > 0 ? { processContainer: { filesystem: { enumeratePaths } } } : {}),
   };
+}
+
+/**
+ * The folders above each readable one, up to (not including) its drive's root: listed and queried,
+ * never read (MXC's `enumeratePaths`, `baseContainerSupportsEnumeratePaths`).
+ *
+ * A readable folder beside the root — a tool on `PATH` (`C:\dev\nodejs`), a grant — sits under a
+ * folder the command may not touch: denied by name as a sibling of the path to the root, or under
+ * no allow at all. Opening a file inside works (Windows does not check the folders above), but
+ * resolving a path does not: Node's `realpathSync` `lstat`s every component from the drive down,
+ * so any script or module outside the root died on `EPERM: lstat 'C:\dev'` (issue #553), and
+ * PowerShell's and cmd's command lookup, which query the folder, found nothing there.
+ *
+ * Only a folder nothing else lets the command read: on another drive than the root's, or a sibling
+ * of the path to the root (or inside one) — never one the root's readable drive already covers,
+ * where enumeration, the more specific rule, would take reading away. Enumerating a folder shows the
+ * names in its whole subtree and their metadata, never one byte of a file; `mxcTerminalConfig`
+ * denies by name what lies beside the way down, so only those names show. The agent directory and
+ * the configuration file are never enumerated, nor any folder inside them. Nor a folder directly in
+ * the home but `AppData`, as `toolInstallations` never opens one: `~\.cargo` holds `credentials.toml`,
+ * and a tool there is a program, which needs nothing above its folder — Node's CLIs live in `AppData`.
+ */
+export function ancestorsToEnumerate(
+  opened: readonly string[],
+  guard: { root: string; siblings: readonly string[]; readable?: readonly string[]; agentDir?: string; configFile?: string; home?: string },
+): string[] {
+  const win = path.win32;
+  const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+  const under = (child: string, parent: string) => child === parent || child.startsWith(`${parent}\\`);
+  const secrets = [guard.agentDir, guard.configFile].filter((p): p is string => Boolean(p)).map(lower);
+  const rootDrive = lower(win.parse(guard.root).root);
+  const siblings = guard.siblings.map(lower);
+  // Readable folders other than the drive: a folder inside one is read, not merely enumerated.
+  const reading = (guard.readable ?? opened).filter((p) => win.isAbsolute(p) && lower(p) !== lower(win.parse(p).root)).map(lower);
+  const covered = (key: string) =>
+    reading.some((p) => under(key, p)) || (key.startsWith(rootDrive) && !siblings.some((sibling) => under(key, sibling)));
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of opened) {
+    if (!win.isAbsolute(entry)) continue;
+    const drive = lower(win.parse(entry).root);
+    let dir = win.dirname(entry.replace(/[\\/]+$/, ""));
+    while (lower(dir) !== drive && lower(dir) !== lower(win.dirname(dir))) {
+      const key = lower(dir);
+      if (seen.has(key)) break; // Its own ancestors are already decided.
+      seen.add(key);
+      const inTheHome = guard.home !== undefined && lower(win.dirname(dir)) === lower(guard.home) && win.basename(dir).toLowerCase() !== "appdata";
+      if (!covered(key) && !inTheHome && !secrets.some((secret) => under(key, secret))) found.push(dir);
+      dir = win.dirname(dir);
+    }
+  }
+  return found;
+}
+
+/** The entries of a folder MXC can deny by name (`deniable`), or none when it cannot be listed. */
+export function deniableEntries(dir: string): string[] {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names.map((name) => path.join(dir, name)).filter(deniable);
 }
 
 /**
@@ -1374,6 +1827,43 @@ export function quoteWindowsArgument(argument: string): string {
 /** Variables a shell needs. Everything else of the server's stays out. */
 const PASSED_THROUGH = ["PATH", "LANG", "TERM", "COLORTERM", "TZ"];
 
+const USER_PROXY_VARIABLES = ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "all_proxy", "no_proxy"];
+
+/**
+ * The user's proxy variables, for a confined command whose network is open: behind a company's
+ * proxy nothing else reaches out, and without them every download timed out with no sign of why
+ * (issue #554). A proxy URL naming a user or password is a credential, never passed: none of that
+ * variable, and the server's log says so (`proxyCredentialsLeftOut`).
+ */
+export function userProxyEnvironment(serverEnv: NodeJS.ProcessEnv): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const name of USER_PROXY_VARIABLES) {
+    const value = serverEnv[name];
+    if (value === undefined || value === "") continue;
+    if (/^no_proxy$/i.test(name) || !carriesCredentials(value)) env[name] = value;
+  }
+  // The loopback never goes through the company's proxy: the registry relay is there (`registryRelay.ts`).
+  if (Object.keys(env).some((name) => !/^no_proxy$/i.test(name))) {
+    for (const name of ["NO_PROXY", "no_proxy"]) {
+      const entries = (env[name] ?? "").split(",").map((entry) => entry.trim()).filter(Boolean);
+      for (const loopback of ["127.0.0.1", "localhost", "::1"]) if (!entries.includes(loopback)) entries.push(loopback);
+      env[name] = entries.join(",");
+    }
+  }
+  return env;
+}
+
+/** The proxy variables `userProxyEnvironment` leaves out because they carry a user or password. */
+export function proxyCredentialsLeftOut(serverEnv: NodeJS.ProcessEnv): string[] {
+  return USER_PROXY_VARIABLES.filter((name) => !/^no_proxy$/i.test(name) && serverEnv[name] && carriesCredentials(serverEnv[name]!));
+}
+
+function carriesCredentials(proxy: string): boolean {
+  // `user:pass@host`, with or without a scheme: anything before an `@` in the authority.
+  const authority = proxy.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[/?#]/)[0] ?? "";
+  return authority.includes("@");
+}
+
 /**
  * What Windows itself needs on top — and what landstrip's runner needs to start an
  * AppContainer at all ("Windows ProgramData is unavailable" without it). Locations and
@@ -1453,6 +1943,11 @@ export function confinedEnvironment(
      * path, or all of `C:Users`): no temporary file could be created. The private temp instead.
      */
     containerProfileInTmp?: boolean;
+    /**
+     * The user's own proxy variables (`userProxyEnvironment`): when no `sandbox.allowedHosts` proxy
+     * is the command's way out. Behind a company's proxy the network is reached only through it.
+     */
+    userProxy?: boolean;
   },
 ): Record<string, string> {
   const windows = (options.platform ?? process.platform) === "win32";
@@ -1461,6 +1956,7 @@ export function confinedEnvironment(
     const value = serverEnv[name];
     if (value !== undefined) env[name] = value;
   }
+  if (options.userProxy) Object.assign(env, userProxyEnvironment(serverEnv));
   for (const [name, value] of Object.entries(serverEnv)) {
     if (name.startsWith("LC_") && value !== undefined) env[name] = value;
   }

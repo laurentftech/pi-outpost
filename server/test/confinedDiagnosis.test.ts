@@ -56,8 +56,8 @@ describe("mxcDiagnosticConfig", () => {
   // openlore: scenario=ARecordedRefusalIsStillARefusal spec=sandbox-durable-rules
   test("capture is asked for in block mode, never allow", () => {
     const diagnosis = mxcDiagnosticConfig(request(), { root: ROOT, reportPath: "C:\\d\\r.json" });
-    assert.equal(diagnosis.processContainer?.captureDenials.mode, "block");
-    assert.equal(request().processContainer, undefined, "an ordinary command asks for no capture");
+    assert.equal(diagnosis.processContainer?.captureDenials?.mode, "block");
+    assert.equal(request().processContainer?.captureDenials, undefined, "an ordinary command asks for no capture");
   });
 });
 

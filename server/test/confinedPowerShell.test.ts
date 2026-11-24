@@ -157,6 +157,19 @@ describe("a confined PowerShell", () => {
       assert.equal((await exec(shell!, `${native}; Write-Output 'recovered'`)).exitCode, 0, "a later success wins");
     });
 
+    // openlore: scenario=ARedirectedStderrIsNoFailure spec=sandbox-runner-bash
+    test(`ARedirectedStderrIsNoFailure (${label}): a native program writing to a redirected stderr and exiting 0 succeeds; its failure, or a cmdlet's, does not`, { skip }, async () => {
+      const writes = process.platform === "win32" ? "cmd.exe /c \"echo progress 1>&2\"" : "sh -c 'echo progress >&2'";
+      const fails = process.platform === "win32" ? "cmd.exe /c \"echo progress 1>&2 & exit 4\"" : "sh -c 'echo progress >&2; exit 4'";
+      // Windows PowerShell 5.1 makes each such line an error record and `$?` false: uv, git, java and pip all ended in 1.
+      const redirected = await exec(shell!, `${writes} 2>&1 | ForEach-Object { "$_" }`);
+      assert.equal(redirected.exitCode, 0, redirected.output);
+      assert.match(redirected.output, /progress/, "stderr still comes back");
+      assert.equal((await exec(shell!, `${fails} 2>&1 | ForEach-Object { "$_" }`)).exitCode, 4, "the program's own failure keeps its code");
+      const both = await exec(shell!, `Get-Item -LiteralPath (Join-Path $PWD 'no-such-file'); ${writes} 2>&1 | Out-Null; Get-Item -LiteralPath (Join-Path $PWD 'no-such-file')`);
+      assert.equal(both.exitCode, 1, "a cmdlet that failed last is a failure, whatever a native program printed");
+    });
+
     // openlore: scenario=PowerShellOutputIsUtf8AndProgressIsOff spec=sandbox-runner-bash
     test(`PowerShellOutputIsUtf8AndProgressIsOff (${label})`, { skip }, async () => {
       const { output, exitCode } = await exec(shell!, "Write-Output 'été ✓ 東京'; Write-Output \"progress=$ProgressPreference\"");

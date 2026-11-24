@@ -14,6 +14,7 @@ import {
   isLinuxMxc,
   isMacMxc,
   mxcErrorMessage,
+  ancestorsToEnumerate,
   mxcLinuxConfig,
   mxcMacCaptureRequest,
   mxcMacConfig,
@@ -750,6 +751,20 @@ describe("mxcTerminalConfig", () => {
   // openlore: scenario=AClosedLoopbackKeepsHostServicesOut spec=sandbox-runner-bash
   test("AClosedLoopbackKeepsHostServicesOut: hostLoopback false asks for the network alone, as before", () => {
     assert.deepEqual(mxcTerminalConfig({ ...base, hostLoopback: false }).network, { egress: { default: "allow" } });
+    assert.deepEqual(mxcTerminalConfig({ ...base, hostLoopback: false, privateNetwork: true }).network, { egress: { default: "allow" }, ingress: { default: "allow" } }, "the loopback closed, the private network opened: each on its own");
+  });
+
+  // openlore: scenario=TheIntranetIsReachable spec=sandbox-runner-bash
+  test("TheIntranetIsReachable: the private network is open by default; privateNetwork false closes it, the loopback kept", () => {
+    assert.deepEqual(mxcTerminalConfig(base).network, { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } });
+    assert.deepEqual(mxcTerminalConfig({ ...base, privateNetwork: false }).network, { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } });
+  });
+
+  test("under allowedHosts the proxy's shape holds whatever hostLoopback and privateNetwork say", () => {
+    for (const privateNetwork of [true, false]) {
+      const closed = mxcTerminalConfig({ ...base, networkProxy: "http://127.0.0.1:4567", privateNetwork });
+      assert.deepEqual(closed.network, { egress: { default: "deny" }, ingress: { default: "allow", hostLoopback: "allow" } });
+    }
   });
 
   test("under allowedHosts the proxy's shape holds whatever hostLoopback says", () => {
@@ -973,11 +988,75 @@ describe("grants, in every policy", () => {
       siblings: ["C:\\Users\\me\\work\\beside", "C:\\Users\\me\\Documents"],
       grantedWrite: ["C:\\Users\\me\\work\\beside"],
       grantedRead: ["C:\\Users\\me\\Documents\\notes"],
+      enumerateAncestors: true,
+      besideEnumerated: (dir) => (dir === "C:\\Users\\me\\Documents" ? ["C:\\Users\\me\\Documents\\notes", "C:\\Users\\me\\Documents\\taxes", "C:\\Users\\me\\Documents\\cv.docx"] : []),
     });
     assert.ok(config.filesystem.readwritePaths.includes("C:\\Users\\me\\work\\beside"));
     assert.ok(!config.filesystem.deniedPaths.includes("C:\\Users\\me\\work\\beside"), "a path both allowed and denied is never sent");
     assert.ok(config.filesystem.readonlyPaths.includes("C:\\Users\\me\\Documents\\notes"));
-    // The rest of the sibling stays denied: the grant is more specific than the deny.
-    assert.ok(config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents"));
+    // The sibling holding the grant is listable, so its path resolves; the rest of it stays denied, by name.
+    assert.deepEqual(config.processContainer?.filesystem?.enumeratePaths, ["C:\\Users\\me\\Documents"]);
+    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents"), "enumerated, so not also denied");
+    assert.ok(config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents\\taxes"));
+    assert.ok(config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents\\cv.docx"));
+    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents\\notes"), "the grant itself is not denied");
+  });
+
+  // openlore: scenario=AToolBesideTheRootResolves spec=sandbox-runner-bash
+  test("AToolBesideTheRootResolves: the folders above a tool beside the root are enumerated, what lies beside the way denied", () => {
+    const wroot = "C:\\projects\\repo";
+    const disk: Record<string, string[]> = {
+      "C:\\dev": ["C:\\dev\\nodejs", "C:\\dev\\other-project", "C:\\dev\\notes.txt"],
+      "C:\\dev\\nodejs": ["C:\\dev\\nodejs\\current", "C:\\dev\\nodejs\\v24"],
+    };
+    const input = {
+      root: wroot,
+      allowWrite: true,
+      tmp: "C:\\Users\\me\\AppData\\Local\\Temp\\t",
+      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      shellArgs: [],
+      cwd: wroot,
+      env: {},
+      siblings: ["C:\\dev", "C:\\Users"],
+      searchPath: "C:\\dev\\nodejs\\current;C:\\Program Files\\Git\\cmd",
+      agentDir: "C:\\Users\\me\\.pi\\agent",
+      enumerateAncestors: true,
+      besideEnumerated: (dir: string) => disk[dir] ?? [],
+      toolReader: { isFile: () => false, isDirectory: () => false, readText: () => undefined, list: () => [], isLink: () => false, resolveLink: () => undefined },
+    };
+    const config = mxcTerminalConfig(input);
+    assert.ok(config.filesystem.readonlyPaths.includes("C:\\dev\\nodejs\\current"));
+    // Only what nothing else lets the command read: not C:\Program Files, readable through the drive.
+    assert.deepEqual(config.processContainer?.filesystem?.enumeratePaths, ["C:\\dev\\nodejs", "C:\\dev"]);
+    for (const denied of ["C:\\dev\\other-project", "C:\\dev\\notes.txt", "C:\\dev\\nodejs\\v24"]) {
+      assert.ok(config.filesystem.deniedPaths.includes(denied), `${denied} is beside the way down and must stay denied`);
+    }
+    for (const kept of ["C:\\dev", "C:\\dev\\nodejs", "C:\\dev\\nodejs\\current"]) {
+      assert.ok(!config.filesystem.deniedPaths.includes(kept), `${kept} is on the way down`);
+    }
+    // A host whose MXC cannot enumerate gets the request as before.
+    const without = mxcTerminalConfig({ ...input, enumerateAncestors: false });
+    assert.equal(without.processContainer, undefined);
+    assert.ok(without.filesystem.deniedPaths.includes("C:\\dev"));
+  });
+
+  test("ancestorsToEnumerate never names the agent directory, the configuration, nor a folder inside them", () => {
+    const found = ancestorsToEnumerate(["C:\\secret\\agent\\tools\\bin", "D:\\tools\\x\\bin"], {
+      root: "C:\\projects\\repo",
+      siblings: ["C:\\secret"],
+      agentDir: "C:\\secret\\agent",
+    });
+    assert.deepEqual(found, ["C:\\secret", "D:\\tools\\x", "D:\\tools"], "another drive's folders are enumerated; the agent directory and below are not");
+  });
+
+  test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {
+    const home = "C:\\Users\\me";
+    const found = ancestorsToEnumerate([`${home}\\.cargo\\bin`, `${home}\\AppData\\Roaming\\npm`], {
+      root: `${home}\\work\\app`,
+      siblings: [`${home}\\.cargo`, `${home}\\AppData`],
+      home,
+    });
+    // ~\.cargo holds credentials.toml: its bin is a program's folder, which needs nothing above it.
+    assert.deepEqual(found, [`${home}\\AppData\\Roaming`, `${home}\\AppData`]);
   });
 });

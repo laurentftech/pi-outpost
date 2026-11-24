@@ -12,6 +12,7 @@
  */
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { connect, createServer as createNetServer, type Server as NetServer, type Socket } from "node:net";
+import { RELAY_HOST, startedRegistryRelay } from "./registryRelay.ts";
 
 const HOST_LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/i;
 
@@ -91,6 +92,17 @@ export async function startEgressProxy(options: EgressProxyOptions): Promise<Egr
     // tunnel is. Windows' TLS needs it: Schannel fetches a certificate's revocation list from
     // its authority over plain HTTP (`http://c.pki.goog/…`), and curl fails without it.
     const url = URL.canParse(request.url ?? "") ? new URL(request.url!) : undefined;
+    // The user's registries, through the server, which adds their credentials (`registryRelay.ts`):
+    // no host is reached from here, so there is nothing to ask about.
+    if (url?.protocol === "http:" && url.hostname.toLowerCase() === RELAY_HOST) {
+      const relay = startedRegistryRelay();
+      if (!relay) {
+        response.writeHead(404, "no registry relay", { "content-type": "text/plain", connection: "close" }).end("no registry relay\n");
+        return;
+      }
+      (await relay).handle(request, response, `${url.pathname}${url.search}`, "proxy");
+      return;
+    }
     const decision: HostDecision = url && url.protocol === "http:" ? await decide(url.hostname) : { allowed: false, why: unlisted(url?.hostname || String(request.url)) };
     if (!url || !decision.allowed) {
       const host = url?.hostname || String(request.url);

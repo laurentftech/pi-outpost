@@ -11,7 +11,7 @@
  * Fail closed: an unusable runner refuses every command with its reason, and nothing
  * ever runs unconfined.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,6 +24,7 @@ import { RUN_WITH_GRANT_TOOL } from "./sandboxGrantTool.ts";
 import { linuxMxcExecutor, mxcMissingReason, mxcRunsInProcess } from "./mxcExecutor.ts";
 import { mxcSdk, runThroughSdk, SdkDocumentRefused, sdkRequest, type MxcSdk, type MxcWireRequest } from "./mxcSdk.ts";
 import { hostRefusal, landstripRefusal, mxcReportFile, mxcReportRefusals, refusalCollector, refusalKey, seatbeltReportRefusals, type Refusal } from "./sandboxRefusals.ts";
+import { refusedHost, type RefusedHost } from "./sandboxNetworkVerdict.ts";
 import {
   checkRunner,
   confinedEnvironment,
@@ -33,6 +34,7 @@ import {
   mxcMacCaptureRequest,
   mxcPosixConfig,
   proxyEnvironment,
+  carryUserConfigs,
   seatbeltPolicy,
   mxcTerminalConfig,
   runnerKind,
@@ -84,6 +86,8 @@ export interface ConfinedBashOptions {
   toolchains?: WindowsToolchains;
   /** `sandbox.hostLoopback`: MXC on Windows only, without a proxy (see `mxcTerminalConfig`). */
   hostLoopback?: boolean;
+  /** `sandbox.privateNetwork`: MXC on Windows only, without a proxy (see `mxcTerminalConfig`). */
+  privateNetwork?: boolean;
   /** `sandbox.allowedHosts` itself, which a command's own proxy starts from. */
   allowedHosts?: readonly string[];
   /**
@@ -393,10 +397,20 @@ export function powerShellScript(): string {
     "  foreach ($e in $global:PiOutpostParseErrors) { $p = $e.Extent.StartScriptPosition; [Console]::Error.WriteLine(\"ParserError: line $($p.LineNumber), column $($p.ColumnNumber): $($e.Message)\"); [Console]::Error.WriteLine(\"    $($p.Line)\") }",
     "  exit 1",
     "}",
+    // What failed is read from the errors the command alone raised.
+    "$global:Error.Clear()",
     ". {",
     `. ([ScriptBlock]::Create($global:PiOutpostCommand + "\`n\`n" + '${POWERSHELL_STATUS_LINE}'))`,
     "} | Out-Default",
-    "if (-not $global:PiOutpostCommandOk) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }",
+    "if (-not $global:PiOutpostCommandOk) {",
+    "  if ($LASTEXITCODE) { exit $LASTEXITCODE }",
+    // Windows PowerShell 5.1 turns each line a native program writes to a redirected stderr
+    // (`2>&1`) into an error record, and `$?` false, though the program exited 0: uv, git, java and
+    // pip all print progress there, and every such command ended in 1, read as a failure. A
+    // program's own failure keeps its code (above); a failed cmdlet's error is no such record.
+    "  if ($LASTEXITCODE -eq 0 -and $global:Error.Count -gt 0 -and -not ($global:Error | Where-Object { -not ($_ -is [System.Management.Automation.ErrorRecord] -and \"$($_.FullyQualifiedErrorId)\" -like 'NativeCommandError*') })) { exit 0 }",
+    "  exit 1",
+    "}",
     "exit 0",
     "",
   ].join("\n");
@@ -433,6 +447,9 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
   // MXC on Windows reports what it refused only when asked, at a cost of a second per command:
   // a diagnosis, on the agent's request, after a failure (`mxcDiagnosticConfig`).
   const diagnosable = kind === "mxc" && windows && !wslc && !isPosixMxc(options.runner);
+  // Windows' sentences for a refused connection, in the user's language: asked once, not waited for.
+  let localizedSocketErrors: string[] = [];
+  if (diagnosable) void windowsSocketMessages().then((messages) => (localizedSocketErrors = messages));
   /** The commands whose last run failed with the offer of a diagnosis: the only ones diagnosed. */
   const offered = new Set<string>();
   // macOS: whether MXC's SDK refused the document that asks for Seatbelt's report (`mxcMacCaptureRequest`).
@@ -455,6 +472,11 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
     let tail = "";
     let sqliteCannotOpen = false;
     let sqliteTail = "";
+    // A connection the container refused (WSAEACCES): reads as a network failure otherwise (#552, #554).
+    let socketRefused = false;
+    let socketTail = "";
+    // The output's end, where a failed command names the host it could not reach (`refusedHost`).
+    let outputTail = "";
     const filtered = powerShell ? withoutPowerShellDriveNoise(shown) : undefined;
     const show = filtered ? (data: Buffer) => filtered.write(data) : shown;
     const onData: (data: Buffer) => void = diagnose
@@ -474,6 +496,14 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
             const text = deniedTail + data.toString();
             if (reportsAccessDenied(text)) accessDenied = true;
             deniedTail = text.slice(-64);
+          }
+          if (diagnosable) {
+            if (!socketRefused) {
+              const text = socketTail + data.toString();
+              if (reportsSocketRefused(text, networkProxy !== undefined, localizedSocketErrors)) socketRefused = true;
+              socketTail = text.slice(-256);
+            }
+            outputTail = (outputTail + data.toString()).slice(-OUTPUT_KEPT_FOR_HOSTS);
           }
           show(data);
         };
@@ -561,8 +591,15 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         gitConfig: options.gitConfig,
         // MXC derives the container's TEMP from it (see confinedEnvironment); WSLC is a Linux container.
         containerProfileInTmp: kind === "mxc" && !wslc && !isPosixMxc(options.runner),
+        // Under sandbox.allowedHosts the server's proxy is the only way out: the user's would bypass
+        // it (NO_PROXY) or name a host the container refuses. WSLC's network is its own.
+        userProxy: networkProxy === undefined && !wslc,
       });
-      if (toolchains) Object.assign(env, toolchains.env);
+      if (toolchains) {
+        Object.assign(env, toolchains.env);
+        // The user's uv.toml, pip.ini and .npmrc, as they are now, without credentials.
+        await carryUserConfigs(toolchains.carried ?? [], toolchains.relayRoute);
+      }
       // A Linux container holds no folder of the user's: a Windows path there would only mislead.
       if (wslc) delete env.PI_OUTPOST_USER_HOME;
       const readOnlyFiles = gitReadOnlyFiles(options.gitConfig);
@@ -662,6 +699,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           readOnlyInside,
           ...(networkProxy === undefined ? {} : { networkProxy: networkProxy.url }),
           ...(options.hostLoopback === undefined ? {} : { hostLoopback: options.hostLoopback }),
+          ...(options.privateNetwork === undefined ? {} : { privateNetwork: options.privateNetwork }),
         });
         if (diagnose) reportDir = await mkdtemp(path.join(tmpdir(), "pi-outpost-diagnosis-"));
         const sent = reportDir === undefined
@@ -770,6 +808,19 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         if (msys !== undefined) onData(Buffer.from(`\n${msysNote(msys)}\n`));
         if (bunInstallRefused && diagnosable) onData(Buffer.from(`\n${bunInstallNote()}\n`));
         if (sqliteCannotOpen && !diagnose && directories.grantedRead.length > 0) onData(Buffer.from(`\n${sqliteReadOnlyNote()}\n`));
+        // A failed command's named hosts, judged by the policy (`refusedHost`): the sandbox's refusal is
+        // told whatever the program printed — curl and PowerShell say only that they could not connect.
+        const policy = { privateNetwork: options.privateNetwork === true, hostLoopback: options.hostLoopback !== false };
+        const policyRefused =
+          diagnosable && !diagnose && networkProxy === undefined && ((exitCode !== undefined && exitCode !== 0) || socketRefused)
+            ? await refusedHost(command, outputTail, policy).catch(() => undefined)
+            : undefined;
+        // Not when the proxy named a refused host: that note already says what was refused, and why.
+        if ((policyRefused || socketRefused) && !diagnose && refused.size === 0) {
+          onData(Buffer.from(`\n${socketRefusedNote({ proxy: networkProxy !== undefined, ...policy }, policyRefused)}\n`));
+        }
+        // A connection refused is not a file refused: no diagnosis, which runs without network and finds no file.
+        if (policyRefused || socketRefused) accessDenied = false;
         // Last, so the agent reads it after everything else: what it can do about a failure here.
         // Not when the proxy already named a refused host — that is what failed, and a diagnosis
         // runs without network: it would contradict "do not retry".
@@ -1033,6 +1084,99 @@ export function withoutPowerShellDriveNoise(next: (data: Buffer) => void): { wri
 
 /** SQLite's message when it cannot open a database: under a read-only grant, a WAL database's sign. */
 const SQLITE_CANNOT_OPEN = "unable to open database file";
+
+/**
+ * Windows' WSAEACCES (10013) on a connection: under MXC's process container, the sandbox's refusal of
+ * a destination it does not open — every program words it its own way (Rust's "os error 10013",
+ * Python's "WinError 10013", .NET's sentence, in the user's language). Never a bare 10013, a port.
+ */
+const SOCKET_REFUSED = new RegExp(
+  [
+    String.raw`os error 10013`,
+    String.raw`winerror 10013`,
+    String.raw`errno 10013`,
+    String.raw`wsaeacces`,
+    String.raw`forbidden by its access permissions`,
+    String.raw`interdite par ses autorisations`,
+    // Node and npm: `connect EACCES 10.0.0.1:80`; `errno EACCES` beside `syscall connect`.
+    String.raw`\bconnect EACCES\b`,
+    String.raw`errno EACCES[\s\S]{0,160}?syscall connect|syscall connect[\s\S]{0,160}?errno EACCES`,
+    // Java, which the file note took for a refused file.
+    String.raw`Permission denied: connect`,
+  ].join("|"),
+  "i",
+);
+
+/** How much of a command's output is kept to find the hosts it names (`refusedHost`). */
+const OUTPUT_KEPT_FOR_HOSTS = 16 * 1024;
+
+const normalized = (text: string) => text.replace(/[’‘`´]/g, "'").replace(/\s+/g, " ").toLowerCase();
+
+/**
+ * Windows' own sentence for WSAEACCES and WSAENETUNREACH, in the user's language, as Go and .NET print
+ * it: asked of Windows once, so no language needs listing here. Empty off Windows, or if it cannot say.
+ */
+export function windowsSocketMessages(): Promise<string[]> {
+  if (process.platform !== "win32") return Promise.resolve([]);
+  return new Promise((resolve) => {
+    execFile(
+      path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+      ["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [ComponentModel.Win32Exception]::new(10013).Message; [ComponentModel.Win32Exception]::new(10051).Message"],
+      { encoding: "utf8", timeout: 15_000, windowsHide: true },
+      (error, stdout) => resolve(error ? [] : stdout.split(/\r?\n/).map((line) => normalized(line.trim().replace(/\.$/, ""))).filter((line) => line.length > 20)),
+    );
+  });
+}
+
+/**
+ * WSAENETUNREACH (10051): how a direct connection fails under `sandbox.allowedHosts`, where the
+ * container has no route out but the proxy (measured: Python's `create_connection` to pypi.org). Only
+ * then is it the sandbox's; with the network open it is the network's.
+ */
+const NO_ROUTE_BUT_THE_PROXY = new RegExp(
+  [String.raw`os error 10051`, String.raw`winerror 10051`, String.raw`errno 10051`, String.raw`wsaenetunreach`, String.raw`r.seau impossible . atteindre`, String.raw`unreachable network`].join("|"),
+  "i",
+);
+
+export function reportsSocketRefused(output: string, underProxy = false, windowsMessages: readonly string[] = []): boolean {
+  if (SOCKET_REFUSED.test(output) || (underProxy && NO_ROUTE_BUT_THE_PROXY.test(output))) return true;
+  if (windowsMessages.length === 0) return false;
+  const text = normalized(output);
+  // The first is WSAEACCES's, refused whatever the policy; the second, WSAENETUNREACH's, only under a proxy.
+  return text.includes(windowsMessages[0]!) || (underProxy && windowsMessages[1] !== undefined && text.includes(windowsMessages[1]));
+}
+
+/**
+ * What ends a command whose connection the sandbox refused: that it was the sandbox, not the network
+ * — the agent otherwise retries, or reports the company's mirror down (#552) — what this sandbox
+ * opens, and the setting that would open the rest, which only the user can change.
+ */
+export function socketRefusedNote(network: { proxy: boolean; hostLoopback: boolean; privateNetwork: boolean }, refused?: RefusedHost): string {
+  if (refused) {
+    const named = refused.address === refused.host ? refused.host : `${refused.host} (${refused.address})`;
+    const why =
+      refused.why === "private network"
+        ? "it is on this machine's private network (the intranet), which is closed unless the user sets sandbox.privateNetwork to true"
+        : "it is this machine itself, whose own services are closed (sandbox.hostLoopback is false)";
+    return (
+      `[pi-outpost] the sandbox refused ${named}: ${why}. It is not a network failure, and retrying will not help. ` +
+      `Only the user can open it: if the task needs it, tell them.`
+    );
+  }
+  const reason = network.proxy
+    ? "under sandbox.allowedHosts a command connects only through the proxy named in HTTPS_PROXY; a program that ignores it, or connects to an address, is refused"
+    : [
+        "the Internet is open",
+        network.privateNetwork
+          ? "the private network too"
+          : "the private network (the intranet: a company's mirror, git server or proxy) is closed unless the user sets sandbox.privateNetwork to true",
+        network.hostLoopback ? "this machine's own services too" : "this machine's own services are closed (sandbox.hostLoopback is false)",
+      ].join("; ");
+  return (
+    `[pi-outpost] the sandbox refused a network connection (${network.proxy ? "a direct one: no route but the proxy" : "WSAEACCES, 10013"}): it is not a network failure, and retrying will not help. ` +
+    `Here ${reason}. Only the user can open it: if the task needs it, tell them which host it was.`
+  );
+}
 
 /**
  * What ends a command whose SQLite could not open a database while a folder was granted read-only:

@@ -132,6 +132,18 @@ describe("toolInstallations", () => {
     assert.deepEqual(found(`${scoop}\\shims;${links};${nvm}`, disk), [`${scoop}\\apps\\jq\\current`, ripgrep, "C:\\Users\\me\\AppData\\Local\\nvm\\v22.11.0"]);
   });
 
+  test("scoop's shims outside the home (a global install) are followed too", () => {
+    const scoop = "C:\\tools";
+    const disk = fakeDisk({
+      files: {
+        [`${scoop}\\shims\\rg.shim`]: `path = "${scoop}\\apps\\ripgrep\\current\\rg.exe"\r\n`,
+        [`${scoop}\\shims\\rg.exe`]: "",
+        [`${scoop}\\apps\\ripgrep\\current\\rg.exe`]: "",
+      },
+    });
+    assert.deepEqual(found(`${scoop}\\shims`, disk), [`${scoop}\\apps\\ripgrep\\current`]);
+  });
+
   test("a launcher leading to the profile itself, the keys or a drive's root opens nothing", () => {
     const shims = `${HOME}\\scoop\\shims`;
     const disk = fakeDisk({

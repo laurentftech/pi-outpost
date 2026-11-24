@@ -44,17 +44,28 @@ export function buildTerminalConfinement(input: {
   configFile?: string;
   /** `sandbox.hostLoopback`: MXC on Windows only (see `mxcTerminalConfig`). */
   hostLoopback?: boolean;
+  /** `sandbox.privateNetwork`: MXC on Windows only (see `mxcTerminalConfig`). */
+  privateNetwork?: boolean;
   /** `sandbox.cacheDir`: MXC on Windows only (see `windowsToolchains`). Absent: the default. */
   cacheDir?: string;
   /** `sandbox.toolEnvironment`: MXC on Windows only. */
   toolEnvironment?: Record<string, string>;
 }): TerminalConfinement {
-  const { runner, root, writableRoot, allowWrite, agentDir, configFile, hostLoopback } = input;
+  const { runner, root, writableRoot, allowWrite, agentDir, configFile, hostLoopback, privateNetwork } = input;
   const kind = runnerKind(runner);
   // MXC's process container on Windows: the sandbox cache and the toolchain homes, as the agent's shell gets them.
   const toolchains =
     kind === "mxc" && !isPosixMxc(runner) && process.platform === "win32"
-      ? windowsToolchains({ cacheDir: input.cacheDir ?? defaultSandboxCache(), serverEnv: process.env, home: homedir(), agentDir, configFile, ...(input.toolEnvironment ? { toolEnvironment: input.toolEnvironment } : {}) })
+      ? windowsToolchains({
+          cacheDir: input.cacheDir ?? defaultSandboxCache(),
+          serverEnv: process.env,
+          home: homedir(),
+          agentDir,
+          configFile,
+          ...(input.toolEnvironment ? { toolEnvironment: input.toolEnvironment } : {}),
+          // The terminal keeps the network: it reaches the registry relay on the loopback, while that is open.
+          ...(hostLoopback === false ? {} : { relayRoute: "loopback" as const }),
+        })
       : undefined;
   // git's identity: the user's ~/.gitconfig, readable on its own (see userGitConfig).
   const gitConfig = userGitConfig();
@@ -78,6 +89,7 @@ export function buildTerminalConfinement(input: {
                   ...terminal,
                   siblings: siblingsToDeny(root),
                   ...(hostLoopback === undefined ? {} : { hostLoopback }),
+                  ...(privateNetwork === undefined ? {} : { privateNetwork }),
                   ...(toolchains ? { grantedWrite: [toolchains.cacheDir], grantedRead: toolchains.readable } : {}),
                   searchPath: terminal.env.PATH,
                   ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),

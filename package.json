@@ -42,6 +42,7 @@
     "pretest:webbench": "node scripts/ensure-embedded-web.mjs --reset",
     "test:webbench": "npm run build:e2e-host && playwright test --config e2e/web-bench.config.ts",
     "bench": "tsx scripts/embed-bench.mts",
+    "sandbox:exercise": "tsx scripts/sandbox-exercise.mts",
     "check:export-chunk": "node scripts/check-export-chunk.mjs",
     "test:npm-install": "node scripts/check-npm-install.mjs"
   },

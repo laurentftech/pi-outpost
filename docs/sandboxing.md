@@ -123,7 +123,7 @@ Under a runner, a command (or a terminal) may:
 | Write | The writable zone and the private temporary directory. Nothing with `allowWrite: false`. |
 | Not write | The repository's `.git` at the root of the writable zone, when it exists: its configuration and hooks name commands git runs, for you too, later. Reading it, `git status`, `git diff` and `git log` work; a commit asks for a grant on it ([below](#grants-beyond-the-sandbox-when-you-say-so)), and "for this session" covers a session's commits. A repository nested deeper in the project is not held. `sandbox.gitWritable: true` leaves it writable. The terminal is not held. |
 | Never | The agent directory (`auth.json`, the keys) and the configuration file. |
-| Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's, uv's and pip's caches in the temporary directory (`npm_config_cache`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`: never your own cache made writable, where a package left by a command would later run unconfined), the shell's history there too (`HISTFILE`, and `ZDOTDIR` for zsh) so none is left in your project, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity — with the global ignore and attributes files it names in `core.excludesFile` and `core.attributesFile`, read-only too); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory. None of the server's other variables, so no provider key. |
+| Environment | `PATH`, locale, `TERM`, `SHELL`, `HOME` set to the root, npm's, uv's and pip's caches in the temporary directory (`npm_config_cache`, `UV_CACHE_DIR`, `PIP_CACHE_DIR`: never your own cache made writable, where a package left by a command would later run unconfined), the shell's history there too (`HISTFILE`, and `ZDOTDIR` for zsh) so none is left in your project, `GIT_CONFIG_GLOBAL` naming your `~/.gitconfig` (read-only, for git's identity — with the global ignore and attributes files it names in `core.excludesFile` and `core.attributesFile`, read-only too); on Windows `USERPROFILE`, `TEMP` and `TMP` point to the temporary directory; your proxy variables when the network is open, never one carrying a password ([below](#behind-a-company-proxy)). None of the server's other variables, so no provider key. |
 | Signal | No process outside the sandbox. |
 
 The repository's `.git/config` names commands git runs (`core.fsmonitor`, filters, diff drivers). The agent's commands cannot write it by default (the *Not write* row above). And whatever is written there — with `sandbox.gitWritable`, a grant, or in a repository nested deeper — the git pi-outpost itself runs, unconfined, for the Files badges and the history, overrides every such key: nothing written there runs in the server. Your own tools still read that file: an editor's git integration or a prompt that shows git status would run what it names.
@@ -354,7 +354,8 @@ model writes PowerShell; every command runs from a script, without profile, with
 given for the process (the sandbox cannot read the registry's), progress bars off (drawing one is
 refused inside) and output as plain text (PowerShell 7 colours tables and errors otherwise, and the model
 reads the escape codes). Its exit status is the one it sets with `exit`, else the failed native program's code,
-or 1 for a failed cmdlet.
+or 1 for a failed cmdlet. A native program that writes to a redirected stderr (`2>&1`) and exits 0 is not a
+failure, though Windows PowerShell 5.1 shows each such line as an error.
 
 **For a POSIX shell instead**, name busybox-w32: download `busybox64.exe` from frippery.org, save it as
 `sh.exe` and give its path as `bashShell`; the agent keeps `bash`. busybox is `ash`, not bash: no `[[ ]]`,
@@ -381,7 +382,13 @@ MXC for no clipboard and no input injection. Limits:
   The same guard applies to each: never your home directory or above it, the agent directory or the
   configuration. Anything else a tool needs — the Pythons uv keeps when no `.venv` names one, a
   program elsewhere — goes in [`sandbox.readOnlyPaths`](#tools-installed-for-you-sandboxreadonlypaths). The Python launcher `py.exe` still finds no
-  interpreter (it reads the registry); `python` runs.
+  interpreter (it reads the registry); `python` runs. scoop's `shims` are followed wherever they are,
+  a global install's (`C:\tools\scoop\shims`) too.
+- The folders above such a tool, when it is beside the root (`C:\dev` for `C:\dev\nodejs` while the
+  project is `C:\projects\app`), can be listed but not read: a path through them resolves, so Node runs
+  a global npm CLI. Everything else in them stays denied by name, as beside the root — another project
+  in `C:\dev` is out of reach. A folder the root's drive already makes readable is left as it is.
+  This needs a Windows whose MXC can list a folder without reading it; MXC says so in its probe.
 - A folder readable but not writable can be neither listed nor entered: leave the whole root writable
   (no narrower `writableRoot`) where git runs.
 - `git push` has no credentials, and signed commits fail: GnuPG for Windows is built without ASLR, which
@@ -417,6 +424,53 @@ loopback rule beside its proxy ([microsoft/mxc#1731](https://github.com/microsof
 server's startup line says which way it is (`loopback open: …` or `loopback closed: Python's asyncio
 cannot start in the shell`).
 
+### The private network
+
+Windows refuses a process in MXC's container the private network — the subnets this machine is on,
+and intranet ranges a policy names: a company's package mirror, git server or proxy — unless inbound
+connections from it are allowed too. Outbound alone cannot be asked for: MXC documents the capability as
+bidirectional by design ([microsoft/mxc#830](https://github.com/microsoft/mxc/issues/830)). So it stays
+closed unless you open it, which only you can do:
+
+```json
+{ "sandbox": { "privateNetwork": true } }
+```
+
+Then, without `sandbox.allowedHosts`, the agent's shell and the confined terminal reach the intranet, and
+a server a command starts can be reached from it, through Windows' firewall like any program. The
+startup line says so (`private network open: …`).
+
+Closed, a connection there fails, and each program says it its own way — uv `os error 10013`, Python
+`WinError 10013`, Node `connect EACCES`, Java `Permission denied: connect`, curl and git only `Couldn't
+connect to server`. MXC reports no refused connection itself (its denial report holds files, registry keys
+and capabilities, never the network). So pi-outpost judges it from its own policy: when a command fails, the
+hosts its command line names — and those its output names in a URL or a connection error — are resolved,
+and one that falls on this machine's private network (its subnets, as Windows counts them) while that is
+closed, or on the machine itself while its loopback is closed, is named in a note at the end of the output,
+so the agent does not take it for a network failure and retry:
+
+```
+[pi-outpost] the sandbox refused nexus.corp.example (10.0.0.20): it is on this machine's private network (the intranet), which is closed unless the user sets sandbox.privateNetwork to true. It is not a network failure, and retrying will not help. Only the user can open it: if the task needs it, tell them.
+```
+
+Where no host can be told but the error is the sandbox's (Windows' own sentence for it, in your language),
+the note says so without a host. A refused connection never offers a file diagnosis.
+
+Under `sandbox.allowedHosts` the key changes nothing: the proxy is the only way out, and it reaches an
+intranet host you list by name. A command cannot reach the private network around it, even with
+`privateNetwork: true` (measured, and tested). The key and `hostLoopback` are independent. A program there that connects
+directly, ignoring `HTTPS_PROXY`, fails with "network unreachable" (WSAENETUNREACH, 10051); the same note
+follows, saying so.
+
+### Behind a company proxy
+
+A confined command, and the confined terminal, get your `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and
+`NO_PROXY` (either case) when no `sandbox.allowedHosts` proxy is their way out: behind a company's proxy
+nothing else gets out, and every download would time out. A variable whose proxy names a user or password
+(`http://user:password@proxy:8080`) is a credential and is not passed; the startup line names it. A proxy
+set only by a PAC file or WinHTTP, not by these variables, is not read. Under `sandbox.allowedHosts` none
+is passed — `NO_PROXY` would route around the server's proxy — and the server's proxy connects directly.
+
 ### Toolchains and the sandbox cache
 
 Measured on Windows 11 24H2 with nothing configured, the agent's confined shell and the confined terminal
@@ -439,9 +493,50 @@ work, and what it costs:
   project share it, all of them confined.
 - **Toolchain homes are read where they are**: rustup's (`RUSTUP_HOME`, by default `~\.rustup`), so
   `cargo` and `rustc` find your toolchain, and the Pythons uv installed (`%APPDATA%\uv\python`).
-- **Not carried in**: your mirrors and tokens — `~\.m2\settings.xml`, `~\.gradle\gradle.properties`,
-  `~\.npmrc`, `~\.cargo\config.toml` and `credentials.toml` stay out of reach. A project's own
-  configuration (`.npmrc`, `gradle.properties`, `.cargo\config.toml` in the root) still applies.
+- **Your mirrors are carried in, your credentials are not.** Before each command, a copy of your own
+  configuration is put where the confined tool reads it, with every credential taken out:
+
+  | Tool | Yours | Taken out |
+  | --- | --- | --- |
+  | uv | `%APPDATA%\uv\uv.toml` | a `user:password@` in a URL |
+  | pip | `%APPDATA%\pip\pip.ini` (named by `PIP_CONFIG_FILE`) | the same |
+  | npm | `~\.npmrc` (named by `npm_config_userconfig`) | `_authToken`, `_auth`, `_password`, `password`, `username` |
+  | Maven | `~\.m2\settings.xml` (named by `MAVEN_ARGS`) | `<servers>`, every `<username>`, `<password>`, `<passphrase>`, `<privateKey>` |
+  | Gradle | `~\.gradle\gradle.properties` | every property whose name says password, secret, token, credential, API key or auth |
+  | Cargo | `~\.cargo\config.toml` | `token`; `credentials.toml` is never read |
+  | Go | `%APPDATA%\go\env` (`go env -w`) | `GOAUTH` |
+  | NuGet | `%APPDATA%\NuGet\NuGet.Config` | `<packageSourceCredentials>`, an account's key |
+
+  So a company's mirror is used as on your machine. An edit of yours applies from the next command, and
+  the copy of a file you remove goes too. Each copy starts with a line naming yours: edit that one. A
+  project's own configuration (`.npmrc`, `gradle.properties`, `.cargo\config.toml` in the root) still
+  applies on top.
+
+  **A registry that needs your credentials goes through the server's relay.** A command can read
+  whatever its tools read, so a token given to the sandbox is a token the agent could print or send
+  anywhere. Instead, the copy names a relay the server runs —
+  `http://127.0.0.1:<port>/<key>/<registry>/…` — and the server, unconfined, forwards each request to
+  your registry with your credentials added. The agent uses your mirror; it never sees the secret.
+
+  - Read only: `GET` and `HEAD`. Installing works; publishing (`npm publish`, `mvn deploy`) is refused
+    with `405`, so nothing is published in your name. Run those outside the sandbox.
+  - Only the registries your files name, under a key drawn when the server starts. What a registry
+    answers comes back with its links pointing at the relay (an index's files, npm's tarballs, NuGet's
+    service index) and without its cookies.
+  - Behind a company proxy, the relay uses your `HTTPS_PROXY`; it trusts the certificate authorities
+    Windows trusts, so a mirror signed by your company's authority works.
+  - Paired with a URL in your file, so relayed: a `user:password@` in uv's, pip's and Go's; npm's
+    `_authToken`, `_auth` and `username` / `_password` for the `registry` lines they cover; Maven's
+    `<server>` for the `<mirror>` and `<repository>` of its id; NuGet's `ClearTextPassword` for its
+    source. Not relayed, only left out: Gradle's properties and Cargo's tokens (build scripts and Cargo
+    use them themselves), a Maven password encrypted with your master password, NuGet's encrypted
+    `Password`.
+  - Under `sandbox.allowedHosts`, the relay is reached through the command's proxy, as the host
+    `registry-relay.pi-outpost.invalid`, without a question. With `sandbox.hostLoopback: false` and no
+    list, a command cannot reach it: the credentials are left out, unrelayed.
+
+  The startup line lists what is carried (`your uv.toml, .npmrc (credentials kept in the server, its
+  registries relayed) carried in`).
 - **MSYS2 programs cannot start** — Git's `usr\bin` (its `bash`, `perl`, coreutils), an MSYS2 install:
   their runtime needs named objects a container may not create (microsoft/mxc#1061). Their folders are
   left out of the confined `PATH`, so `perl` finds a native Perl, and the startup line names them. A
@@ -581,6 +676,22 @@ environment is the container's own. Limits, all the backend's:
 - Creating a container occasionally fails on a folder's first mount (`WslcCreateContainer`,
   `0x80004005`); running the command again works.
 - The terminal panel is not confined this way: `terminal.sandbox` keeps MXC's Windows container.
+
+### Not yet
+
+What the Windows sandbox does not do yet, and what to do meanwhile. The work behind each, and where it
+would start, is the "Remaining work" of the `windows-sandbox-reach` change's `design.md` (under
+`openspec/changes/`, or its archive once merged).
+
+| Not yet | Meanwhile |
+| --- | --- |
+| A tool installed in a layout pi-outpost does not know (beyond Git, scoop, WinGet, nvm, a `.venv`) is not readable | list its folder in [`sandbox.readOnlyPaths`](#tools-installed-for-you-sandboxreadonlypaths), or grant it when asked |
+| Yarn Berry's, bun's, Poetry's, conda's, RubyGems' and Composer's configuration is not carried in | set the mirror in the project's own configuration, or run that install outside the sandbox |
+| A registry authenticated by Gradle's properties, Cargo's token, or an encrypted Maven or NuGet password answers 401: those credentials are left out, not relayed | run that build's dependency download outside the sandbox once; the sandbox cache keeps what it downloaded |
+| Under `sandbox.allowedHosts`, a network reached only through a company proxy is not reached: the server's proxy connects directly | leave `allowedHosts` unset there, so commands use your `HTTPS_PROXY` |
+| A proxy configured by PAC or WinHTTP alone is not seen | set `HTTPS_PROXY` (and `NO_PROXY`) for the server |
+| A connection refused to a host the command never names (a library's, deep in a build) is told only when the program's own error says so — MXC does not report refused connections ([microsoft/mxc#1843](https://github.com/microsoft/mxc/issues/1843)) | if a build fails on the network, check the intranet hosts it uses against `sandbox.privateNetwork` |
+| Two pi-outpost servers of the same Windows user share the sandbox cache, and with it the carried configuration: one's commands may meet the other's relay and get a 404 | run one server per user, or give each its own `sandbox.cacheDir` |
 
 ## Older Windows
 

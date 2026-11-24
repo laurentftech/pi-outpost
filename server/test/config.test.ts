@@ -573,6 +573,20 @@ describe("loadConfig — resource path resolution", () => {
     });
   });
 
+  // openlore: scenario=PrivateNetworkMustBeABoolean spec=sandbox-runner-bash
+  test("PrivateNetworkMustBeABoolean: sandbox.privateNetwork is kept when a boolean, refused otherwise", async () => {
+    await withTempDir(async (dir) => {
+      const configPath = path.join(dir, "config.json");
+      const write = (privateNetwork: unknown) => writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe", privateNetwork } }));
+      await write(false);
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.privateNetwork, false);
+      await writeFile(configPath, JSON.stringify({ sandbox: { root: ".", allowBash: true, bashRunner: "./mxc/wxc-exec.exe" } }));
+      assert.equal(loadConfig(dir, { config: configPath }).sandbox!.privateNetwork, undefined, "absent: the request decides (open)");
+      await write("no");
+      assert.throws(() => loadConfig(dir, { config: configPath }), /"sandbox.privateNetwork" must be true or false/);
+    });
+  });
+
   // openlore: scenario=AnAllowlistNeedsMxcWithoutAnImage spec=sandbox-runner-bash
   test("AnAllowlistNeedsMxcWithoutAnImage: allowed hosts are kept with MXC, refused without it, beside an image, or malformed", async () => {
     await withTempDir(async (dir) => {
