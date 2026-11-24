@@ -7,6 +7,19 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.65.2] - 2026-11-24
+
+### Fixed
+
+- **On Windows under MXC, a machine that refuses the sandbox policy over the listable folders keeps its
+  tools working.** The fallback added in 0.65.1 dropped the whole enumeration layer, so a tool installed
+  beside the project (a scoop shim, a global npm CLI) no longer resolved by path — `node.exe not found`.
+  pi-outpost now steps the enumeration down one level at a time: first without the ancestors of the
+  grants (the profile's folders, the ones a domain machine refuses), keeping the tools' ancestors
+  listable; only then without any listable folder. Confined the same at every level. To resolve a tool
+  beside the root regardless, list its ancestor folders in [`sandbox.readOnlyPaths`](docs/sandboxing.md).
+  ([#560](https://github.com/laurentftech/pi-outpost/pull/560))
+
 ## [0.65.1] - 2026-11-24
 
 ### Fixed
