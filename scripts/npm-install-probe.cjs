@@ -6,6 +6,7 @@ const net = require('node:net');
 const { createRequire } = require('node:module');
 const { spawn, execFileSync } = require('node:child_process');
 const { once } = require('node:events');
+const { randomBytes } = require('node:crypto');
 
 (async () => {
   const expectedRoot = fs.realpathSync(process.env.PI_EXPECTED_INSTALL_ROOT);
@@ -31,6 +32,9 @@ const { once } = require('node:events');
   fs.writeFileSync(config, JSON.stringify({ cwd:workspace, agentDir:path.join(workspace,'.pi-agent'), openBrowser:false, noSkills:true, noPromptTemplates:true, webContext:false, sandbox:false, terminal:{enabled:true}, server:{host:'127.0.0.1',port} }));
   const env = {...process.env, PI_OFFLINE:'1', PI_CODING_AGENT_DIR:path.join(workspace,'.pi-agent'), ANTHROPIC_API_KEY:'sk-ant-not-a-real-key'};
   for (const key of Object.keys(env)) if ((key.includes('API_KEY') || key.includes('AUTH_TOKEN') || key.endsWith('_TOKEN')) && key !== 'ANTHROPIC_API_KEY') delete env[key];
+  // This probe's own token for its own loopback server: set on the child, so no token file is read here.
+  const token = randomBytes(32).toString('hex');
+  env.PI_OUTPOST_TOKEN = token;
   const server = spawn(process.execPath, [cli, '--config', config], {cwd:workspace, env, stdio:['ignore','pipe','pipe'], detached:true, windowsHide:true});
   let log = '';
   server.stdout.on('data', data => log += data);
@@ -46,8 +50,6 @@ const { once } = require('node:events');
       await new Promise(resolve => setTimeout(resolve,100));
     }
     await new Promise((resolve, reject) => {
-      // The server's token: none is configured, so it generated one in its agent directory.
-      const token = fs.readFileSync(path.join(workspace, '.pi-agent', 'outpost-token'), 'utf8').trim();
       socket = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}`);
       let output = '';
       let sent = false;

@@ -4,7 +4,8 @@
 // executable. Also checks no wxc-exec.exe ran for the shell.
 //   node --import tsx/esm scripts/probes/mxc-sdk-exe.mts <path to pi-outpost.exe>
 import { spawn } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -30,7 +31,9 @@ writeFileSync(
   JSON.stringify({ cwd: root, agentDir: path.join(dir, "agent"), server: { host: "127.0.0.1", port }, openBrowser: false, noSkills: true, sandbox: { root, allowWrite: true, allowBash: true, bashRunner: "mxc", bashShell: path.join(process.env.SystemRoot ?? "C:\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe") } }),
 );
 let log = "";
-const child = spawn(exe, [], { env: { ...process.env, PI_OUTPOST_CONFIG: config, PI_OFFLINE: "1" }, cwd: dir });
+// This probe's own token for its own loopback server: set on the child, so no token file is read here.
+const token = randomBytes(32).toString("hex");
+const child = spawn(exe, [], { env: { ...process.env, PI_OUTPOST_CONFIG: config, PI_OFFLINE: "1", PI_OUTPOST_TOKEN: token }, cwd: dir });
 child.stdout.on("data", (d) => (log += d));
 child.stderr.on("data", (d) => (log += d));
 const deadline = Date.now() + 60_000;
@@ -41,8 +44,6 @@ for (;;) {
   await new Promise((resolve) => setTimeout(resolve, 300));
 }
 const verdict = await new Promise<unknown>((resolve, reject) => {
-  // The token the server generated in its agent directory: every connection presents one.
-  const token = readFileSync(path.join(dir, "agent", "outpost-token"), "utf8").trim();
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(token)}`);
   const timer = setTimeout(() => reject(new Error(`no verdict: ${log}`)), 120_000);
   ws.on("message", (raw) => {
