@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, describe, test } from "node:test";
-import { carriedSummary, carryUserConfigs, userConfigsToCarry, windowsToolchains, withoutCredentials } from "../src/terminalSandbox.ts";
+import { carriedSummary, carryUserConfigs, userConfigsToCarry, windowsToolchains, withoutCredentials, type ToolInstallationReader } from "../src/terminalSandbox.ts";
 
 describe("the user's package manager configuration", () => {
   const made: string[] = [];
@@ -71,7 +71,7 @@ describe("the user's package manager configuration", () => {
     assert.doesNotMatch(nuget.text, /alice|s3cret|packageSourceCredentials/);
   });
 
-  test("each is looked for where the user's tool keeps it, and copied where the confined one reads it", async () => {
+  test("each is looked for where the user's tool keeps it, and copied where the confined one reads it", () => {
     const toolchains = windowsToolchains({ cacheDir: "C:\\cache", serverEnv: { APPDATA: "C:\\Users\\me\\AppData\\Roaming" }, home: "C:\\Users\\me" });
     assert.deepEqual(toolchains.carried, [
       { name: "uv.toml", from: "C:\\Users\\me\\AppData\\Roaming\\uv\\uv.toml", to: "C:\\cache\\appdata\\Roaming\\uv\\uv.toml" },
@@ -87,14 +87,18 @@ describe("the user's package manager configuration", () => {
     assert.equal(toolchains.env.PIP_CONFIG_FILE, undefined, "same for pip");
     assert.equal(toolchains.env.MAVEN_ARGS, undefined, "no ~/.m2/settings.xml: MAVEN_ARGS would break every mvn on a file that is never copied");
     assert.equal(toolchains.env.APPDATA, "C:\\cache\\appdata\\Roaming", "uv and Go find theirs under the sandbox's APPDATA");
-    // With the user's files present, each tool is told where its copy is.
-    const base = await mkdtemp(path.join(tmpdir(), "toolchains-"));
-    made.push(base);
-    const home = path.join(base, "home");
-    await mkdir(path.join(home, ".m2"), { recursive: true });
-    await writeFile(path.join(home, ".m2", "settings.xml"), "<settings/>\n");
-    await writeFile(path.join(home, ".npmrc"), "registry=https://npm.corp.example/\n");
-    const withFiles = windowsToolchains({ cacheDir: "C:\\cache", serverEnv: { APPDATA: path.join(home, "AppData", "Roaming") }, home });
+    // With the user's files present (a reader that says so, paths compared as Windows does), each
+    // tool is told where its copy is.
+    const home = "C:\\Users\\me";
+    const present: ToolInstallationReader = {
+      isFile: (p) => p === `${home}\\.m2\\settings.xml` || p === `${home}\\.npmrc`,
+      isDirectory: () => false,
+      readText: () => undefined,
+      list: () => [],
+      isLink: () => false,
+      resolveLink: () => undefined,
+    };
+    const withFiles = windowsToolchains({ cacheDir: "C:\\cache", serverEnv: { APPDATA: `${home}\\AppData\\Roaming` }, home }, present);
     assert.equal(withFiles.env.npm_config_userconfig, "C:\\cache\\user-config\\npmrc");
     assert.equal(withFiles.env.MAVEN_ARGS, `-s "C:\\cache\\user-config\\settings.xml"`, "Maven 3.9 reads its settings file from MAVEN_ARGS");
     // The user's own homes, when they moved them.
