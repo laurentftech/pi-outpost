@@ -1,0 +1,62 @@
+name: MXC 562 junction e2e (probe)
+
+# Probe, not a check: nothing here is required. It answers, by measurement on a real MXC tier 1
+# host, whether a tool behind a scoop-style `current` junction resolves on PATH (issue #562).
+# Triggered by pushing this branch with changes under spikes/mxc-562-junction/.
+on:
+  push:
+    branches: [vibe/mxc-link-target-on-the-way-5c5e57]
+    paths:
+      - spikes/mxc-562-junction/**
+      - .github/workflows/mxc-562-junction.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mxc-562-junction-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows 11 ARM64: tier 1 base container present (spike #558); the SDK ships arm64 native parts.
+          - { label: windows-11-arm, os: windows-11-arm }
+          # Server edition: control — the spike says it carries no tier 1.
+          - { label: windows-latest, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      SPIKE_LABEL: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
+      # --foreground-scripts: koffi and the SDK's native parts install through scripts.
+      - run: npm ci --foreground-scripts
+      - name: Probe the junction resolution under real MXC
+        run: node --import tsx/esm spikes/mxc-562-junction/probe.mjs
+      - name: Publish probe summary
+        if: always()
+        shell: pwsh
+        run: |
+          $dir = "spikes/mxc-562-junction/results/$env:SPIKE_LABEL"
+          if (Test-Path "$dir/summary.md") { Get-Content "$dir/summary.md" -Raw >> $env:GITHUB_STEP_SUMMARY }
+          else { "The probe produced no summary; see the job log." >> $env:GITHUB_STEP_SUMMARY }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mxc-562-junction-${{ matrix.label }}
+          path: spikes/mxc-562-junction/results/${{ matrix.label }}/
+          retention-days: 7
+          if-no-files-found: warn
