@@ -1,0 +1,6 @@
+# Tasks
+
+- [ ] 1. `server/src/confinedBash.ts` (`socketRefusedNote`): in the no-host branch, split the header by proxy — proxy keeps "the sandbox refused a network connection (a direct one: no route but the proxy)"; non-proxy becomes "a network connection was refused (WSAEACCES, 10013): the sandbox closes only the addresses named below — on an air-gapped machine the same error comes from the machine's own firewall — and retrying will not help". Replace "the Internet is open" with "the sandbox does not restrict outbound connections (no sandbox.allowedHosts), so whether the Internet answers at all is this machine's network, not the sandbox's". Named-host branch unchanged.
+- [ ] 2. `server/test/socketRefused.test.ts`: update the no-host assertions (no "the Internet is open", WSAEACCES named, air-gapped/firewall wording, outbound-unrestricted wording, "retrying will not help"); keep the proxy and named-host assertions.
+- [ ] 3. `docs/sandboxing.md`: the paragraph after the named-host note says the no-host note does not claim the Internet is open and names the air-gapped firewall case.
+- [ ] 4. `openspec validate refusal-note-air-gapped --strict` and the server type check + focused tests pass.

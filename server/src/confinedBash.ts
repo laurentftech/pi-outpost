@@ -1210,16 +1210,18 @@ export function socketRefusedNote(network: { proxy: boolean; hostLoopback: boole
   const reason = network.proxy
     ? "under sandbox.allowedHosts a command connects only through the proxy named in HTTPS_PROXY; a program that ignores it, or connects to an address, is refused"
     : [
-        "the Internet is open",
+        "the sandbox does not restrict outbound connections (no sandbox.allowedHosts), so whether the Internet answers at all is this machine's network, not the sandbox's",
         network.privateNetwork
           ? "the private network too"
           : "the private network (the intranet: a company's mirror, git server or proxy) is closed unless the user sets sandbox.privateNetwork to true",
         network.hostLoopback ? "this machine's own services too" : "this machine's own services are closed (sandbox.hostLoopback is false)",
       ].join("; ");
-  return (
-    `[pi-outpost] the sandbox refused a network connection (${network.proxy ? "a direct one: no route but the proxy" : "WSAEACCES, 10013"}): it is not a network failure, and retrying will not help. ` +
-    `Here ${reason}. Only the user can open it: if the task needs it, tell them which host it was.`
-  );
+  // Without a named host the same WSAEACCES can come from the machine's own firewall (air-gapped),
+  // so only the proxy shape — where egress is denied — may say the sandbox refused it.
+  const header = network.proxy
+    ? "the sandbox refused a network connection (a direct one: no route but the proxy): it is not a network failure, and retrying will not help"
+    : "a network connection was refused (WSAEACCES, 10013): the sandbox closes only the addresses named below — on an air-gapped machine the same error comes from the machine's own firewall — and retrying will not help";
+  return `[pi-outpost] ${header}. Here ${reason}. Only the user can open it: if the task needs it, tell them which host it was.`;
 }
 
 /**

@@ -39,15 +39,25 @@ describe("reportsSocketRefused", () => {
     assert.match(socketRefusedNote({ proxy: true, hostLoopback: true, privateNetwork: true }), /\(a direct one: no route but the proxy\)/);
   });
 
-  test("the note says it was the sandbox, not to retry, and what this sandbox opens", () => {
+  // openlore: scenario=TheNoHostRefusalNoteDoesNotClaimTheInternetIsOpen spec=sandbox-runner-bash
+  test("the note says what refused it, not to retry, and what this sandbox closes — never that the Internet is open", () => {
     const closed = socketRefusedNote({ proxy: false, hostLoopback: true, privateNetwork: false });
-    assert.match(closed, /the sandbox refused a network connection \(WSAEACCES, 10013\)/);
-    assert.match(closed, /not a network failure, and retrying will not help/);
+    assert.match(closed, /a network connection was refused \(WSAEACCES, 10013\)/);
+    assert.doesNotMatch(closed, /the Internet is open/);
+    assert.doesNotMatch(closed, /the sandbox refused a network connection/);
+    assert.match(closed, /the sandbox does not restrict outbound connections \(no sandbox\.allowedHosts\)/);
+    assert.match(closed, /this machine's network, not the sandbox's/);
+    assert.match(closed, /air-gapped machine the same error comes from the machine's own firewall/);
+    assert.match(closed, /retrying will not help/);
     assert.match(closed, /closed unless the user sets sandbox\.privateNetwork to true/);
     assert.match(closed, /Only the user can open it/);
     assert.match(socketRefusedNote({ proxy: false, hostLoopback: true, privateNetwork: true }), /the private network too/);
     assert.match(socketRefusedNote({ proxy: false, hostLoopback: false, privateNetwork: true }), /sandbox\.hostLoopback is false/);
-    assert.match(socketRefusedNote({ proxy: true, hostLoopback: true, privateNetwork: true }), /only through the proxy named in HTTPS_PROXY/);
+    // Under allowedHosts egress is denied: there the sandbox did refuse the direct connection.
+    const proxied = socketRefusedNote({ proxy: true, hostLoopback: true, privateNetwork: true });
+    assert.match(proxied, /the sandbox refused a network connection \(a direct one: no route but the proxy\)/);
+    assert.match(proxied, /not a network failure, and retrying will not help/);
+    assert.match(proxied, /only through the proxy named in HTTPS_PROXY/);
   });
 });
 
