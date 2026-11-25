@@ -7,6 +7,33 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.66.0] - 2026-11-25
+
+### Added
+
+- **On Windows under MXC, the agent's commits are signed through pi-outpost's relay, the key staying in
+  the server.** GnuPG for Windows cannot start inside the sandbox (built without ASLR, which the process
+  container enforces), and the private keys stay out of it anyway: a key a confined command can read is
+  a key it can print and send anywhere. When your git configuration asks for signed commits, the
+  confined shell's `gpg.program` points at a shim in the sandbox cache that POSTs the payload to a
+  loopback-only relay in the server (per-launch token, sign only — verification is refused, body capped),
+  which runs gpg unconfined with your real `HOME`/`GNUPGHOME` and returns only the signature. Where the
+  relay cannot serve, `commit.gpgsign`/`tag.gpgsign` are forced off in the shell's environment and the
+  startup line says to re-sign outside the sandbox, so no commit fails on a missing gpg.
+  ([#565](https://github.com/laurentftech/pi-outpost/pull/565))
+
+### Fixed
+
+- **On Windows under MXC, a tool behind a link on the way down resolves on `PATH` again** — scoop's
+  `current` junction to the active version. The junction's target is now readable like the link and is
+  never denied as beside the way down, so `node`, `npm`, `npx` and the Node CLI shims resolve while the
+  native shims in `shims` already did; everything else beside the way (`Scoop\buckets`, other versions,
+  other projects) stays denied by name. ([#563](https://github.com/laurentftech/pi-outpost/pull/563))
+- **The carried tool configuration is named only when your own file exists.** `MAVEN_ARGS`,
+  `npm_config_userconfig` and `PIP_CONFIG_FILE` were set to the sandbox cache's copies unconditionally;
+  now they are set only when the corresponding file exists in your profile, so a project cannot point
+  them at a path of its own. ([#564](https://github.com/laurentftech/pi-outpost/pull/564))
+
 ## [0.65.2] - 2026-11-24
 
 ### Fixed
