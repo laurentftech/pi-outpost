@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, describe, test } from "node:test";
 import { carriedSummary, carryUserConfigs, userConfigsToCarry, windowsToolchains, withoutCredentials, type ToolInstallationReader } from "../src/terminalSandbox.ts";
+import type { RegistryRelay } from "../src/registryRelay.ts";
 
 describe("the user's package manager configuration", () => {
   const made: string[] = [];
@@ -146,5 +147,48 @@ describe("the user's package manager configuration", () => {
     assert.equal(await readFile(at("pip.ini"), "utf8"), "[global]\ntimeout = 60\n");
 
     assert.equal(carriedSummary(carried), "your pip.ini, .npmrc (credentials left out) carried in");
+  });
+
+  // openlore: scenario=UVEnvVarsSeedTheSandboxUvToml spec=sandbox-runner-bash
+  test("UVEnvVarsSeedTheSandboxUvToml: with no uv.toml file, UV_DEFAULT_INDEX and UV_PYTHON_INSTALL_MIRROR become the carried one, its registries through the relay", { skip: process.platform === "win32" ? false : "the sandbox cache and APPDATA are Windows paths (MXC on Windows only)" }, async () => {
+    const win = path.win32;
+    const base = win.resolve(await mkdtemp(path.join(tmpdir(), "user-configs-")));
+    made.push(base);
+    const home = win.join(base, "home");
+    const roaming = win.join(home, "AppData", "Roaming");
+    const cache = win.join(base, "cache");
+    await mkdir(roaming, { recursive: true });
+    const serverEnv = {
+      APPDATA: roaming,
+      UV_DEFAULT_INDEX: "https://alice:s3cret@nexus.corp.example:8446/repository/pypi-public-releases/simple",
+      UV_PYTHON_INSTALL_MIRROR: "https://alice:s3cret@nexus.corp.example:8446/repository/github-proxy/astral-sh/python-build-standalone/releases/download",
+    };
+    const carried = userConfigsToCarry({ serverEnv, home, cacheDir: cache, sandboxAppData: win.join(cache, "appdata", "Roaming") });
+    const uv = carried.find((config) => config.name === "uv.toml");
+    assert.ok(uv, "a uv.toml is carried even with no file on disk");
+    assert.match(uv.synthesized ?? "", /default-index = "https:\/\/alice:s3cret@nexus\.corp\.example:8446\/repository\/pypi-public-releases\/simple"/);
+    assert.match(uv.synthesized ?? "", /python-install-mirror = "https:\/\/alice:s3cret@nexus\.corp\.example:8446\/repository\/github-proxy\//);
+    const at = uv.to;
+
+    // Carried through the relay: the copy names the relay's URLs, holds no credential.
+    const relay = { register: (origin: string) => (origin === "https://nexus.corp.example:8446" ? "http://127.0.0.1:9/tok/0123456789abcdef/" : undefined) } as unknown as RegistryRelay;
+    await carryUserConfigs(carried, "loopback", async () => relay);
+    const copy = await readFile(at, "utf8");
+    assert.match(copy, /^# pi-outpost: carried from /);
+    assert.match(copy, /default-index = "http:\/\/127\.0\.0\.1:9\/tok\/0123456789abcdef\/repository\/pypi-public-releases\/simple"/);
+    assert.match(copy, /python-install-mirror = "http:\/\/127\.0\.0\.1:9\/tok\/0123456789abcdef\/repository\/github-proxy\/astral-sh\/python-build-standalone\/releases\/download"/);
+    assert.doesNotMatch(copy, /alice|s3cret/);
+    assert.match(carriedSummary(carried, undefined, "loopback") ?? "", /uv\.toml \(credentials kept in the server, its registries relayed\)/);
+
+    // The variables gone and no file: the copy goes too.
+    const without = userConfigsToCarry({ serverEnv: { APPDATA: roaming }, home, cacheDir: cache, sandboxAppData: win.join(cache, "appdata", "Roaming") });
+    await carryUserConfigs(without, "loopback", async () => relay);
+    assert.equal(existsSync(at), false, "no uv.toml, no UV_ variables: no copy left");
+
+    // A uv.toml file wins over the variables: the file's content is carried, not the synthesis.
+    await mkdir(win.join(roaming, "uv"), { recursive: true });
+    await writeFile(win.join(roaming, "uv", "uv.toml"), `index-url = "https://file.corp.example/simple"\n`);
+    await carryUserConfigs(carried, "loopback", async () => relay);
+    assert.match(await readFile(at, "utf8"), /index-url = "https:\/\/file\.corp\.example\/simple"/);
   });
 });

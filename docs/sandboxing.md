@@ -510,7 +510,7 @@ work, and what it costs:
 
   | Tool | Yours | Taken out |
   | --- | --- | --- |
-  | uv | `%APPDATA%\uv\uv.toml` | a `user:password@` in a URL |
+  | uv | `%APPDATA%\uv\uv.toml` — or, with no file, `UV_DEFAULT_INDEX` and `UV_PYTHON_INSTALL_MIRROR` from your environment, synthesized into the carried `uv.toml` | a `user:password@` in a URL |
   | pip | `%APPDATA%\pip\pip.ini` (named by `PIP_CONFIG_FILE`) | the same |
   | npm | `~\.npmrc` (named by `npm_config_userconfig`) | `_authToken`, `_auth`, `_password`, `password`, `username` |
   | Maven | `~\.m2\settings.xml` (named by `MAVEN_ARGS`) | `<servers>`, every `<username>`, `<password>`, `<passphrase>`, `<privateKey>` |
