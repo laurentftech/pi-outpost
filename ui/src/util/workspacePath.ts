@@ -2,6 +2,7 @@
  * Workspace-relative reference handling shared by the FileViewer (links inside
  * a viewed markdown file) and AssistantMessage (links/images in chat replies).
  */
+import { POSTER_SUFFIX } from "@pi-outpost/posters/format";
 
 /** Anything with a scheme or protocol-relative form is external, not a workspace path. */
 export function isExternalRef(url: string): boolean {
@@ -36,6 +37,11 @@ export function isImageFile(path: string): boolean {
 /** A draw.io diagram: `.drawio`, or the older `.dio`. */
 export function isDrawioFile(path: string): boolean {
   return /\.(drawio|dio)$/i.test(path);
+}
+
+/** A poster (@pi-outpost/posters): a page of its own kind, `.poster.html`. */
+export function isPosterFile(path: string): boolean {
+  return path.toLowerCase().endsWith(POSTER_SUFFIX);
 }
 
 /**

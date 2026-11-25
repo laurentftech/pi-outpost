@@ -18,7 +18,7 @@ import { HtmlPageFrame } from "./HtmlPageFrame";
 import type { LoadFile } from "../util/htmlPage";
 import { SplitDiffBlock } from "./DiffBlocks";
 import { diffLines } from "../util/diff";
-import { isDrawioFile, isExternalRef, isImageFile, isPdfFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
+import { isDrawioFile, isExternalRef, isImageFile, isPdfFile, isPosterFile, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
 import { normalizeMathDelimiters } from "../util/markdownMath";
 import { MarkdownPre } from "./Mermaid";
 import { ViewerErrorBoundary } from "./ViewerErrorBoundary";
@@ -169,9 +169,7 @@ function isHtml(path: string): boolean {
 }
 
 /** A poster (@pi-outpost/posters): a page of its own kind, opened in the poster editor. */
-export function isPoster(path: string): boolean {
-  return /\.poster\.html$/i.test(path);
-}
+export const isPoster = isPosterFile;
 
 /** Client-side hint only — the server re-checks every write against the sandbox. */
 function isWritable(path: string, writableRoot: string | null | undefined): boolean {
