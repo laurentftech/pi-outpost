@@ -20,12 +20,14 @@ import { mxcEnumerateLevel, mxcTerminalConfig, noteMxcEnumerateLevel } from "../
 const REFUSAL =
   "MXC launcher: failed to create the process security environment: CreateProcessSecurityEnvironment failed (HRESULT = 0x80070005)";
 
-// A project on L:, a tool on C:: the folders above the tool are on another drive than the root's,
-// so the policy makes them listable (`enumeratePaths`) — the layer that broke on the user's machine.
-// A granted directory on C: adds the grant ancestors, dropped at level 1.
+// A project on L:, its tools on the same drive, but the shell and a grant on C:: the folders above
+// them are on another drive than the root's, so the policy makes them listable (`enumeratePaths`) —
+// the layer that broke on the user's machine. (A tool on another drive than the root's is no longer
+// listable but readable since #572's fix: see `AToolOnAnotherDriveThanTheRootsResolves` in
+// `terminalSandbox.test.ts`.) The grant's ancestors are dropped at level 1.
 const ROOT = "L:\\Python\\isai_oper";
 const SHELL = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
-const TOOL_PATH = "C:\\Tools\\bin";
+const TOOL_PATH = "L:\\Tools\\bin";
 const GRANT = "C:\\grants\\tool-home";
 
 /** An SDK that refuses the security environment `refuseTimes` times, records every request, then runs. */
@@ -105,9 +107,9 @@ describe("the shell's MXC request when Windows refuses the security environment"
     assert.equal(output, "ran\n");
     assert.equal(requests.length, 3, "level 0, then level 1, then level 2");
     assert.ok(enumerated(requests[0]!).includes("C:\\grants"), "level 0 enumerates the grant's ancestors");
-    assert.ok(enumerated(requests[0]!).some((p) => p.startsWith("C:\\Windows")), "level 0 enumerates the tools' ancestors");
+    assert.ok(enumerated(requests[0]!).some((p) => p.startsWith("C:\\Windows")), "level 0 enumerates the shell's ancestors");
     assert.ok(!enumerated(requests[1]!).includes("C:\\grants"), "level 1 drops the grant ancestors");
-    assert.ok(enumerated(requests[1]!).some((p) => p.startsWith("C:\\Windows")), "level 1 keeps the tools' ancestors");
+    assert.ok(enumerated(requests[1]!).some((p) => p.startsWith("C:\\Windows")), "level 1 keeps the shell's ancestors");
     assert.deepEqual(enumerated(requests[2]!), [], "level 2 asks for no enumeration");
     // The sibling denies — the confinement — are still there, and the writable zone too.
     assert.ok((requests[2]!.filesystem.deniedPaths ?? []).length > 0, "the agent directory and the configuration stay denied");
@@ -134,7 +136,7 @@ describe("the shell's MXC request when Windows refuses the security environment"
     const { exitCode } = await exec(sdk);
     assert.equal(exitCode, 0);
     assert.equal(requests.length, 2, "level 0 refused, level 1 ran");
-    assert.ok(enumerated(requests[1]!).length > 0, "level 1 still enumerates the tools' ancestors");
+    assert.ok(enumerated(requests[1]!).length > 0, "level 1 still enumerates the shell's ancestors");
     assert.ok(!enumerated(requests[1]!).includes("C:\\grants"), "level 1 dropped the grant ancestors");
     assert.equal(mxcEnumerateLevel(), 1);
     const later = mxcTerminalConfig({
@@ -150,12 +152,12 @@ describe("the shell's MXC request when Windows refuses the security environment"
       grantedRead: [GRANT],
     });
     const paths = later.processContainer?.filesystem?.enumeratePaths ?? [];
-    assert.ok(paths.some((p) => p.startsWith("C:\\Windows")), "a later policy keeps the tools' enumeration");
+    assert.ok(paths.some((p) => p.startsWith("C:\\Windows")), "a later policy keeps the shell's enumeration");
     assert.ok(!paths.includes("C:\\grants"), "and not the grant ancestors");
   });
 
   test("a refusal with nothing enumerated is not replayed: the error is the command's", async () => {
-    // The root on the tool's drive: nothing is made listable, so the refusal is not the layer's.
+    // The shell and the root share C:, the tools are on L: (readable since #572): nothing is made listable, so the refusal is not the layer's.
     const { sdk, requests } = refusingSdk();
     const ops = confinedBashOperations({
       runner: "C:\\mxc\\wxc-exec.exe",
