@@ -1367,9 +1367,8 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     toolKeys.add(key);
     tools.push(target);
   }
-  const readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? []), ...(input.readOnlyInside ?? [])].filter((p) => !readwritePaths.includes(p)));
-  const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
-  const enumeratePaths = !(input.enumerateAncestors ?? mxcEnumerates)
+  let readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? []), ...(input.readOnlyInside ?? [])].filter((p) => !readwritePaths.includes(p)));
+  let enumeratePaths = !(input.enumerateAncestors ?? mxcEnumerates)
     ? []
     // What a command opens beside the root by path: the search path's tools and — at level 0 — the
     // grants. Not the temporary directory, under a profile of hundreds of entries each to deny, nor
@@ -1386,6 +1385,19 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
           ...(input.home ? { home: input.home } : {}),
         },
       );
+  // A tool on another drive than the root's (scoop on a second disk, issue #572): the way down to
+  // it — its drive's root and every folder above it — must be readable, not merely enumerable.
+  // The root's own drive is readable whole, which is why a tool on it always resolved; on another
+  // drive nothing opened through enumerated ancestors alone: `Get-Command node` found nothing and
+  // even a full-path open was refused. Readable shows the folders' names, as enumeration would;
+  // their other contents stay denied, the files beside the way are not in any allow.
+  const foreignDrives = new Set(tools.map((p) => path.win32.parse(p).root.toLowerCase()).filter((d) => d !== drive.toLowerCase()));
+  if (foreignDrives.size > 0) {
+    const onForeign = (p: string) => foreignDrives.has(path.win32.parse(p).root.toLowerCase());
+    readonlyPaths = unique([...readonlyPaths, ...enumeratePaths.filter(onForeign), ...foreignDrives]);
+    enumeratePaths = enumeratePaths.filter((p) => !onForeign(p));
+  }
+  const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const enumerated = new Set(enumeratePaths.map((p) => p.toLowerCase()));
   // MXC enumerates a folder's whole subtree: what is beside the way down is denied by name in
   // each, as the siblings of the path to the root are, so a listing shows those names alone.
@@ -1485,10 +1497,17 @@ export function ancestorsToEnumerate(
     if (!win.isAbsolute(entry)) continue;
     const drive = lower(win.parse(entry).root);
     let dir = win.dirname(entry.replace(/[\\/]+$/, ""));
-    while (lower(dir) !== drive && lower(dir) !== lower(win.dirname(dir))) {
+    for (;;) {
       const key = lower(dir);
       if (seen.has(key)) break; // Its own ancestors are already decided.
       seen.add(key);
+      // The root of another drive than the root's (a partition gets its own letter, as a second
+      // disk does): the walk reaches it, and `mxcTerminalConfig` makes the way down on that drive
+      // readable — nothing on it opens without traversing its root (issue #572).
+      if (key === drive) {
+        if (drive !== rootDrive && !covered(key) && !secrets.some((secret) => under(key, secret))) found.push(dir);
+        break;
+      }
       // A link on the way down is not enumerated (see above); the walk goes on above it.
       if (guard.linkTarget !== undefined && guard.linkTarget(dir) !== undefined) {
         dir = win.dirname(dir);
