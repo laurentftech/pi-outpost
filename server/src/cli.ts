@@ -63,6 +63,10 @@ Usage
   pi-outpost config --unconfine  where this machine cannot confine the shell: set "sandbox.bashRunner": "none",
                                  so the agent's commands run unconfined, with every right of your account
   pi-outpost doctor [options]    check whether this installation can start and serve, and say what stops it
+  pi-outpost sandbox doctor [--json]
+                                 snapshot of the agent sandbox's state: active backend/tier, policy by
+                                 class, link/junction table, dropped env names, relays and seeds, probe
+                                 battery, last recorded refusals — paste-safe (no values, no secrets)
   pi-outpost login --provider <name>
                                  sign in to a provider, or store an API key
   pi-outpost logout --provider <name>
@@ -183,7 +187,9 @@ Agent runtime
 export class CliError extends Error {}
 
 export interface ParsedCli {
-  command: "serve" | "print" | "init" | "config" | "doctor" | "login" | "logout" | "build-exe" | "update" | "help" | "version";
+  command: "serve" | "print" | "init" | "config" | "doctor" | "sandbox" | "login" | "logout" | "build-exe" | "update" | "help" | "version";
+  /** `pi-outpost sandbox doctor`: the word after the command. */
+  subcommand?: string;
   flags: CliOptions;
   /** `-p`: one turn, its answer on stdout. `prompt` is `-` for stdin. */
   print: { prompt?: string; json: boolean; grants: PrintGrants; model?: string };
@@ -202,8 +208,8 @@ export interface ParsedCli {
 export type PrintGrants = "refuse" | "once" | "session";
 const PRINT_GRANTS: readonly string[] = ["refuse", "once", "session"] satisfies PrintGrants[];
 
-type Command = "init" | "config" | "doctor" | "login" | "logout" | "build-exe" | "update";
-const COMMANDS: readonly string[] = ["init", "config", "doctor", "login", "logout", "build-exe", "update"] satisfies Command[];
+type Command = "init" | "config" | "doctor" | "sandbox" | "login" | "logout" | "build-exe" | "update";
+const COMMANDS: readonly string[] = ["init", "config", "doctor", "sandbox", "login", "logout", "build-exe", "update"] satisfies Command[];
 
 function integerFlag(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -259,7 +265,12 @@ export function parseCli(argv: string[]): ParsedCli {
 
   const { values, positionals } = parsed;
   const [positional, ...rest] = positionals;
-  if (rest.length > 0) throw new CliError(`unexpected argument "${rest[0]}" — see "pi-outpost --help"`);
+  // `sandbox` takes exactly one subcommand today: `pi-outpost sandbox doctor`.
+  const subcommand = positional === "sandbox" ? rest[0] : undefined;
+  if (positional === "sandbox" && (rest.length !== 1 || rest[0] !== "doctor")) {
+    throw new CliError('"sandbox" takes one subcommand: "pi-outpost sandbox doctor" — see "pi-outpost --help"');
+  }
+  if (rest.length > (positional === "sandbox" ? 1 : 0)) throw new CliError(`unexpected argument "${rest[positional === "sandbox" ? 1 : 0]}" — see "pi-outpost --help"`);
   if (positional !== undefined && !COMMANDS.includes(positional)) {
     throw new CliError(`unknown command "${positional}" — see "pi-outpost --help"`);
   }
@@ -300,8 +311,9 @@ export function parseCli(argv: string[]): ParsedCli {
   if (printing && command !== undefined) throw new CliError(`"-p" runs a prompt, not "pi-outpost ${command}" — see "pi-outpost --help"`);
   if (printing && values.print!.trim() === "") throw new CliError('"-p" needs a prompt, or "-" to read it from stdin — see "pi-outpost --help"');
   for (const flag of ["json", "grants", "model"] as const) {
-    if (!printing && (flag === "json" ? values.json : values[flag] !== undefined)) {
-      throw new CliError(`"--${flag}" belongs to "pi-outpost -p" — see "pi-outpost --help"`);
+    const allowed = printing || (flag === "json" && command === "sandbox");
+    if (!allowed && (flag === "json" ? values.json : values[flag] !== undefined)) {
+      throw new CliError(`"--${flag}" belongs to ${flag === "json" ? '"pi-outpost -p" or "pi-outpost sandbox doctor"' : '"pi-outpost -p"'} — see "pi-outpost --help"`);
     }
   }
   if (values.grants !== undefined && !PRINT_GRANTS.includes(values.grants)) {
@@ -341,6 +353,7 @@ export function parseCli(argv: string[]): ParsedCli {
   const kind = values.help ? "help" : values.version ? "version" : printing ? "print" : (command ?? "serve");
   return {
     command: kind,
+    ...(subcommand !== undefined ? { subcommand } : {}),
     flags,
     print: { ...(printing ? { prompt: values.print } : {}), json: values.json, grants: (values.grants ?? "refuse") as PrintGrants, ...(values.model ? { model: values.model } : {}) },
     init: { global: values.global, force: values.force },

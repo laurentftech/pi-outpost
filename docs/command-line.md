@@ -19,6 +19,10 @@ pi-outpost config --unconfine where this machine cannot confine the shell: set "
                               "none", so the agent's commands run unconfined, with every right of
                               your account (see sandboxing.md#older-windows)
 pi-outpost doctor [options]   check whether this installation can start and serve, and say what stops it
+pi-outpost sandbox doctor [--json]
+                              snapshot of the agent sandbox's state: active backend/tier, policy by
+                              class, dropped environment variable names, relays, probes, last refusals
+                              (see sandboxing.md#seeing-the-sandboxs-own-state-pi-outpost-sandbox-doctor)
 pi-outpost login --provider <name>
                               run account sign-in, or store an API key
 pi-outpost logout --provider <name>
@@ -52,7 +56,7 @@ pi-outpost update --extensions [--check]
 | `update --extensions` | Update the agent's npm pi packages instead of pi-outpost |
 | `update --all` | Update pi-outpost, then those packages |
 | `-p, --print <prompt>` | Run one turn and exit: see [`pi-outpost -p`](#pi-outpost--p). `-` reads the prompt from stdin |
-| `--json` | With `-p`: every event of the turn, one JSON line each, instead of the text |
+| `--json` | With `-p`: every event of the turn, one JSON line each, instead of the text; with `sandbox doctor`: the snapshot as one JSON object |
 | `--grants <answer>` | With `-p`: `refuse` (default), `once` or `session` — the answer to a grant request |
 | `--model <provider/id>` | With `-p`: the model for the turn |
 
@@ -108,6 +112,18 @@ problem:
 It exits non-zero when something would stop the server from serving, so it can gate a
 script. Unlike `config`, it never needs a configuration file to run — that absence is
 one of the things it is there to report.
+
+### `pi-outpost sandbox doctor`
+
+The sandbox's own state, in one paste-safe snapshot — to tell a policy decision from an
+environment problem when a confined command misbehaves. Identity first (version, OS/arch,
+the configured runner, and under MXC on Windows the enumeration level the host proved),
+then the policy by class with each denial's reason class, the link/junction resolution
+table, the network policy, the environment variables the confinement drops as names grouped
+by prefix (never values), the running relays and carried config seeds, a probe battery
+whose results each name the responsible layer, and the project's last recorded refusals.
+`--json` prints the same snapshot as one JSON object. See
+[docs/sandboxing.md](sandboxing.md#seeing-the-sandboxs-own-state-pi-outpost-sandbox-doctor).
 
 **The most common cause of "the page does not connect", in a directory you have not
 used before**: there is no configuration file, so the server prints the paths it

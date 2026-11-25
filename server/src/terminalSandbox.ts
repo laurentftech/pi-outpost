@@ -2137,6 +2137,14 @@ export function signingRelayRunnable(gitConfig: string, serverEnv: NodeJS.Proces
 
 const sharedSigningRelays = new Map<string, Promise<string | undefined>>();
 
+/** The shim of a signing relay that actually started, for diagnostics (`sandboxDoctor.ts`). Read-only. */
+let startedSigningShim: string | undefined;
+
+/** The signing relay's shim path when one is running, else undefined. Never starts one. */
+export function activeSigningShim(): string | undefined {
+  return startedSigningShim;
+}
+
 /**
  * The signing relay's shim for a confined shell under MXC's process container on Windows, when the
  * user's gitconfig asks for signed commits, gpg is on the server's search path, the relay's signer
@@ -2166,7 +2174,10 @@ export function signingShimFor(options: {
       gitConfig !== undefined &&
       gitSigningKeysEnabled(gitConfig).length > 0 &&
       signingRelayRunnable(gitConfig, serverEnv, platform)
-        ? startSigningRelay({ cacheDir: options.cacheDir, serverEnv, program: gitGpgProgram(gitConfig) }).then((relay) => relay.shim)
+        ? startSigningRelay({ cacheDir: options.cacheDir, serverEnv, program: gitGpgProgram(gitConfig) }).then((relay) => {
+            startedSigningShim = relay.shim;
+            return relay.shim;
+          })
         : Promise.resolve(undefined);
     sharedSigningRelays.set(key, shim);
   }

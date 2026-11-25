@@ -171,6 +171,8 @@ describe("createSandboxedTools", () => {
         "pptx_layouts",
         "pptx_render",
         "read",
+        // The sandbox's own state, read-only, no path: not a file tool, so not in the read confinement below
+        "sandbox_doctor",
         "write_structure_figure",
         "write_structure_table",
         "xlsx_extract",
@@ -204,6 +206,7 @@ describe("createSandboxedTools", () => {
         "pptx_render",
         "pptx_update",
         "read",
+        "sandbox_doctor",
         "write",
         "write_structure_figure",
         "write_structure_table",
@@ -263,6 +266,7 @@ describe("createSandboxedTools", () => {
     test("confines every read tool, not just the first", async () => {
       const tools = await createSandboxedTools(config({ root }));
       for (const tool of tools) {
+        if (tool.name === "sandbox_doctor") continue; // takes no path: nothing to confine
         assert.match((await denial(tool, "../outside/secret.txt")) ?? "", /outside the sandbox/, `${tool.name} must refuse`);
       }
     });
