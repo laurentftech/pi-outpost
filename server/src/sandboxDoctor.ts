@@ -305,8 +305,7 @@ const PROBE_TOOLS = ["node", "npm", "python", "uv", "git"] as const;
  * found-but-denied), a scratch write in the root, the full-path vs by-name asymmetry (the #572 symptom),
  * and relay reachability. Skipped with the reason when no runner can confine here.
  */
-export async function runDoctorProbes(input: { sandbox: SandboxConfig | undefined; cwd: string; agentDir?: string; configFile?: string; serverEnv?: NodeJS.ProcessEnv }): Promise<ProbeResult[]> {
-  const serverEnv = input.serverEnv ?? process.env;
+export async function runDoctorProbes(input: { sandbox: SandboxConfig | undefined; cwd: string; agentDir?: string; configFile?: string }): Promise<ProbeResult[]> {
   const platform = process.platform;
   if (!input.sandbox?.bashRunner) return [{ name: "probes", status: "skipped", layer: "policy", detail: "no sandbox runner is configured for this project" }];
   let ops;
