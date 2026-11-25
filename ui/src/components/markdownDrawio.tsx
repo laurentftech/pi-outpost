@@ -19,7 +19,7 @@ export function workspaceDrawioPath(src: string, currentPath = ""): string {
 
 type MarkdownNode = NonNullable<ExtraProps["node"]>;
 
-function containsDiagram(node: MarkdownNode): boolean {
+export function containsDiagram(node: MarkdownNode): boolean {
   return (node.tagName === "img" && isWorkspaceDrawio(node.properties.src))
     || node.children.some((child) => child.type === "element" && containsDiagram(child));
 }

@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ComponentProps } from "react";
 import { ReplyMarkdownPre } from "./ReplyStructuredExchange";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type ExtraProps } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
@@ -12,7 +12,9 @@ import type { ChatItem } from "@pi-outpost/shared";
 import { normalizeMathDelimiters } from "../util/markdownMath";
 import { isExternalRef, rawFileUrl, resolveRelativeHref } from "../util/workspacePath";
 import { DrawioBlock } from "./DrawioBlock";
-import { DrawioMarkdownParagraph, isWorkspaceDrawio, workspaceDrawioPath } from "./markdownDrawio";
+import { containsDiagram, isWorkspaceDrawio, workspaceDrawioPath } from "./markdownDrawio";
+import { containsPoster, isWorkspacePoster, workspacePosterPath } from "./markdownPoster";
+import { PosterBlock } from "./PosterBlock";
 import { CopyButton } from "./CopyButton";
 
 type AttributeSchema = NonNullable<Schema["attributes"]>;
@@ -149,6 +151,11 @@ export function AssistantMessage({ item, serverUrl = "", token = null, workspace
         const path = workspaceDrawioPath(src);
         return <DrawioBlock key={path} path={path} variant="reply" />;
       }
+      // A workspace poster referenced as a picture is shown read-only in place, not fetched as an image
+      if (isWorkspacePoster(src)) {
+        const path = workspacePosterPath(src);
+        return <PosterBlock key={path} path={path} serverUrl={serverUrl} token={token} workspace={workspace} onOpenFile={onOpenFileRef.current} />;
+      }
       const resolved =
         typeof src === "string" && src !== "" && !isExternalRef(src)
           ? rawFileUrl(serverUrl, resolveRelativeHref("", src), token, undefined, workspace)
@@ -179,7 +186,12 @@ export function AssistantMessage({ item, serverUrl = "", token = null, workspace
       );
     }
 
-    return { pre: ReplyMarkdownPre, img: MarkdownImg, a: MarkdownLink, p: DrawioMarkdownParagraph };
+    // Diagram and poster controls are blocks, including when the Markdown mixes them with prose
+    function ReplyParagraph({ node, children, ...rest }: ComponentProps<"p"> & ExtraProps) {
+      return node && (containsDiagram(node) || containsPoster(node)) ? <div {...rest}>{children}</div> : <p {...rest}>{children}</p>;
+    }
+
+    return { pre: ReplyMarkdownPre, img: MarkdownImg, a: MarkdownLink, p: ReplyParagraph };
   }, [serverUrl, token, workspace]);
 
   // Nothing left to draw — a filtered-away message must not leave an empty frame

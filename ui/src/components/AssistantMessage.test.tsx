@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { ChatItem } from "@pi-outpost/shared";
+import { pageOf } from "@pi-outpost/posters/format";
+import { POSTER_EXAMPLE } from "@pi-outpost/posters/guide";
 import { AssistantMessage, chatHtmlSchema } from "./AssistantMessage";
 import { DrawioFilesContext } from "./drawioFiles";
 
@@ -468,6 +470,43 @@ describe("a .drawio file referenced as a picture", () => {
   it("leaves other pictures, and a .drawio on another site, as pictures", () => {
     withFiles("![logo](./logo.png) ![remote](https://example.com/a.drawio)");
     expect(screen.queryByTestId("drawio-block-reply")).toBeNull();
+    expect(document.querySelectorAll("img")).toHaveLength(2);
+  });
+});
+
+describe("a .poster.html file referenced as a picture", () => {
+  function withPoster(text: string) {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => pageOf("Class rules", { html: POSTER_EXAMPLE.html, css: POSTER_EXAMPLE.css, format: POSTER_EXAMPLE.format }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AssistantMessage item={item({ blocks: [{ type: "text", text }] })} serverUrl="" token={null} workspace="proj" onOpenFile={vi.fn()} />);
+    return { fetchMock };
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  // openlore: scenario=APosterReferencedAsAPictureIsShownInTheReply spec=poster-files
+  it("APosterReferencedAsAPictureIsShownInTheReply: is shown read-only in place of a picture, as a block of its own", async () => {
+    const { fetchMock } = withPoster("Here it is:\n\n![rules](./posters/Class%20rules.poster.html)\n\nDone.");
+    const block = await screen.findByTestId("poster-block-reply");
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("path=posters%2FClass%20rules.poster.html"));
+    expect(document.querySelector("img")).toBeNull();
+    // Not inside a <p>: an iframe in a paragraph is not valid HTML
+    expect(block.closest("p")).toBeNull();
+    expect(screen.getByText("Done.").tagName).toBe("P");
+    const frame = block.querySelector("iframe");
+    expect(frame).not.toBeNull();
+    // Sandboxed: no scripts (a poster holds none), opaque origin — the page cannot reach the host page
+    expect(frame?.getAttribute("sandbox")).toBe("");
+    const srcdoc = frame?.getAttribute("srcdoc") ?? (frame as unknown as { srcDoc?: string } | null)?.srcDoc ?? "";
+    expect(srcdoc).toContain(POSTER_EXAMPLE.html.trim().slice(0, 60));
+  });
+
+  it("leaves other pictures, and a poster on another site, as pictures", () => {
+    withPoster("![logo](./logo.png) ![remote](https://example.com/rules.poster.html)");
+    expect(screen.queryByTestId("poster-block-reply")).toBeNull();
     expect(document.querySelectorAll("img")).toHaveLength(2);
   });
 });
