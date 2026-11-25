@@ -465,8 +465,13 @@ so the agent does not take it for a network failure and retry:
 [pi-outpost] the sandbox refused nexus.corp.example (10.0.0.20): it is on this machine's private network (the intranet), which is closed unless the user sets sandbox.privateNetwork to true. It is not a network failure, and retrying will not help. Only the user can open it: if the task needs it, tell them.
 ```
 
-Where no host can be told but the error is the sandbox's (Windows' own sentence for it, in your language),
-the note says so without a host. A refused connection never offers a file diagnosis.
+Where no host can be told but the output shows a refused connection (Windows' own sentence for
+WSAEACCES, in your language), the note says so without a host — and it does not claim the Internet is
+open: without `sandbox.allowedHosts` the sandbox does not restrict outbound connections, so whether
+the Internet answers at all is the machine's network, not the sandbox's, and on an air-gapped machine
+the same WSAEACCES comes from the machine's own firewall. The note names the only addresses the
+sandbox closes (the private network, the machine's own services) and says retrying will not help.
+A refused connection never offers a file diagnosis.
 
 Under `sandbox.allowedHosts` the key changes nothing: the proxy is the only way out, and it reaches an
 intranet host you list by name. A command cannot reach the private network around it, even with
