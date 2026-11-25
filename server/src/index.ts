@@ -143,6 +143,7 @@ import {
   terminalUnavailableNotice,
   webDistCandidatesFor,
 } from "./doctor.ts";
+import { setDoctorVersion } from "./sandboxDoctor.ts";
 import { listServerDirectories, ServerDirectoryError } from "./serverDirectories.ts";
 import {
   CredentialError,
@@ -258,6 +259,8 @@ import { recordRunningVersion } from "./changelog.ts";
 // Replaced at bundle time; `typeof` on an undeclared name is safe, so a source run says "dev".
 declare const __PI_OUTPOST_VERSION__: string;
 const VERSION = typeof __PI_OUTPOST_VERSION__ === "string" ? __PI_OUTPOST_VERSION__ : "dev";
+// The sandbox doctor's snapshot names the version; the bundle's substitution happens here.
+setDoctorVersion(VERSION);
 // CHANGELOG.md, inlined the same way so the npm package and the executables both carry it.
 declare const __PI_OUTPOST_CHANGELOG__: string;
 const CHANGELOG = typeof __PI_OUTPOST_CHANGELOG__ === "string" ? __PI_OUTPOST_CHANGELOG__ : "";
@@ -291,8 +294,9 @@ const cli = await (async () => {
   }
 })();
 
-// Print mode keeps stdout for the answer alone: every line the server writes goes to stderr.
-if (cli.command === "print") {
+// Print mode keeps stdout for the answer alone, and `sandbox doctor` for its snapshot alone
+// (parseable with --json): every line the server writes goes to stderr.
+if (cli.command === "print" || cli.command === "sandbox") {
   const toStderr = (...args: unknown[]) => console.error(...args);
   console.log = toStderr;
   console.info = toStderr;
@@ -634,6 +638,25 @@ if (cli.command === "print") {
 const PORT = config.port;
 const HOST = config.host;
 const AGENT_DIR = config.agentDir ?? getAgentDir();
+
+// `pi-outpost sandbox doctor`: the sandbox's own state as a paste-safe snapshot, and out. Runs after
+// the configuration is loaded — like `config`, it reports the configuration, so it needs one — and
+// before the server starts: it is a diagnostic, not a service.
+if (cli.command === "sandbox") {
+  const { collectSandboxSnapshot, renderSnapshot, runDoctorProbes } = await import("./sandboxDoctor.ts");
+  const probes = await runDoctorProbes({ sandbox: config.sandbox, cwd: LAUNCH_DIR, agentDir: AGENT_DIR, configFile: config.configFile });
+  const snapshot = await collectSandboxSnapshot({
+    version: VERSION,
+    cwd: LAUNCH_DIR,
+    sandbox: config.sandbox,
+    agentDir: AGENT_DIR,
+    configFile: config.configFile,
+    probes,
+  });
+  process.stdout.write(renderSnapshot(snapshot, { json: cli.print.json }));
+  process.exit(0);
+}
+
 // Every connection presents a token, on the loopback too (see serverToken.ts). Generated
 // after loadConfig, so a generated one never satisfies requireTokenOffLoopback.
 /** The operator chose the token: a deployment that may sit behind a reverse proxy (see hostAllowed). */

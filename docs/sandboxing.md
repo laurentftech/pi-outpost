@@ -952,6 +952,24 @@ is readable); provider keys, `PI_OUTPOST_TOKEN` or any other key, token, secret 
 lock turns amber, naming them. Keep provider keys in the agent directory rather than in the server's
 environment; MXC's Linux runner hides the server's processes entirely.
 
+### Seeing the sandbox's own state: `pi-outpost sandbox doctor`
+
+When a command misbehaves, the first question is whether it is a policy decision or an environment
+problem. `pi-outpost sandbox doctor` (run on the host, in the project) prints one snapshot of the
+sandbox's state: the active backend and, under MXC on Windows, the enumeration level the host proved;
+the policy by class (read-write, read-only, denied with each denial's reason class, enumerable); the
+link/junction resolution table; the network policy; the environment variables the confinement drops,
+as **names** grouped by prefix, never values; the running relays (registry, signing) and the carried
+config seeds; a probe battery (PATH resolution of the common tools, a scratch write, the full-path vs
+by-name asymmetry) whose results each name the responsible layer; and the last recorded refusals from
+the project's rules store. `--json` prints the same snapshot as one JSON object. The output is
+paste-safe by construction: no environment values, no credentials, no file contents, so it can be
+pasted into an issue.
+
+Inside a confined session, the agent has the read-only `sandbox_doctor` tool: the same snapshot,
+bounded in size, without the probe battery — enough to tell a refusal from a missing tool without
+leaving the sandbox.
+
 ## Alternative: hand bash to an extension
 
 `sandbox.bashFrom` hands `bash` to a sandboxing extension such as

@@ -68,6 +68,7 @@ import { autoShellRefusal, autoUnavailableRefusal, sharedShellVerdict } from "./
 import { sharedEgressProxy } from "./egressProxy.ts";
 import type { SandboxGrantBroker } from "./sandboxGrantBroker.ts";
 import { createRunWithGrantToolDefinition } from "./sandboxGrantTool.ts";
+import { createSandboxDoctorToolDefinition } from "./sandboxDoctor.ts";
 import { checkGrantRequest, EMPTY_GRANT, hostGrantsRefusal, mergeGrants, type Grant, type GrantContext } from "./sandboxGrants.ts";
 import type { Refusal } from "./sandboxRefusals.ts";
 import { hostDecision, type SandboxRulesStore } from "./sandboxRules.ts";
@@ -524,6 +525,9 @@ export async function createSandboxedTools(
       });
     }
   }
+  // The diagnostic surface (issue #573): the agent can read the sandbox's own state, bounded and
+  // paste-safe, instead of inferring policy decisions from side effects.
+  tools.push(createSandboxDoctorToolDefinition(sandbox, realRoot, neverReadable));
   return tools;
 }
 
