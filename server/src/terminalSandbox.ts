@@ -847,6 +847,8 @@ export interface CarriedConfig {
   name: "uv.toml" | "pip.ini" | ".npmrc" | "settings.xml" | "gradle.properties" | "config.toml" | "go env" | "NuGet.Config";
   from: string;
   to: string;
+  /** Carried when `from` does not exist: a uv.toml synthesized from the `UV_*` environment variables. */
+  synthesized?: string;
 }
 
 /** The first line of every copy: what it is, and that the original is the one to edit. */
@@ -876,10 +878,24 @@ export function userConfigsToCarry(input: {
   const env = input.serverEnv;
   const roaming = env.APPDATA || (input.home ? win.join(input.home, "AppData", "Roaming") : undefined);
   const inHome = (...parts: string[]) => (input.home ? win.join(input.home, ...parts) : undefined);
-  const config = (name: CarriedConfig["name"], from: string | undefined, to: string | undefined): CarriedConfig[] => (from && to ? [{ name, from, to }] : []);
+  const config = (name: CarriedConfig["name"], from: string | undefined, to: string | undefined, synthesized?: string): CarriedConfig[] =>
+    from && to ? [{ name, from, to, ...(synthesized === undefined ? {} : { synthesized }) }] : [];
   const userConfig = (file: string) => win.join(input.cacheDir, "user-config", file);
+  // uv's configuration often rides in the environment (HKCU\Environment: UV_DEFAULT_INDEX,
+  // UV_PYTHON_INSTALL_MIRROR) rather than a uv.toml file: with no file, those become the carried
+  // one — its registry URLs go through the relay like any carried file's, credentials kept in
+  // the server (throughRelay rewrites a user:pass@ URL wherever it stands, uv's indexes included).
+  const uvFromEnv = [
+    env.UV_DEFAULT_INDEX ? `default-index = "${env.UV_DEFAULT_INDEX}"` : undefined,
+    env.UV_PYTHON_INSTALL_MIRROR ? `python-install-mirror = "${env.UV_PYTHON_INSTALL_MIRROR}"` : undefined,
+  ].filter((line): line is string => line !== undefined);
   return [
-    ...config("uv.toml", roaming && win.join(roaming, "uv", "uv.toml"), win.join(input.sandboxAppData, "uv", "uv.toml")),
+    ...config(
+      "uv.toml",
+      roaming && win.join(roaming, "uv", "uv.toml"),
+      win.join(input.sandboxAppData, "uv", "uv.toml"),
+      uvFromEnv.length === 0 ? undefined : `${uvFromEnv.join("\n")}\n`,
+    ),
     // pip asks Windows for the roaming folder rather than reading APPDATA: told where its copy is.
     ...config("pip.ini", roaming && win.join(roaming, "pip", "pip.ini"), userConfig("pip.ini")),
     ...config(".npmrc", env.npm_config_userconfig || env.NPM_CONFIG_USERCONFIG || inHome(".npmrc"), userConfig("npmrc")),
@@ -1110,7 +1126,7 @@ export async function carryUserConfigs(carried: readonly CarriedConfig[], route?
     try {
       const existing = await fsp.readFile(config.to, "utf8").catch(() => undefined);
       const ours = existing === undefined || existing.startsWith(CARRIED_MARK) || existing.startsWith(CARRIED_XML_MARK);
-      const source = await fsp.readFile(config.from, "utf8").catch(() => undefined);
+      const source = (await fsp.readFile(config.from, "utf8").catch(() => undefined)) ?? config.synthesized;
       if (source === undefined) {
         if (existing !== undefined && ours) await fsp.rm(config.to, { force: true });
         continue;
@@ -1138,7 +1154,7 @@ export async function carryUserConfigs(carried: readonly CarriedConfig[], route?
 /** For the startup line: which configurations are carried in, and which lose their credentials. */
 export function carriedSummary(carried: readonly CarriedConfig[], read: (file: string) => string | undefined = diskReader.readText, route?: RelayRoute): string | undefined {
   const present = carried.flatMap((config) => {
-    const text = read(config.from);
+    const text = read(config.from) ?? config.synthesized;
     if (text === undefined) return [];
     if (!withoutCredentials(text, config.name).leftOut) return [config.name];
     // Whether its registries would go through the relay: a stand-in relay that names every one.
