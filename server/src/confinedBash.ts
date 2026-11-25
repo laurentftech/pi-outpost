@@ -78,6 +78,8 @@ export interface ConfinedBashOptions {
   configFile?: string;
   /** The user's git configuration, read-only inside: git's identity (see `userGitConfig`). */
   gitConfig?: string;
+  /** The signing relay's shim (`signingRelay.ts`), when it runs: `gpg.program` points at it. */
+  signingShim?: string;
   /**
    * `sandbox.allowedHosts`' proxy (`egressProxy.ts`): under MXC, Seatbelt, or landstrip on Linux. The
    * hosts it refuses while a command runs are named after the command's output.
@@ -597,6 +599,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
         shell,
         platform,
         gitConfig: options.gitConfig,
+        signingShim: options.signingShim,
         // MXC derives the container's TEMP from it (see confinedEnvironment); WSLC is a Linux container.
         containerProfileInTmp: kind === "mxc" && !wslc && !isPosixMxc(options.runner),
         // Under sandbox.allowedHosts the server's proxy is the only way out: the user's would bypass

@@ -394,8 +394,17 @@ MXC for no clipboard and no input injection. Limits:
   in its probe.
 - A folder readable but not writable can be neither listed nor entered: leave the whole root writable
   (no narrower `writableRoot`) where git runs.
-- `git push` has no credentials, and signed commits fail: GnuPG for Windows is built without ASLR, which
-  the sandbox enforces.
+- `git push` has no credentials. Commits are signed through the server when your `~/.gitconfig`
+  asks for them (`commit.gpgsign`/`tag.gpgsign`): GnuPG for Windows is built without ASLR, which the
+  sandbox enforces, so it cannot run inside, and the private keys stay out of it anyway — instead the
+  shell's `gpg.program` points at a shim that POSTs the payload to pi-outpost's signing relay on this
+  machine, and the server signs with your key, unconfined. Only payloads go in and only signatures come
+  back; `~/.gnupg` is refused to commands. Sign only: verification (`git log --show-signature`) is
+  refused in the sandbox — verify from the app or outside it. This needs gpg (or the `gpg.program` your
+  gitconfig names) on this machine, OpenPGP (`gpg.format=ssh` is not relayed), and the loopback open.
+  Where any of those is missing, the shell's environment turns `commit.gpgsign`/`tag.gpgsign` off (env
+  entries win over the file) instead of failing every commit, and the startup line says so — re-sign
+  outside the sandbox (`git commit --amend --no-edit -S`, or from the app, which runs git unconfined).
 - The confined terminal's PowerShell starts with `-ExecutionPolicy RemoteSigned` and progress bars off;
   give both yourself to a shell you name in `terminal.shell`.
 

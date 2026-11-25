@@ -71,7 +71,7 @@ import { createRunWithGrantToolDefinition } from "./sandboxGrantTool.ts";
 import { checkGrantRequest, EMPTY_GRANT, hostGrantsRefusal, mergeGrants, type Grant, type GrantContext } from "./sandboxGrants.ts";
 import type { Refusal } from "./sandboxRefusals.ts";
 import { hostDecision, type SandboxRulesStore } from "./sandboxRules.ts";
-import { carriedSummary, defaultSandboxCache, isPosixMxc, proxyCredentialsLeftOut, runnerKind, userGitConfig, windowsToolchains, type WindowsToolchains } from "./terminalSandbox.ts";
+import { carriedSummary, defaultSandboxCache, gitSigningKeysEnabled, isPosixMxc, proxyCredentialsLeftOut, runnerKind, signingRelayRunnable, signingShimFor, userGitConfig, windowsToolchains, type WindowsToolchains } from "./terminalSandbox.ts";
 import type { RelayRoute } from "./registryRelay.ts";
 
 /**
@@ -632,6 +632,11 @@ export async function agentBashOptions(
   if (!sandbox.bashRunner) throw new Error("the agent's shell has no sandbox runner");
   const realRoot = await fs.realpath(sandbox.root);
   const realWritableRoot = !sandbox.allowWrite ? null : sandbox.writableRoot ? await fs.realpath(sandbox.writableRoot) : realRoot;
+  // Under MXC's process container on Windows, signed commits go through the server's signing relay
+  // (the key stays out of the sandbox): start it once and point the shell's gpg.program at its shim.
+  const signingShim = onWindowsMxcProcessContainer(sandbox, process.platform)
+    ? await signingShimFor({ cacheDir: sandbox.cacheDir ?? defaultSandboxCache(), gitConfig: userGitConfig(), serverEnv: process.env, loopbackOpen: sandbox.hostLoopback !== false })
+    : undefined;
   return {
     runner: sandbox.bashRunner,
     shell: sandbox.bashShell,
@@ -642,6 +647,7 @@ export async function agentBashOptions(
     ...neverReadable,
     // git's identity: the user's ~/.gitconfig, readable on its own.
     gitConfig: userGitConfig(),
+    ...(signingShim === undefined ? {} : { signingShim }),
     ...(sandbox.allowedHosts === undefined ? {} : { networkProxy: await sharedEgressProxy(sandbox.allowedHosts), allowedHosts: sandbox.allowedHosts }),
     ...(sandbox.hostLoopback === undefined ? {} : { hostLoopback: sandbox.hostLoopback }),
     ...(sandbox.privateNetwork === undefined ? {} : { privateNetwork: sandbox.privateNetwork }),
@@ -724,6 +730,21 @@ export function networkSummary(
     // The user's uv.toml, pip.ini and .npmrc as commands see them: carried in, without credentials.
     const carried = carriedSummary(windowsToolchains({ cacheDir: sandbox.cacheDir ?? defaultSandboxCache(), serverEnv, home: serverEnv.USERPROFILE }).carried ?? [], undefined, relayRouteFor(sandbox));
     if (carried) parts.push(carried);
+    // Signing cannot run in the container (GnuPG for Windows lacks ASLR, which it enforces): where
+    // the user's gitconfig asks for it, the shell signs through the server's relay when that can run
+    // (gpg on the host, loopback open, OpenPGP) — say so; otherwise its env turns the keys off, and
+    // the line says to re-sign outside.
+    const gitHome = serverEnv.USERPROFILE ?? serverEnv.HOME;
+    const gitConfig = gitHome ? userGitConfig(gitHome) : undefined;
+    const signing = gitConfig ? gitSigningKeysEnabled(gitConfig) : [];
+    if (signing.length > 0) {
+      const relayed = sandbox.hostLoopback !== false && gitConfig !== undefined && signingRelayRunnable(gitConfig, serverEnv, platform);
+      parts.push(
+        relayed
+          ? `${signing.join(", ")} on: commits signed through pi-outpost's relay — GnuPG cannot run in the sandbox, the key stays in the server`
+          : `${signing.join(", ")} off in the sandbox: GnuPG cannot run there — re-sign outside it`,
+      );
+    }
     // MSYS2 programs cannot start in the container: their folders are left out of the shell's PATH.
     if (msys.length > 0) parts.push(`MSYS2 folders left out of PATH: ${msys.join(", ")}`);
   }
