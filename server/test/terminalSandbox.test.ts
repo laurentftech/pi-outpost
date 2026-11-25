@@ -1130,7 +1130,70 @@ describe("grants, in every policy", () => {
       siblings: ["C:\\secret"],
       agentDir: "C:\\secret\\agent",
     });
-    assert.deepEqual(found, ["C:\\secret", "D:\\tools\\x", "D:\\tools"], "another drive's folders are enumerated; the agent directory and below are not");
+    assert.deepEqual(found, ["C:\\secret", "D:\\tools\\x", "D:\\tools", "D:\\"], "another drive's folders are enumerated, its root included (issue #572); the agent directory and below are not");
+  });
+
+  // openlore: scenario=AToolOnAnotherDriveThanTheRootsResolves spec=sandbox-runner-bash
+  test("AToolOnAnotherDriveThanTheRootsResolves: scoop on a second drive (D:), root on C: — the way down on D: is readable, the junction's target too, nothing beside it denied", () => {
+    const wroot = "C:\\Users\\me\\work\\app";
+    const scoop = "D:\\WRK\\Scoop";
+    const current = `${scoop}\\apps\\nodejs\\current`;
+    const versioned = `${scoop}\\apps\\nodejs\\v26.8.2`;
+    const listing: Record<string, string[]> = {
+      "D:\\": ["D:\\WRK", "D:\\private"],
+      "D:\\WRK": [scoop, "D:\\WRK\\notes.txt"],
+      [scoop]: [`${scoop}\\shims`, `${scoop}\\apps`, `${scoop}\\buckets`],
+      [`${scoop}\\apps`]: [`${scoop}\\apps\\nodejs`],
+      [`${scoop}\\apps\\nodejs`]: [current, versioned],
+    };
+    const key = (p: string) => p.toLowerCase();
+    const toolReader = {
+      isFile: (p: string) => key(p) === key(`${versioned}\\node.exe`),
+      isDirectory: () => false,
+      readText: () => undefined,
+      list: () => [],
+      isLink: (p: string) => key(p) === key(current),
+      resolveLink: (p: string) => (key(p) === key(current) ? versioned : undefined),
+    };
+    const config = mxcTerminalConfig({
+      root: wroot,
+      allowWrite: true,
+      tmp: "C:\\Users\\me\\AppData\\Local\\Temp\\t",
+      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      shellArgs: [],
+      cwd: wroot,
+      env: {},
+      siblings: ["C:\\Users"],
+      // node.exe sits at the ROOT of the junction's target, and the PATH names the junction twice plus a shims folder.
+      searchPath: `C:\\Windows\\System32;${current}\\bin;${current};${scoop}\\shims`,
+      home: "C:\\Users\\me",
+      agentDir: "C:\\Users\\me\\.pi\\agent",
+      enumerateAncestors: true,
+      besideEnumerated: (dir) => listing[dir] ?? [],
+      toolReader,
+    });
+    const enumeratePaths = config.processContainer?.filesystem?.enumeratePaths ?? [];
+    // The way down on the other drive is READABLE (the root's drive is readable whole; the other
+    // drive's root and ancestors must be too, or nothing on it opens — issue #572), not enumerated.
+    for (const readable of ["D:\\", "D:\\WRK", scoop, `${scoop}\\apps`, `${scoop}\\apps\\nodejs`]) {
+      assert.ok(config.filesystem.readonlyPaths.includes(readable), `${readable} is readable`);
+      assert.ok(!enumeratePaths.includes(readable), `${readable} is not merely enumerated`);
+      assert.ok(!config.filesystem.deniedPaths.includes(readable), `${readable} is not denied`);
+    }
+    // The junction itself and its target (where node.exe sits, at the root) are readable, never denied.
+    assert.ok(config.filesystem.readonlyPaths.includes(current));
+    assert.ok(config.filesystem.readonlyPaths.includes(versioned), "the target is readable even though node.exe sits at its root");
+    assert.ok(!config.filesystem.deniedPaths.includes(versioned));
+    assert.ok(!enumeratePaths.includes(current), "a link is never enumerated");
+    // What lies beside the way down on the other drive is not readable: the way-down folders are
+    // readable (their names show, as on the root's drive), their other contents stay protected.
+    for (const beside of ["D:\\private", `${scoop}\\buckets`, `${scoop}\\shims\\..\\..\\secret`]) {
+      assert.ok(!config.filesystem.readonlyPaths.includes(beside), `${beside} is not readable`);
+      assert.ok(!config.filesystem.readwritePaths.includes(beside), `${beside} is not writable`);
+    }
+    // On the root's drive nothing changes: C:\ is readable whole, its folders are not enumerated.
+    assert.ok(config.filesystem.readonlyPaths.includes("C:\\"));
+    assert.ok(!enumeratePaths.some((p) => p.startsWith("C:")));
   });
 
   test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {
