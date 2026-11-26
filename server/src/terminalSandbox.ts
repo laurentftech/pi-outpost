@@ -1408,17 +1408,32 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   // even a full-path open was refused. Readable shows the folders' names, as enumeration would;
   // their other contents stay denied, the files beside the way are not in any allow.
   const foreignDrives = new Set(tools.map((p) => path.win32.parse(p).root.toLowerCase()).filter((d) => d !== drive.toLowerCase()));
+  let foreignWay: string[] = [];
   if (foreignDrives.size > 0) {
     const onForeign = (p: string) => foreignDrives.has(path.win32.parse(p).root.toLowerCase());
-    readonlyPaths = unique([...readonlyPaths, ...enumeratePaths.filter(onForeign), ...foreignDrives]);
+    foreignWay = enumeratePaths.filter(onForeign);
+    readonlyPaths = unique([...readonlyPaths, ...foreignWay, ...foreignDrives]);
     enumeratePaths = enumeratePaths.filter((p) => !onForeign(p));
   }
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const enumerated = new Set(enumeratePaths.map((p) => p.toLowerCase()));
   // MXC enumerates a folder's whole subtree: what is beside the way down is denied by name in
   // each, as the siblings of the path to the root are, so a listing shows those names alone.
+  // The readable way down a foreign drive (#572) denies what lies beside it the same way: the
+  // drive's root being readable would otherwise leave everything beside the way open — the
+  // profile's AppData\Local, the temporary directory, and the confinement canary's beside-root
+  // bait with them (issue #582).
   const onTheWay = new Set([...allowed, ...enumerated].map((p) => p.replace(/[\\/]+$/, "")));
-  const besideTheWay = enumeratePaths.flatMap((dir) => (input.besideEnumerated ?? deniableEntries)(dir).filter((entry) => !onTheWay.has(entry.toLowerCase())));
+  const wayDown = [...enumeratePaths, ...foreignWay];
+  const besideTheWay = wayDown.flatMap((dir) => {
+    const trimmed = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+    const atDriveRoot = path.win32.parse(dir).root !== "" && trimmed(path.win32.parse(dir).root) === trimmed(dir);
+    return (input.besideEnumerated ?? deniableEntries)(dir).filter((entry) => {
+      if (onTheWay.has(entry.toLowerCase())) return false;
+      // Top-level system folders of a drive stay readable, as on the root's drive (siblingsToDeny).
+      return !(atDriveRoot && WINDOWS_SYSTEM_FOLDERS.has(path.win32.basename(entry).toLowerCase()));
+    });
+  });
   const deniedPaths = unique([...input.siblings, ...besideTheWay, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
     .filter((p) => !allowed.has(p.toLowerCase()) && !enumerated.has(p.toLowerCase()));

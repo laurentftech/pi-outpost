@@ -336,6 +336,28 @@ jobs:
       - run: npm ci --workspace server --workspace shared --workspace office --include-workspace-root=false
       - run: bash scripts/mxc-macos/test.sh
 
+  # MXC's process container on Windows, where it runs in process through its SDK: the real-MXC
+  # suites on a runner that has the tier 1 base container (windows-11-arm, spike #558) — the
+  # same suites a maintainer runs on a Windows 11 machine with MXC_EXEC set. This is what
+  # validates a Windows sandbox policy end to end, canary included (issue #582: the root on one
+  # drive, the system temp on another).
+  mxc-windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Use the pinned npm
+        uses: ./.github/actions/setup-npm
+      # --foreground-scripts: koffi and the SDK's native parts install through scripts.
+      - run: npm ci --foreground-scripts
+      - run: pwsh -File scripts/mxc-windows/test.ps1
+
   # The one check the branch rules require, so the required list never has to follow the
   # jobs above. A skipped matrix job reports no "check (ubuntu-latest)" at all, which a
   # rule naming it would wait on forever; this job always reports. It passes when every
@@ -344,7 +366,7 @@ jobs:
   ci-ok:
     name: CI ok
     if: always()
-    needs: [changes, check, npm-install, browser, mxc-linux, mxc-macos]
+    needs: [changes, check, npm-install, browser, mxc-linux, mxc-macos, mxc-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

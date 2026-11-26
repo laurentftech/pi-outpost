@@ -388,6 +388,8 @@ MXC for no clipboard and no input injection. Limits:
   project is `C:\projects\app`), can be listed but not read: a path through them resolves, so Node runs
   a global npm CLI. Everything else in them stays denied by name, as beside the root — another project
   in `C:\dev` is out of reach. A folder the root's drive already makes readable is left as it is.
+  On another drive than the root's, the way down to a tool is readable; what lies beside it stays
+  denied by name, as on the root's drive — the temporary directory included.
   A tool reached through a link on the way down (scoop's `current` junction to the active version) has
   the link's target readable like the link, so `node` resolves on `PATH` through it; the link itself is
   never made listable. This needs a Windows whose MXC can list a folder without reading it; MXC says so
