@@ -7,6 +7,19 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.67.1] - 2026-11-26
+
+### Fixed
+
+- **On Windows under MXC, a machine with the project on one drive and the profile, the tools or the
+  temporary directory on another no longer reports `mxc does not confine` and refuses every command.**
+  Since 0.67.0's fix for tools on another drive (#572), the way down on a foreign drive was made
+  readable, but what lies beside it — the profile's `AppData\Local`, the temporary directory — stayed
+  readable too, so the confinement canary's beside-root bait was read inside the confined shell and
+  the verdict was `leaking`. What lies beside the way down on a foreign drive is now denied by name,
+  exactly as beside the root on the root's drive; the command's own temporary folder stays writable.
+  ([#583](https://github.com/laurentftech/pi-outpost/pull/583), issue [#582](https://github.com/laurentftech/pi-outpost/issues/582))
+
 ## [0.67.0] - 2026-11-25
 
 ### Added
