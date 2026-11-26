@@ -7,7 +7,29 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
-## [0.66.0] - 2026-11-25
+## [0.67.0] - 2026-11-25
+
+### Added
+
+- **`pi-outpost sandbox doctor` and the agent's `sandbox_doctor` tool: the sandbox reports its own state** —
+  one read-only, paste-safe snapshot: identity (backend, MXC enumeration level on Windows), policy by class
+  with each denial's reason class, the link/junction resolution table, network policy, the names of dropped
+  environment variables (never their values), running relays, a confined probe battery whose results each
+  name the responsible layer, and the project's last recorded refusals. `pi-outpost sandbox doctor --json`
+  keeps stdout parseable.
+  ([#578](https://github.com/laurentftech/pi-outpost/pull/578), issue [#573](https://github.com/laurentftech/pi-outpost/issues/573))
+
+### Changed
+
+- **`@earendil-works/pi-coding-agent` moves to `^1.6.1`** — truncated bash output is reported as
+  `fullOutputError`, and the project-trust dialogs can name what was blocked.
+  ([#579](https://github.com/laurentftech/pi-outpost/pull/579))
+
+### Fixed
+
+- **On Windows under MXC, tools installed on another drive than the project's resolve again by name** —\n  scoop on a second volume (`D:\…`), a partition as well as a second disk. The project root's drive is\n  readable whole, which is why tools on it always worked; on another drive only the tool folders were\n  allowed and their drive's root was not, so MXC refused to traverse it and `Get-Command node` found\n  nothing unless you granted the folder by hand. The way down on the other drive (its root and the\n  folders above the tool) is now readable, names only — contents beside the way stay denied — and a\n  junction's target is readable wherever the executable sits in it, its root included.\n  ([#574](https://github.com/laurentftech/pi-outpost/pull/574), issue [#572](https://github.com/laurentftech/pi-outpost/issues/572))\r
+\n- **The network-refusal note no longer claims the sandbox refused the connection, nor that the Internet is\n  open, when the refusal came from the machine itself** — on an air-gapped machine, a `WSAEACCES (10013)`\n  in a command's output made the note say the sandbox refused it and that the Internet was open, while\n  without `sandbox.allowedHosts` the sandbox leaves outbound unrestricted and the machine's own firewall\n  refused. The note now says the connection was refused, that the sandbox closes only the addresses it\n  names, and that retrying will not help; the named-host and proxy branches are unchanged.\n  ([#575](https://github.com/laurentftech/pi-outpost/pull/575))\r
+\n## [0.66.0] - 2026-11-25
 
 ### Added
 
