@@ -7,6 +7,21 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.67.2] - 2026-11-26
+
+### Fixed
+
+- **On Windows under MXC, a host whose build cannot list folders in the sandbox (enumeration level 2,
+  e.g. a domain-joined machine) no longer leaves a foreign drive wholly readable.** At that level the
+  policy had no enumerable folders, so the deny-by-name of what lies beside the way down on another
+  drive than the root's was computed over nothing: the whole drive — the profile, the temporary
+  directory, the confinement canary's beside-root bait — was readable in the confined shell and the
+  verdict was `leaking`. The way down to the shell, the tools and the grants is now computed whatever
+  the enumeration level, and what lies beside it on a foreign drive is denied by name at every level;
+  `sandbox doctor` also shows the policy at the level the host proved (`policy at level N (what
+  commands get)`), so it can no longer look confined while commands run at a lower level.
+  ([#586](https://github.com/laurentftech/pi-outpost/pull/586), issue [#585](https://github.com/laurentftech/pi-outpost/issues/585))
+
 ## [0.67.1] - 2026-11-26
 
 ### Fixed
