@@ -12,13 +12,19 @@ import { after, before, describe, test } from "node:test";
 import { parseCli, CliError, helpText } from "../src/cli.ts";
 import type { SandboxConfig } from "../src/config.ts";
 import { confinedBashOperations } from "../src/confinedBash.ts";
+import { describeConfinementAttempt } from "../src/confinementStatus.ts";
 import {
   assertPasteSafe,
+  besideRootProbeResult,
   boundedAgentSummary,
+  classifyResolution,
   collectSandboxSnapshot,
+  confinementSectionFrom,
   createSandboxDoctorToolDefinition,
   decisionLog,
   envFilterGroups,
+  oneLine,
+  outsideRootAndUngranted,
   renderSnapshot,
   runDoctorProbes,
   setDoctorVersion,
@@ -353,5 +359,179 @@ describe("the sandbox command's CLI", () => {
 
   test("the help names the command", () => {
     assert.match(helpText(), /pi-outpost sandbox doctor \[--json\]/);
+  });
+});
+
+// ── sandbox-doctor-leak-evidence (issues #582/#585): leaks and ungranted outside-root paths ──
+
+describe("describeConfinementAttempt", () => {
+  test("an attempt key renders in words", () => {
+    assert.equal(describeConfinementAttempt("beside-root"), "read a file beside the root");
+  });
+});
+
+// openlore: scenario=ALeakIsNamedInTheDoctorReport spec=sandbox-doctor-leak-evidence
+describe("TheDoctorNamesTheCanaryVerdict", () => {
+  test("a leaking verdict is named in words, even with an empty decision log, and --json carries the section", async () => {
+    const snapshot = fixtureSnapshot({
+      confinement: await confinementSectionFrom({ state: "leaking", runner: "mxc", checkedAt: "2026-11-26T08:00:00.000Z", reached: ["beside-root"], refused: [] }),
+      decisions: [],
+    });
+    const text = renderSnapshot(snapshot);
+    assert.ok(text.includes("confinement: leaking (mxc) · checked 2026-11-26T08:00:00.000Z · reached: read a file beside the root"), text);
+    assert.ok(text.includes("decision log (last 0):"), "a leak is not a refusal — the log stays empty, the verdict says it");
+    const json = JSON.parse(renderSnapshot(snapshot, { json: true }));
+    assert.deepEqual(json.confinement, { state: "leaking", runner: "mxc", checkedAt: "2026-11-26T08:00:00.000Z", reached: ["read a file beside the root"] });
+  });
+
+  // openlore: scenario=AVerifiedShellSaysSo spec=sandbox-doctor-leak-evidence
+  test("a verified verdict says so, with runner and check time", async () => {
+    const snapshot = fixtureSnapshot({
+      confinement: await confinementSectionFrom({ state: "verified", runner: "mxc", checkedAt: "2026-11-26T08:00:00.000Z", refused: [], notChecked: [] }),
+    });
+    assert.ok(renderSnapshot(snapshot).includes("confinement: verified (mxc) · checked 2026-11-26T08:00:00.000Z"));
+  });
+
+  // openlore: scenario=FailedUnavailableAndUnconfinedVerdictsRenderSafely spec=sandbox-doctor-leak-evidence
+  test("failed/unavailable/unconfined render with a single-line capped reason, paste-safe", async () => {
+    const failed = await confinementSectionFrom({ state: "failed", runner: "mxc", checkedAt: "2026-11-26T08:00:00.000Z", reason: "canary output tail\nwith a newline" });
+    assert.ok(!failed.reason!.includes("\n"), "the reason is one line");
+    assert.ok(failed.reason!.length <= 300, "capped");
+    const snapshot = fixtureSnapshot({ confinement: failed });
+    for (const rendered of [renderSnapshot(snapshot), renderSnapshot(snapshot, { json: true }), boundedAgentSummary(snapshot)]) {
+      assert.deepEqual(assertPasteSafe(rendered, ["secret-value"]), [], rendered);
+    }
+    // A verdict collected with a secret in the server environment leaks none of it.
+    const root = await tmp();
+    const withSecret = await collectSandboxSnapshot({
+      version: "0.0.0-test",
+      cwd: root,
+      sandbox: { root, allowWrite: true, allowBash: true, bashRunner: "/usr/bin/sandbox-exec", readExceptions: [] },
+      serverEnv: { PATH: "/usr/bin", UV_INDEX_PASSWORD: "secret-value" },
+      platform: "linux",
+      confinement: { state: "failed", runner: "landstrip", checkedAt: "2026-11-26T08:00:00.000Z", reason: "boom" },
+    });
+    assert.deepEqual(assertPasteSafe(renderSnapshot(withSecret, { json: true }), ["secret-value"]), []);
+    const unavailable = renderSnapshot(fixtureSnapshot({ confinement: await confinementSectionFrom({ state: "unavailable", runner: "", reason: "no runner" }) }));
+    assert.ok(unavailable.includes("confinement: unavailable · reason: no runner"), unavailable);
+    const unconfined = renderSnapshot(fixtureSnapshot({ confinement: await confinementSectionFrom({ state: "unconfined", reason: "bash off" }) }));
+    assert.ok(unconfined.includes("confinement: unconfined · reason: bash off"), unconfined);
+  });
+
+  // openlore: scenario=TheAgentToolWithNoSettledVerdictYet spec=sandbox-doctor-leak-evidence
+  test("the agent tool reports `checking` when no verdict has settled", async () => {
+    const root = await tmp();
+    const sandbox: SandboxConfig = { root, allowWrite: true, allowBash: true, bashRunner: "/usr/bin/sandbox-exec", readExceptions: [] };
+    const tool = createSandboxDoctorToolDefinition(sandbox, root, { agentDir: path.join(root, "agent"), configFile: path.join(root, "c.json") });
+    const execute = tool.execute as unknown as (id: string) => Promise<{ content: Array<{ type: string; text: string }> }>;
+    const result = await execute("t-checking");
+    assert.ok(result.content[0]!.text.includes("confinement: checking"), result.content[0]!.text);
+  });
+
+  // openlore: scenario=ANonMxcBackendDegrades spec=sandbox-doctor-leak-evidence
+  test("a non-MXC backend still shows the section with the verdict's reason", async () => {
+    const root = await tmp();
+    const sandbox: SandboxConfig = { root, allowWrite: true, allowBash: true, bashRunner: "/usr/bin/sandbox-exec", readExceptions: [] };
+    const snapshot = await collectSandboxSnapshot({
+      version: "0.0.0-test",
+      cwd: root,
+      sandbox,
+      serverEnv: { PATH: "/usr/bin" },
+      platform: "linux",
+      confinement: { state: "unavailable", runner: "", reason: "seatbelt has no MXC enumeration level" },
+    });
+    assert.equal(snapshot.policy.backend, "seatbelt");
+    assert.ok(renderSnapshot(snapshot).includes("confinement: unavailable · reason: seatbelt has no MXC enumeration level"));
+  });
+});
+
+// openlore: scenario=AGrantedToolBesideTheRootStaysOk spec=sandbox-doctor-leak-evidence
+// openlore: scenario=AnUngrantedOutsideRootResolutionFails spec=sandbox-doctor-leak-evidence
+describe("PATH resolutions are classified against the granted paths", () => {
+  const root = "C:\\work\\app";
+  const granted = ["D:\\WRK\\Scoop\\apps\\nodejs\\current\\bin", "C:\\work\\app\\.git"];
+
+  test("a granted tool beside the root stays ok (issue #562)", () => {
+    assert.deepEqual(classifyResolution("D:\\WRK\\Scoop\\apps\\nodejs\\current\\bin\\npm.ps1", root, granted, "win32"), { status: "ok", layer: "filesystem", detail: "resolved to D:\\WRK\\Scoop\\apps\\nodejs\\current\\bin\\npm.ps1" });
+    assert.equal(outsideRootAndUngranted("d:\\wrk\\scoop\\apps\\nodejs\\current\\bin\\npm.ps1", root, granted, "win32"), false, "case-insensitive");
+    assert.equal(outsideRootAndUngranted("D:\\WRK\\Scoop\\apps\\nodejs\\current\\bin\\", root, granted, "win32"), false, "trailing slash");
+  });
+
+  test("an outside-root, ungranted resolution fails as a policy leak indicator", () => {
+    const result = classifyResolution("D:\\WRK\\other\\tool.exe", root, granted, "win32");
+    assert.equal(result.status, "fail");
+    assert.equal(result.layer, "policy");
+    assert.ok(result.detail.includes("resolves outside the root and is not a granted path: D:\\WRK\\other\\tool.exe"), result.detail);
+    assert.equal(outsideRootAndUngranted("E:\\x\\y", root, granted, "win32"), true, "a foreign drive is outside");
+    assert.equal(outsideRootAndUngranted("C:\\work\\app\\sub\\n.exe", root, granted, "win32"), false, "inside the root is not flagged");
+  });
+});
+
+// openlore: scenario=AnUngrantedOutsideRootLinkTargetIsFlagged spec=sandbox-doctor-leak-evidence
+// openlore: scenario=AGrantedToolLinkIsNotFlagged spec=sandbox-doctor-leak-evidence
+describe("the link table flags ungranted outside-root targets", () => {
+  test("only outside-root AND ungranted targets carry the leak flag", () => {
+    const text = renderSnapshot(
+      fixtureSnapshot({
+        links: [
+          { link: "D:\\WRK\\Scoop\\current", target: "D:\\WRK\\Scoop\\26.8.2", targetReadable: true, outsideRoot: true, granted: true },
+          { link: "C:\\mvn-idea", target: "C:\\Users\\me\\maven", targetReadable: true, outsideRoot: true, granted: false },
+          { link: "C:\\work\\app\\tools", target: "C:\\work\\app\\real", targetReadable: true, outsideRoot: false, granted: true },
+        ],
+      }),
+    );
+    assert.ok(text.includes("link D:\\WRK\\Scoop\\current → D:\\WRK\\Scoop\\26.8.2 (target readable)"), "granted: no flag — " + text);
+    assert.ok(text.includes("link C:\\mvn-idea → C:\\Users\\me\\maven (target readable — OUTSIDE THE ROOT, NOT GRANTED)"), text);
+    assert.ok(text.includes("link C:\\work\\app\\tools → C:\\work\\app\\real (target readable)"), "inside the root: no flag");
+    const json = JSON.parse(renderSnapshot(fixtureSnapshot({ links: [{ link: "l", target: "t", targetReadable: true, outsideRoot: true, granted: false }] }), { json: true }));
+    assert.deepEqual(json.links[0], { link: "l", target: "t", targetReadable: true, outsideRoot: true, granted: false });
+  });
+});
+
+// openlore: scenario=ARelayProbeFailsWithAMultiLineError spec=sandbox-doctor-leak-evidence
+describe("probe details are single-line", () => {
+  test("a newline in captured error output cannot truncate a URL across lines", () => {
+    const detail = oneLine('Invoke-WebRequest : cannot bind «Uri».\nhttp://127.0.0.1:4473health»', 120);
+    assert.ok(!detail.includes("\n"), detail);
+    assert.ok(detail.includes("http://127.0.0.1:4473health"), detail);
+    const text = renderSnapshot(fixtureSnapshot({ probes: [{ name: "registry relay reachable", status: "fail", layer: "network", detail: "line one\nhttp://127.0.0.1:4473health cut" }] }));
+    const relayLine = text.split(/\r?\n/).find((l) => l.startsWith("probe registry relay reachable"));
+    assert.ok(relayLine && relayLine.includes("http://127.0.0.1:4473health"), text);
+  });
+
+  test("every probe detail the battery produces is one line", async () => {
+    const root = await tmp();
+    const probes = await runDoctorProbes({ sandbox: { root, allowWrite: true, allowBash: true, bashRunner: path.join(root, "no-such-runner"), readExceptions: [] }, cwd: root });
+    for (const probe of probes) assert.ok(!probe.detail.includes("\n"), probe.name + ": " + probe.detail);
+  });
+});
+
+// openlore: scenario=BesideRootIsRefusedAtTheProvenLevel spec=sandbox-doctor-leak-evidence
+// openlore: scenario=BesideRootIsReachedThroughTheForeignDrive spec=sandbox-doctor-leak-evidence
+// openlore: scenario=TheProbeIsSkippedWhenItCannotRun spec=sandbox-doctor-leak-evidence
+describe("the beside-root canary replay probe", () => {
+  const marker = "C:\\Users\\me\\AppData\\Local\\Temp\\pi-outpost-doctor-beside-x\\marker";
+
+  test("refused at the proven level → ok, naming the level and the bait", () => {
+    const result = besideRootProbeResult({ exitCode: 1, output: "[pi-outpost] the sandbox refused reading " + marker }, 2, marker);
+    assert.equal(result.status, "ok");
+    assert.equal(result.layer, "policy");
+    assert.ok(result.detail.includes("refused at level 2") && result.detail.includes(marker), result.detail);
+  });
+
+  test("reached (the pre-#586 foreign-drive shape) → fail naming the bait path", () => {
+    const result = besideRootProbeResult({ exitCode: 0, output: "canary" }, 2, marker);
+    assert.equal(result.status, "fail");
+    assert.equal(result.layer, "policy");
+    assert.ok(result.detail.includes("reached at level 2") && result.detail.includes(marker), result.detail);
+  });
+
+  test("on a non-MXC host the battery reports the probe as skipped with the reason", async () => {
+    const root = await tmp();
+    const probes = await runDoctorProbes({ sandbox: { root, allowWrite: true, allowBash: true, bashRunner: path.join(root, "no-such-runner"), readExceptions: [] }, cwd: root });
+    const beside = probes.find((p) => p.name === "beside-root canary replay");
+    assert.ok(beside, JSON.stringify(probes.map((p) => p.name)));
+    assert.equal(beside!.status, "skipped");
+    assert.match(beside!.detail, /enumeration level|Windows concept/);
   });
 });

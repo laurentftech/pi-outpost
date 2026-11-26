@@ -962,12 +962,19 @@ environment; MXC's Linux runner hides the server's processes entirely.
 When a command misbehaves, the first question is whether it is a policy decision or an environment
 problem. `pi-outpost sandbox doctor` (run on the host, in the project) prints one snapshot of the
 sandbox's state: the active backend and, under MXC on Windows, the enumeration level the host proved;
-the policy by class (read-write, read-only, denied with each denial's reason class, enumerable); the
-link/junction resolution table; the network policy; the environment variables the confinement drops,
-as **names** grouped by prefix, never values; the running relays (registry, signing) and the carried
-config seeds; a probe battery (PATH resolution of the common tools, a scratch write, the full-path vs
-by-name asymmetry) whose results each name the responsible layer; and the last recorded refusals from
-the project's rules store. `--json` prints the same snapshot as one JSON object. The output is
+the canary verdict of the agent's shell — a leak is named there in words ("read a file beside the
+root"), so a confinement failure is visible in the report even though a leak leaves no refusal in the
+decision log; the policy by class (read-write, read-only, denied with each denial's reason class,
+enumerable); the link/junction resolution table, where a target that lies outside the root and is not
+a granted path is flagged `OUTSIDE THE ROOT, NOT GRANTED` (a granted tool beside the root is by
+design); the network policy; the environment variables the confinement drops, as **names** grouped by
+prefix, never values; the running relays (registry, signing) and the carried config seeds; a probe
+battery whose results each name the responsible layer — PATH resolution of the common tools (a tool
+resolving outside the root and ungranted fails as a policy leak), a scratch write, the full-path vs
+by-name asymmetry, relay reachability, and a replay of the beside-root canary (a marker in the host's
+temporary directory, read through the confined shell at the proven enumeration level); and the last
+recorded refusals from the project's rules store. Probe details print one per line, so an error can
+never truncate a following value. `--json` prints the same snapshot as one JSON object. The output is
 paste-safe by construction: no environment values, no credentials, no file contents, so it can be
 pasted into an issue.
 

@@ -645,6 +645,11 @@ const AGENT_DIR = config.agentDir ?? getAgentDir();
 if (cli.command === "sandbox") {
   const { collectSandboxSnapshot, renderSnapshot, runDoctorProbes } = await import("./sandboxDoctor.ts");
   const probes = await runDoctorProbes({ sandbox: config.sandbox, cwd: LAUNCH_DIR, agentDir: AGENT_DIR, configFile: config.configFile });
+  // The same verdict `pi-outpost doctor` reports — this process is one-shot, so the verdict is computed
+  // here on demand (the canary is bounded by CANARY_TIMEOUT_MS), not read from a server's memory.
+  const confinement =
+    (await shellVerdict(config.sandbox, { agentDir: AGENT_DIR, configFile: config.configFile })) ??
+    ({ state: "unavailable", runner: "", reason: "no shell of pi-outpost's own is configured (bash off, or handed to an extension)" } as const);
   const snapshot = await collectSandboxSnapshot({
     version: VERSION,
     cwd: LAUNCH_DIR,
@@ -652,6 +657,7 @@ if (cli.command === "sandbox") {
     agentDir: AGENT_DIR,
     configFile: config.configFile,
     probes,
+    confinement,
   });
   process.stdout.write(renderSnapshot(snapshot, { json: cli.print.json }));
   process.exit(0);

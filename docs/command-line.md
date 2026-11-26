@@ -118,11 +118,16 @@ one of the things it is there to report.
 The sandbox's own state, in one paste-safe snapshot — to tell a policy decision from an
 environment problem when a confined command misbehaves. Identity first (version, OS/arch,
 the configured runner, and under MXC on Windows the enumeration level the host proved),
-then the policy by class with each denial's reason class, the link/junction resolution
-table, the network policy, the environment variables the confinement drops as names grouped
-by prefix (never values), the running relays and carried config seeds, a probe battery
-whose results each name the responsible layer, and the project's last recorded refusals.
-`--json` prints the same snapshot as one JSON object. See
+then the canary verdict (a confinement leak is named here in words, e.g. "read a file beside
+the root"), the policy by class with each denial's reason class, the link/junction
+resolution table (a target outside the root that the policy does not grant is flagged
+`OUTSIDE THE ROOT, NOT GRANTED`), the network policy, the environment variables the
+confinement drops as names grouped by prefix (never values), the running relays and carried
+config seeds, a probe battery whose results each name the responsible layer — including a
+replay of the beside-root canary at the proven enumeration level, and PATH probes that fail
+when a tool resolves outside the root and ungranted — and the project's last recorded
+refusals. Probe details are printed one per line. `--json` prints the same snapshot as one
+JSON object. See
 [docs/sandboxing.md](sandboxing.md#seeing-the-sandboxs-own-state-pi-outpost-sandbox-doctor).
 
 **The most common cause of "the page does not connect", in a directory you have not
