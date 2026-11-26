@@ -7,6 +7,13 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.68.0] - 2026-11-26
+
+### Added
+
+- **`pi-outpost sandbox doctor` and the agent's `sandbox_doctor` tool now name a confinement leak instead of leaving you to reconstruct it.** A canary leak was invisible in the report — the decision log records refusals only, so it read `last 0` next to the failure (#582). The snapshot now leads with a `confinement` section: the canary verdict as the interface shows it, a leak's reached attempts in words ("read a file beside the root"), a failed check's reason in one capped line. PATH probes and the link table are now classified against the policy the commands actually get (at the host's proven enumeration level): a granted tool beside the root stays `ok`, but a resolution outside the root and ungranted fails as `fail (policy)`, and a link target outside the root and ungranted is flagged `OUTSIDE THE ROOT, NOT GRANTED`. Probe details print one per line, so an error can no longer truncate a relay URL mid-string. The host CLI's probe battery also replays the beside-root canary (a marker in the host's temporary directory, read through the confined shell at the proven level): `ok` when refused, `fail (policy)` naming the bait when reached. Verified live on a Windows 11 24H2 host with MXC (build 26100.9711).
+  ([#588](https://github.com/laurentftech/pi-outpost/pull/588), issues [#582](https://github.com/laurentftech/pi-outpost/issues/582), [#585](https://github.com/laurentftech/pi-outpost/issues/585))
+
 ## [0.67.2] - 2026-11-26
 
 ### Fixed
