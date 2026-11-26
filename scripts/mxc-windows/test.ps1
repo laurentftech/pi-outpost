@@ -13,6 +13,18 @@ $executor = Join-Path $sdkDir "bin\$arch\wxc-exec.exe"
 if (-not (Test-Path $executor)) { throw "wxc-exec.exe not found at $executor" }
 $env:MXC_EXEC = $executor
 Write-Host "MXC_EXEC=$env:MXC_EXEC"
+
+# A clean temporary directory, on a second drive when the runner has one (and off the user
+# profile, whose 8.3 short name makes roots under it denied by name) — the two-drive shape of
+# issue #582 comes from the runner that way.
+$cwdDrive = (Get-Location).Path.Substring(0, 2) # "C:"
+$other = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Name -ne $cwdDrive[0] } | Select-Object -First 1 -ExpandProperty Name
+$tempRoot = if ($other) { "$other`t:\t" } else { "$cwdDrive\t" }
+New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
+$env:TEMP = $tempRoot
+$env:TMP = $tempRoot
+Write-Host "TEMP=$tempRoot"
+
 Set-Location server
 $tests = @(
   'test/confinementCanaryMxcForeignDrive.test.ts',
@@ -26,3 +38,4 @@ $tests = @(
   'test/confinementCanary.test.ts'
 )
 node --import tsx/esm --test @tests
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
