@@ -1196,6 +1196,63 @@ describe("grants, in every policy", () => {
     assert.ok(!enumeratePaths.some((p) => p.startsWith("C:")));
   });
 
+
+  // openlore: scenario=BesideTheForeignWayDownStaysDenied spec=sandbox-runner-bash
+  test("BesideTheForeignWayDownStaysDenied: root on D:, a tool and the temporary directory under the profile on C: — the way down on C: is readable, what lies beside it (Temp) is denied by name (issue #582)", () => {
+    const wroot = "D:\\projects\\app";
+    const home = "C:\\Users\\me";
+    const python = `${home}\\AppData\\Local\\Python\\3.11.4`;
+    const tmp = `${home}\\AppData\\Local\\Temp\\pi-outpost-bash-t`;
+    const listing: Record<string, string[]> = {
+      "C:\\": ["C:\\Users", "C:\\Windows", "C:\\Program Files"],
+      "C:\\Users": [home],
+      [home]: [`${home}\\AppData`],
+      [`${home}\\AppData`]: [`${home}\\AppData\\Local`, `${home}\\AppData\\Roaming`],
+      [`${home}\\AppData\\Local`]: [`${home}\\AppData\\Local\\Python`, `${home}\\AppData\\Local\\Temp`],
+      [`${home}\\AppData\\Local\\Python`]: [python],
+    };
+    const toolReader = {
+      isFile: () => false,
+      isDirectory: () => false,
+      readText: () => undefined,
+      list: () => [],
+      isLink: () => false,
+      resolveLink: () => undefined,
+    };
+    const config = mxcTerminalConfig({
+      root: wroot,
+      allowWrite: true,
+      tmp,
+      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      shellArgs: [],
+      cwd: wroot,
+      env: {},
+      siblings: ["D:\\WRK", "D:\\private"],
+      searchPath: `C:\\Windows\\System32;${python}\\Scripts;${python}`,
+      home,
+      agentDir: `${home}\\.pi\\agent`,
+      enumerateAncestors: true,
+      besideEnumerated: (dir) => listing[dir] ?? [],
+      toolReader,
+    });
+    // The way down to the tool under the profile on the foreign drive is readable (issue #572)...
+    for (const readable of ["C:\\", "C:\\Users", home, `${home}\\AppData`, `${home}\\AppData\\Local`, `${home}\\AppData\\Local\\Python`, python]) {
+      assert.ok(config.filesystem.readonlyPaths.includes(readable), `${readable} is readable`);
+      assert.ok(!config.filesystem.deniedPaths.includes(readable), `${readable} is on the way down`);
+    }
+    // ...but what lies beside it is denied by name — the temporary directory included, so the
+    // confinement canary's beside-root bait there is refused, not reached (issue #582).
+    const temp = `${home}\\AppData\\Local\\Temp`;
+    assert.ok(config.filesystem.deniedPaths.includes(temp), "Temp beside the way down on the foreign drive is denied");
+    assert.ok(config.filesystem.deniedPaths.includes(`${home}\\AppData\\Roaming`), "Roaming beside the way down is denied");
+    // The command's own temporary folder stays read-write: the more specific allow wins over the deny.
+    assert.ok(config.filesystem.readwritePaths.includes(tmp), "the command's tmp stays writable");
+    assert.ok(!config.filesystem.deniedPaths.includes(tmp), "the command's tmp is not denied");
+    // System folders at the drive root stay as on the root's drive: readable, never denied.
+    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Windows"));
+    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Program Files"));
+  });
+
   test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {
     const home = "C:\\Users\\me";
     const found = ancestorsToEnumerate([`${home}\\.cargo\\bin`, `${home}\\AppData\\Roaming\\npm`], {

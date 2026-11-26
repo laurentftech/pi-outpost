@@ -150,7 +150,8 @@ describe("a confined terminal under MXC's real executor", { skip }, () => {
     await assert.rejects(stat(path.join(root, "AppData")), "an AppData folder appeared in the project");
   });
 
-  test("the default confined PowerShell draws progress without failing", async () => {
+  test("the default confined PowerShell draws progress without failing", async (t) => {
+    if (!process.env.SESSIONNAME) return t.skip("needs an interactive console (a hosted runner runs in Session 0)");
     // No shell named: the confined default, PowerShell, with its progress bars off. A bar
     // drawn inside the sandbox reads the console buffer back, which is refused.
     output.def = "";
