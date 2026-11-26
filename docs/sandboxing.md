@@ -390,6 +390,9 @@ MXC for no clipboard and no input injection. Limits:
   in `C:\dev` is out of reach. A folder the root's drive already makes readable is left as it is.
   On another drive than the root's, the way down to a tool is readable; what lies beside it stays
   denied by name, as on the root's drive — the temporary directory included.
+  That holds whatever enumeration level the host's MXC proved: when it refuses listable folders
+  altogether, the way down on the other drive is still what is readable, and what lies beside it —
+  the temporary directory included — is still denied by name, not opened with the drive.
   A tool reached through a link on the way down (scoop's `current` junction to the active version) has
   the link's target readable like the link, so `node` resolves on `PATH` through it; the link itself is
   never made listable. This needs a Windows whose MXC can list a folder without reading it; MXC says so

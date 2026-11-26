@@ -1253,6 +1253,77 @@ describe("grants, in every policy", () => {
     assert.ok(!config.filesystem.deniedPaths.includes("C:\\Program Files"));
   });
 
+  // openlore: scenario=ForeignWayDownDeniedWithoutEnumeration spec=sandbox-runner-bash
+  test("ForeignWayDownDeniedWithoutEnumeration: whatever the enumeration level \u2014 level 2, the host's MXC refusing enumeratePaths altogether, or level 1 \u2014 the way down on the foreign drive stays readable and what lies beside it, the temporary directory included, stays denied by name (issue #585)", () => {
+    const wroot = "D:\\projects\\app";
+    const home = "C:\\Users\\me";
+    const python = `${home}\\AppData\\Local\\Python\\3.11.4`;
+    const tmp = `${home}\\AppData\\Local\\Temp\\pi-outpost-bash-t`;
+    const cache = `${home}\\AppData\\Local\\pi-outpost\\sandbox-cache`;
+    const listing: Record<string, string[]> = {
+      "C:\\": ["C:\\Users", "C:\\Windows", "C:\\Program Files"],
+      "C:\\Users": [home],
+      [home]: [`${home}\\AppData`],
+      [`${home}\\AppData`]: [`${home}\\AppData\\Local`, `${home}\\AppData\\Roaming`],
+      [`${home}\\AppData\\Local`]: [`${home}\\AppData\\Local\\Python`, `${home}\\AppData\\Local\\Temp`, `${home}\\AppData\\Local\\pi-outpost`],
+      [`${home}\\AppData\\Local\\pi-outpost`]: [cache],
+      [`${home}\\AppData\\Local\\Python`]: [python],
+    };
+    const toolReader = {
+      isFile: () => false,
+      isDirectory: () => false,
+      readText: () => undefined,
+      list: () => [],
+      isLink: () => false,
+      resolveLink: () => undefined,
+    };
+    const levels = [
+      { name: "level 2 (no enumeration)", flags: { enumerateAncestors: false as const } },
+      { name: "level 1 (tools' ancestors only)", flags: { enumerateAncestors: true, enumerateGrants: false } },
+    ];
+    for (const { name, flags } of levels) {
+      const config = mxcTerminalConfig({
+        root: wroot,
+        allowWrite: true,
+        tmp,
+        shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        shellArgs: [],
+        cwd: wroot,
+        env: {},
+        siblings: ["D:\\WRK", "D:\\private"],
+        searchPath: `C:\\Windows\\System32;${python}\\Scripts;${python}`,
+        home,
+        agentDir: `${home}\\.pi\\agent`,
+        grantedRead: [cache],
+        ...flags,
+        besideEnumerated: (dir) => listing[dir] ?? [],
+        toolReader,
+      });
+      // The foreign drive stays readable whole, so the tools on it resolve (issue #572) \u2014 but the
+      // way down to them and to the grant is readable, and what lies beside it is denied by name at
+      // every level, enumeration or not (issues #582, #585): the drive being readable must not open
+      // the profile's AppData\\Local\\Temp, the canary's beside-root bait included.
+      assert.ok(config.filesystem.readonlyPaths.includes("C:\\"), `${name}: C:\\ is readable`);
+      for (const readable of ["C:\\Users", home, `${home}\\AppData`, `${home}\\AppData\\Local`, `${home}\\AppData\\Local\\pi-outpost`, `${home}\\AppData\\Local\\Python`, python]) {
+        assert.ok(config.filesystem.readonlyPaths.includes(readable), `${name}: ${readable} is readable`);
+        assert.ok(!config.filesystem.deniedPaths.includes(readable), `${name}: ${readable} is on the way down`);
+      }
+      const temp = `${home}\\AppData\\Local\\Temp`;
+      assert.ok(config.filesystem.deniedPaths.includes(temp), `${name}: Temp beside the way down is denied`);
+      assert.ok(config.filesystem.deniedPaths.includes(`${home}\\AppData\\Roaming`), `${name}: Roaming beside the way down is denied`);
+      // The command's own temporary folder stays read-write: the more specific allow wins over the deny.
+      assert.ok(config.filesystem.readwritePaths.includes(tmp), `${name}: the command's tmp stays writable`);
+      assert.ok(!config.filesystem.deniedPaths.includes(tmp), `${name}: the command's tmp is not denied`);
+      // System folders at the drive root stay readable, never denied.
+      assert.ok(!config.filesystem.deniedPaths.includes("C:\\Windows"));
+      assert.ok(!config.filesystem.deniedPaths.includes("C:\\Program Files"));
+      // Level 2 asks for no enumeration at all; the denies above do not depend on it.
+      if (flags.enumerateAncestors === false) {
+        assert.deepEqual(config.processContainer?.filesystem?.enumeratePaths ?? [], [], "level 2: no enumeratePaths");
+      }
+    }
+  });
+
   test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {
     const home = "C:\\Users\\me";
     const found = ancestorsToEnumerate([`${home}\\.cargo\\bin`, `${home}\\AppData\\Roaming\\npm`], {
