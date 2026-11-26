@@ -18,7 +18,7 @@ Write-Host "MXC_EXEC=$env:MXC_EXEC"
 # profile, whose 8.3 short name makes roots under it denied by name) — the two-drive shape of
 # issue #582 comes from the runner that way.
 $cwdDrive = (Get-Location).Path.Substring(0, 2) # "C:"
-$other = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Name -ne $cwdDrive[0] } | Select-Object -First 1 -ExpandProperty Name
+$other = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Name -cmatch '^[A-Z]$' -and $_.Name -ne $cwdDrive[0] } | Select-Object -First 1 -ExpandProperty Name
 $tempRoot = if ($other) { "$($other):" + '\t' } else { "$cwdDrive" + '\t' }
 New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
 $env:TEMP = $tempRoot
