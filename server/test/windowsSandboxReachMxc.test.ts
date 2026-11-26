@@ -21,6 +21,8 @@ import { startEgressProxy } from "../src/egressProxy.ts";
 const RUNNER = process.env.MXC_EXEC;
 const POWERSHELL = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 const skip = process.platform !== "win32" ? "MXC confines on Windows only" : !RUNNER ? "MXC_EXEC is not set" : false;
+/** A hosted runner's service session (Session 0): no desktop, a different subnet, no dev toolchain. */
+const hostedRunner = process.env.GITHUB_ACTIONS === "true" && process.env.SESSIONNAME === undefined;
 
 describe("what a confined command reaches beside the root, under MXC", { skip }, () => {
   let base: string;
@@ -152,7 +154,7 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
   const PRIVATE = `$c = [Net.Sockets.TcpClient]::new(); try { [void]$c.ConnectAsync("${peer}", 9).Wait(3000); "private: not refused" } catch { $code = $_.Exception.InnerException.InnerException.ErrorCode; if ($code -eq 10013) { "private: refused by the sandbox" } else { "private: not refused ($code)" } }`;
 
   // openlore: scenario=TheIntranetIsReachable spec=sandbox-runner-bash
-  test("TheIntranetIsReachable: the private network is refused by default; privateNetwork true, the user's choice, opens it", { skip: peer ? false : "this machine is on no private IPv4 network" }, async () => {
+  test("TheIntranetIsReachable: the private network is refused by default; privateNetwork true, the user's choice, opens it", { skip: peer && !hostedRunner ? false : "needs a host with a real private IPv4 network (a hosted runner's subnet answers differently)" }, async () => {
     assert.match((await ps(PRIVATE)).output, /private: refused by the sandbox/);
     assert.match((await ps(PRIVATE, { privateNetwork: true })).output, /private: not refused/);
     // Under sandbox.allowedHosts the request asks `ingress.default: allow`, which MXC requires beside a
@@ -167,7 +169,7 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
   });
 
   // openlore: scenario=ASandboxRefusalIsNamed spec=sandbox-runner-bash
-  test("ASandboxRefusalIsNamed: a refused connection's output ends saying it was the sandbox, and which setting", { skip: peer ? false : "this machine is on no private IPv4 network" }, async () => {
+  test("ASandboxRefusalIsNamed: a refused connection's output ends saying it was the sandbox, and which setting", { skip: peer && !hostedRunner ? false : "needs a host with a real private IPv4 network (a hosted runner's subnet answers differently)" }, async () => {
     // The program's own words, as uv and Python print them: the error's message, in the user's language.
     const refused = await ps(`$c = [Net.Sockets.TcpClient]::new(); try { [void]$c.ConnectAsync("${peer}", 9).Wait(3000) } catch { $_.Exception.InnerException.InnerException.Message; exit 1 }`);
     const named = new RegExp(`\\[pi-outpost\\] the sandbox refused ${peer!.replaceAll(".", "\\.")}: it is on this machine's private network`);
@@ -185,7 +187,7 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
   });
 
   // openlore: scenario=TheUsersMirrorIsSeen spec=sandbox-runner-bash
-  test("TheUsersMirrorIsSeen: uv, pip, npm, Cargo, Go and NuGet in a command see the user's mirror, never its credentials", async () => {
+  test("TheUsersMirrorIsSeen: uv, pip, npm, Cargo, Go and NuGet in a command see the user's mirror, never its credentials", { skip: hostedRunner ? "needs the dev toolchain (uv, dotnet, npm fixture) — absent on a hosted runner" : false }, async () => {
     // A user of their own: their AppData and home, with a company's mirror and its credentials.
     const home = path.join(base, "user");
     const roaming = path.join(home, "AppData", "Roaming");
@@ -234,7 +236,7 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
   });
 
   // openlore: scenario=TheCredentialsStayInTheServer spec=sandbox-runner-bash
-  test("TheCredentialsStayInTheServer: npm and uv install from the user's authenticated registry through the relay; the command never holds the token", async () => {
+  test("TheCredentialsStayInTheServer: npm and uv install from the user's authenticated registry through the relay; the command never holds the token", { skip: hostedRunner ? "needs the dev toolchain (uv, npm fixture) — absent on a hosted runner" : false }, async () => {
     // A company's registry on this machine: npm's packument and tarball behind a Bearer token, a
     // PyPI simple index and wheel behind a password. Unconfined, as the real one is outside.
     const work = path.join(base, "registry");

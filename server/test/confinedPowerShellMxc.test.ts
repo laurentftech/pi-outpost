@@ -111,6 +111,7 @@ describe("the agent's powershell under MXC's real executor", { skip }, () => {
   test("AConfinedProgramCannotDriveTheDesktop: no injected input, no cursor, no windows, no clipboard", async (t) => {
     const csc = path.join(process.env.SystemRoot ?? "C:\\Windows", "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe");
     if (!existsSync(csc)) return t.skip(".NET Framework's csc.exe is not installed");
+    if (!process.env.SESSIONNAME) return t.skip("needs an interactive desktop session (a hosted runner runs in Session 0)");
     const probe = path.join(root, "desktop-probe.exe");
     execFileSync(csc, ["/nologo", `/out:${probe}`, fileURLToPath(new URL("./fixtures/desktop-probe.cs", import.meta.url))]);
     const result = await ps("& ./desktop-probe.exe");
