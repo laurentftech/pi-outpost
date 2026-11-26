@@ -28,7 +28,7 @@
 
 - [x] 5.1 Run `openspec validate sandbox-doctor-leak-evidence --strict`, `npm run typecheck --workspace server` (`tsc --noEmit -p tsconfig.test.json`) and `npm run lint --workspace server` (`oxlint src`); verify all pass
 - [x] 5.2 Run the sandbox suites — `npm test --workspace server` for `sandboxDoctor`, `sandbox-tools` and the confinement tests — and verify green; new tests must follow the AGENTS.md Windows rules (paths via `path.join`, split on `/\r?\n/`, spawn `npm.cmd` not `npm`)
-- [ ] 5.3 Add a Windows/MXC smoke task execution: run `pi-outpost sandbox doctor` on a real Windows MXC host and confirm the confinement section, flags and beside-root probe appear (sibling change's task 8 pattern)
+- [x] 5.3 Add a Windows/MXC smoke task execution: run `pi-outpost sandbox doctor` on a real Windows MXC host and confirm the confinement section, flags and beside-root probe appear — DONE live on this Windows 11 24H2 host (build 26100.9711 >= 26100.9278): mxcSdk LOADED, probe battery ran in a real process container, `beside-root canary replay: ok (policy) — refused at level 0: <tmpdir bait>`, confinement section rendered the verdict
 
 ## Workflow follow-up
 
