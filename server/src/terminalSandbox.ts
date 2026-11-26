@@ -1384,23 +1384,28 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     tools.push(target);
   }
   let readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? []), ...(input.readOnlyInside ?? [])].filter((p) => !readwritePaths.includes(p)));
+  // The way down to every opened folder — the shell's, the search path's tools', the grants' —
+  // whatever the enumeration level: what lies beside it is denied by name at every level, so a host
+  // whose MXC refuses enumeration altogether (level 2) does not open a foreign drive whole
+  // (issue #585). Enumeration itself stays what the host proved it can take. Not the temporary
+  // directory, under a profile of hundreds of entries each to deny, nor git's single files.
+  const wayDownGuard = {
+    root: input.root,
+    siblings: input.siblings,
+    readable: [...readwritePaths, ...readonlyPaths],
+    agentDir: input.agentDir,
+    configFile: input.configFile,
+    linkTarget,
+    ...(input.home ? { home: input.home } : {}),
+  };
+  const wayDownAll = ancestorsToEnumerate([...shellDir, ...tools, ...(input.grantedRead ?? []), ...(input.grantedWrite ?? [])], wayDownGuard);
   let enumeratePaths = !(input.enumerateAncestors ?? mxcEnumerates)
     ? []
     // What a command opens beside the root by path: the search path's tools and — at level 0 — the
-    // grants. Not the temporary directory, under a profile of hundreds of entries each to deny, nor
-    // git's single files.
-    : ancestorsToEnumerate(
-        [...shellDir, ...tools, ...((input.enumerateGrants ?? mxcEnumerateGrants) ? [...(input.grantedRead ?? []), ...(input.grantedWrite ?? [])] : [])],
-        {
-          root: input.root,
-          siblings: input.siblings,
-          readable: [...readwritePaths, ...readonlyPaths],
-          agentDir: input.agentDir,
-          configFile: input.configFile,
-          linkTarget,
-          ...(input.home ? { home: input.home } : {}),
-        },
-      );
+    // grants.
+    : (input.enumerateGrants ?? mxcEnumerateGrants)
+      ? wayDownAll
+      : ancestorsToEnumerate([...shellDir, ...tools], wayDownGuard);
   // A tool on another drive than the root's (scoop on a second disk, issue #572): the way down to
   // it — its drive's root and every folder above it — must be readable, not merely enumerable.
   // The root's own drive is readable whole, which is why a tool on it always resolved; on another
@@ -1411,7 +1416,9 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   let foreignWay: string[] = [];
   if (foreignDrives.size > 0) {
     const onForeign = (p: string) => foreignDrives.has(path.win32.parse(p).root.toLowerCase());
-    foreignWay = enumeratePaths.filter(onForeign);
+    // From the way down itself, not from `enumeratePaths`: at level 2 there is no enumeration, yet
+    // the foreign drive is readable whole and what lies beside the way must still be denied (issue #585).
+    foreignWay = wayDownAll.filter(onForeign);
     readonlyPaths = unique([...readonlyPaths, ...foreignWay, ...foreignDrives]);
     enumeratePaths = enumeratePaths.filter((p) => !onForeign(p));
   }

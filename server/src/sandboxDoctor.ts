@@ -20,6 +20,7 @@ import {
   activeSigningShim,
   confinedEnvironment,
   defaultSandboxCache,
+  enumerateLevelFlags,
   mxcEnumerateLevel,
   mxcTerminalConfig,
   readableSearchEntries,
@@ -97,6 +98,8 @@ export interface ProbeResult {
 export interface SandboxSnapshot {
   identity: DoctorIdentity;
   policy: PolicySummary;
+  /** MXC on Windows: the same policy at the enumeration level this host proved — what commands actually get (issue #585). */
+  runtimePolicy?: PolicySummary;
   links: LinkEntry[];
   network: {
     proxy: boolean;
@@ -131,7 +134,7 @@ export interface DoctorInput {
 type MxcRequest = MxcTerminalConfig & { processContainer?: { filesystem?: { enumeratePaths?: string[] } } };
 
 /** The MXC request a command gets for this sandbox, built the way `confinedBash` builds it. */
-function policyRequestFor(sandbox: SandboxConfig, root: string, agentDir: string | undefined, configFile: string | undefined, serverEnv: NodeJS.ProcessEnv, platform: NodeJS.Platform): MxcRequest {
+function policyRequestFor(sandbox: SandboxConfig, root: string, agentDir: string | undefined, configFile: string | undefined, serverEnv: NodeJS.ProcessEnv, platform: NodeJS.Platform, level?: 0 | 1 | 2): MxcRequest {
   const env = confinedEnvironment(serverEnv, {
     root,
     tmp: path.join(os.tmpdir(), "pi-outpost-doctor"),
@@ -154,8 +157,9 @@ function policyRequestFor(sandbox: SandboxConfig, root: string, agentDir: string
     ...(agentDir ? { agentDir } : {}),
     ...(configFile ? { configFile } : {}),
     readOnlyInside: sandbox.gitWritable ? [] : [path.join(root, ".git")],
-    enumerateAncestors: true,
-    enumerateGrants: true,
+    // Full enumeration unless a level is given: the doctor's `policy` shows the wanted policy, the
+    // `runtimePolicy` the one at the level this host proved it can build (issue #585).
+    ...(level === undefined ? { enumerateAncestors: true, enumerateGrants: true } : enumerateLevelFlags(level)),
   }) as MxcRequest;
 }
 
@@ -231,11 +235,14 @@ export async function collectSandboxSnapshot(input: DoctorInput): Promise<Sandbo
   const kind = sandbox?.bashRunner ? runnerKind(sandbox.bashRunner) : undefined;
 
   let policy: PolicySummary;
+  let runtimePolicy: PolicySummary | undefined;
   let links: LinkEntry[] = [];
   if (platform === "win32" && sandbox?.bashRunner && sandbox.bashImage === undefined && kind === "mxc") {
     const request = policyRequestFor(sandbox, root, input.agentDir, input.configFile, serverEnv, platform);
     policy = summarizePolicy(request, siblingsToDeny(root), input.agentDir, input.configFile);
     links = linkTableFor(request, serverEnv, root);
+    // What commands actually get: the same policy at the enumeration level this host proved (issue #585).
+    runtimePolicy = summarizePolicy(policyRequestFor(sandbox, root, input.agentDir, input.configFile, serverEnv, platform, mxcEnumerateLevel()), siblingsToDeny(root), input.agentDir, input.configFile);
   } else {
     policy = {
       backend: kind ?? "none",
@@ -264,6 +271,7 @@ export async function collectSandboxSnapshot(input: DoctorInput): Promise<Sandbo
       generatedAt: (input.now ?? (() => new Date()))().toISOString(),
     },
     policy,
+    ...(runtimePolicy ? { runtimePolicy } : {}),
     links,
     network: {
       proxy: sandbox?.allowedHosts !== undefined,
@@ -365,7 +373,8 @@ export async function runDoctorProbes(input: { sandbox: SandboxConfig | undefine
   const registry = startedRegistryRelay();
   if (registry !== undefined) {
     const relay = await registry;
-    const probe = await run(win ? `(Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 "${relay.url}health").StatusCode` : `curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${relay.url}health"`);
+    const relayUrl = relay.url.replace(/\s+/g, "");
+    const probe = await run(win ? `(Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 "${relayUrl}health").StatusCode` : `curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${relayUrl}health"`);
     results.push({ name: "registry relay reachable", status: probe.exitCode === 0 ? "ok" : "fail", layer: probe.exitCode === 0 ? "relay" : "network", detail: probe.output.trim().slice(0, 120) || `exit ${probe.exitCode}` });
   }
   return results;
@@ -392,6 +401,12 @@ export function renderSnapshot(snapshot: SandboxSnapshot, options: { json?: bool
     lines.push(
       `policy (${policy.backend}): ${policy.readwritePaths.length} read-write, ${policy.readonlyPaths.length} read-only, ${policy.denied.length} denied, ${policy.enumeratePaths.length} enumerable`,
     );
+  if (snapshot.runtimePolicy) {
+    const rp = snapshot.runtimePolicy;
+    lines.push(
+      `policy at level ${snapshot.identity.mxcEnumerateLevel ?? "?"} (what commands get): ${rp.readwritePaths.length} read-write, ${rp.readonlyPaths.length} read-only, ${rp.denied.length} denied, ${rp.enumeratePaths.length} enumerable`,
+    );
+  }
   for (const link of snapshot.links) lines.push(`  link ${link.link} → ${link.target} (target ${link.targetReadable ? "readable" : "NOT readable"})`);
   for (const denied of policy.denied.slice(0, 20)) lines.push(`  denied ${denied.path} — ${denied.reasonClass}`);
   if (policy.denied.length > 20) lines.push(`  … ${policy.denied.length - 20} more denied`);
@@ -406,7 +421,7 @@ export function renderSnapshot(snapshot: SandboxSnapshot, options: { json?: bool
 
 /** The agent's bounded summary: identity, network, policy counts, links, last decisions — size-capped. */
 export function boundedAgentSummary(snapshot: SandboxSnapshot, maxChars = 4000): string {
-  const full = renderSnapshot({ ...snapshot, probes: snapshot.probes.length > 0 ? snapshot.probes : [], policy: { ...snapshot.policy, denied: snapshot.policy.denied.slice(0, 10) }, decisions: snapshot.decisions.slice(-10) });
+  const full = renderSnapshot({ ...snapshot, probes: snapshot.probes.length > 0 ? snapshot.probes : [], policy: { ...snapshot.policy, denied: snapshot.policy.denied.slice(0, 10) }, ...(snapshot.runtimePolicy ? { runtimePolicy: { ...snapshot.runtimePolicy, denied: snapshot.runtimePolicy.denied.slice(0, 10) } } : {}), decisions: snapshot.decisions.slice(-10) });
   const text = `sandbox snapshot (bounded; full: \`pi-outpost sandbox doctor\` on the host)\n${full}`;
   return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
 }
