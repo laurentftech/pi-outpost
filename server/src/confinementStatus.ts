@@ -7,7 +7,7 @@ import { isSecurityEnvironmentRefusal, mxcSdk, runThroughSdk, sdkRequest } from 
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
-import type { ConfinementRemedy, ConfinementVerdict } from "@pi-outpost/shared";
+import type { ConfinementAttempt, ConfinementRemedy, ConfinementVerdict } from "@pi-outpost/shared";
 import { CONFINE_SUGGESTION, platformRunner, type PlatformRunner } from "./autoRunner.ts";
 import { cachedCheck, confinedBashOperations, isPowerShell, reasonOf, remedyOf } from "./confinedBash.ts";
 import { runCanary } from "./confinementCanary.ts";
@@ -272,6 +272,11 @@ const ATTEMPT_WORDS: Record<string, string> = {
   "unlisted-host": "reach a host not in sandbox.allowedHosts",
   "direct-connection": "connect around the proxy",
 };
+
+/** One canary attempt in words — the sandbox doctor renders a verdict's `reached` with this. */
+export function describeConfinementAttempt(attempt: ConfinementAttempt): string {
+  return ATTEMPT_WORDS[attempt] ?? attempt;
+}
 
 /** The way back to an unconfined shell, named in every refusal of an `"auto"` one. */
 export const UNCONFINED_ESCAPE = `To run commands unconfined instead, run "pi-outpost config --unconfine" (it sets "sandbox.bashRunner": "none" in the configuration file), then restart pi-outpost: commands then run with every right of your account.`;
