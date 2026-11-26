@@ -1,6 +1,6 @@
 # OSS-Fuzz / ClusterFuzzLite build image for fuzz/ (docs/development.md § Fuzzing). OSS-Fuzz's JavaScript
 # builder, pinned by digest; Dependabot refreshes it.
-FROM gcr.io/oss-fuzz-base/base-builder-javascript@sha256:fff2fe5f532ffcd3fcea7c54cc1db18951b364b64aa37c415348ce8ba17cde34
+FROM gcr.io/oss-fuzz-base/base-builder-javascript@sha256:e834d2c0b8a9c4c41a08d0cec9f298e64e443c3059157f8ee43ec65b0fd17294
 
 # The repository installs with its pinned npm 12.2.2, which needs Node 22 or later; the image's
 # Node 20 is the one that runs the fuzzers, and the targets are bundled for it. This Node builds only.
