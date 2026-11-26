@@ -25,6 +25,10 @@ $env:TEMP = $tempRoot
 $env:TMP = $tempRoot
 Write-Host "TEMP=$tempRoot"
 
+# The npm fixture the mirror/credentials suites drive (tools/npm has a lockfile; its
+# node_modules is not committed).
+node -p "require('path').join('tools','npm')" | ForEach-Object { Set-Location $_; npm ci; Set-Location (git rev-parse --show-toplevel) }
+
 Set-Location server
 $tests = @(
   'test/confinementCanaryMxcForeignDrive.test.ts',
