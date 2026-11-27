@@ -1366,6 +1366,41 @@ describe("grants, in every policy", () => {
     assert.ok(loose.filesystem.readonlyPaths.includes("C:\\Windows"), "by default the foreign way down is readable (issue #572)");
   });
 
+  // openlore: scenario=StrictDeniesKeepOnlyOpenableEntries spec=sandbox-runner-bash
+  test("StrictDeniesKeepOnlyOpenableEntries caps the deny list under the security environment's size budget (measured 556 denied on a domain-joined host), essentials first", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "pi-outpost-cap-"));
+    try {
+      const many = await Promise.all(Array.from({ length: 300 }, (_, i) => mkdir(path.join(parent, `d${i}`)).then(() => path.join(parent, `d${i}`))));
+      const tmpParent = path.join(parent, "Temp");
+      await mkdir(tmpParent);
+      const tmp = path.join(tmpParent, "pi-outpost-bash-t");
+      const toolReader = { isFile: () => false, isDirectory: () => false, readText: () => undefined, list: () => [], isLink: () => false, resolveLink: () => undefined };
+      const base = {
+        root: "D:\\projects\\app",
+        allowWrite: true,
+        tmp,
+        shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        shellArgs: [],
+        cwd: "D:\\projects\\app",
+        env: {},
+        siblings: [tmpParent, ...many],
+        searchPath: "C:\\Windows\\System32",
+        home: "C:\\Users\\me",
+        agentDir: "C:\\Users\\me\\.pi\\agent",
+        enumerateAncestors: false,
+        besideEnumerated: () => [],
+        toolReader,
+      };
+      const loose = mxcTerminalConfig({ ...base });
+      assert.ok(loose.filesystem.deniedPaths.length > 256, "by default the deny list is not capped");
+      const strict = mxcTerminalConfig({ ...base, strictDenies: true });
+      assert.ok(strict.filesystem.deniedPaths.length <= 256, `strict mode caps the deny list (got ${strict.filesystem.deniedPaths.length})`);
+      assert.ok(strict.filesystem.deniedPaths.includes(tmpParent), "the temporary directory's parent stays denied first (the canary's beside-root bait lives there)");
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
   test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {
     const home = "C:\\Users\\me";
     const found = ancestorsToEnumerate([`${home}\\.cargo\\bin`, `${home}\\AppData\\Roaming\\npm`], {

@@ -1472,12 +1472,23 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
       return !(atDriveRoot && WINDOWS_SYSTEM_FOLDERS.has(path.win32.basename(entry).toLowerCase()));
     });
   });
-  const deniedPaths = unique([...input.siblings, ...besideTheWay, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
+  let deniedPaths = unique([...input.siblings, ...besideTheWay, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
     .filter((p) => !allowed.has(p.toLowerCase()) && !enumerated.has(p.toLowerCase()))
     // Strict mode: a denied path the host's security environment cannot open would refuse the whole
     // policy — leave it out rather than lose the shell (folders still need only a plain open).
     .filter((p) => !strict || strictlyDeniable(p));
+  if (strict) {
+    // …and cap the list under the security environment's size budget (STRICT_DENY_BUDGET), keeping
+    // first what carries the confinement: the siblings of the root's path, the agent directory and
+    // the configuration file, the temporary directory's parent (the canary's beside-root bait lives
+    // there), then the rest.
+    const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+    const essential = new Set([...(input.siblings ?? []), input.agentDir, input.configFile].filter((p): p is string => Boolean(p)).map(lower));
+    const tmpParent = lower(path.win32.dirname(input.tmp));
+    const rank = (p: string) => (essential.has(lower(p)) ? 0 : lower(p) === tmpParent || lower(path.win32.dirname(p)) === tmpParent ? 1 : 2);
+    deniedPaths = deniedPaths.sort((a, b) => rank(a) - rank(b)).slice(0, STRICT_DENY_BUDGET);
+  }
   return {
     version: "1.0.0",
     containment: "processcontainer",
@@ -1916,6 +1927,14 @@ export function quotePosixArgument(argument: string): string {
 
 /** Top-level folders of a drive a shell needs: readable, never denied. */
 const WINDOWS_SYSTEM_FOLDERS = new Set(["windows", "program files", "program files (x86)", "programdata"]);
+
+/**
+ * The deny-list cap in strict mode. Windows builds the process security environment from every
+ * policy path and refuses the whole launch when it is too large (measured 0x80070005 with 557
+ * denied entries on a domain-joined host; 556 passed) — so on a host that needed strict mode, the
+ * deny list is capped well under that, the entries that carry the confinement first.
+ */
+const STRICT_DENY_BUDGET = 256;
 
 /**
  * Every entry beside the path from the drive root down to `root`, for MXC to deny.
