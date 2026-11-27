@@ -138,3 +138,56 @@ for (const [name, apply] of parts) {
   console.log(`phase 2: passes with ${name}`);
 }
 console.log("phase 2: nothing fails alone — the refusal needs the full combination.");
+
+// Phase 3: the FULL real launch (all parts at once). Confirm it fails, then bisect the path
+// candidates within it; if no single path fails, binary-search how many denied entries still pass.
+const fullWire = () => {
+  const w = baseWire();
+  w.process = { commandLine: `"${shell}" -NoProfile -NonInteractive -File "${scriptFile}"`, cwd: root, env: Object.entries(confinedEnv).map(([k, v]) => `${k}=${v}`) };
+  w.network = policy.network;
+  w.ui = policy.ui;
+  w.runtimeConfig = { networkProxy: "http://127.0.0.1:1" };
+  return w;
+};
+if (!(await refuses(fullWire()))) {
+  console.log("phase 3: the full real launch does NOT fail here either — the refusal needs something else the server adds at launch time.");
+  process.exit(0);
+}
+console.log("phase 3: the full real launch fails as in production; bisecting the paths inside it.");
+const wireWith = (batch) => {
+  const w = fullWire();
+  w.filesystem = {
+    readwritePaths: policy.filesystem.readwritePaths,
+    readonlyPaths: batch.filter((c) => c.role === "readonly").map((c) => c.path),
+    deniedPaths: batch.filter((c) => c.role === "denied").map((c) => c.path),
+  };
+  const enumerated = batch.filter((c) => c.role === "enumerate").map((c) => c.path);
+  if (enumerated.length > 0) w.processContainer = { filesystem: { enumeratePaths: enumerated } };
+  else delete w.processContainer;
+  return w;
+};
+const offendersFull = async (batch) => {
+  if (batch.length === 0 || !(await refuses(wireWith(batch)))) return [];
+  if (batch.length === 1) return batch;
+  const mid = Math.ceil(batch.length / 2);
+  return [...(await offendersFull(batch.slice(0, mid))), ...(await offendersFull(batch.slice(mid)))];
+};
+const candidatesFull = [
+  ...policy.filesystem.deniedPaths.map((p) => ({ path: p, role: "denied" })),
+  ...policy.filesystem.readonlyPaths.map((p) => ({ path: p, role: "readonly" })),
+  ...(policy.processContainer?.filesystem?.enumeratePaths ?? []).map((p) => ({ path: p, role: "enumerate" })),
+];
+const bad = await offendersFull(candidatesFull);
+if (bad.length > 0) {
+  console.log(`paths that fail inside the full launch (${bad.length}):`);
+  for (const c of bad) console.log(`  [${c.role}] ${c.path}`);
+} else {
+  console.log("no single path fails inside the full launch: it is a count/size effect. Finding the largest denied count that still passes…");
+  const deniedOnly = policy.filesystem.deniedPaths.map((p) => ({ path: p, role: "denied" }));
+  let lo = 0, hi = deniedOnly.length; // lo passes, hi fails (full fails)
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (await refuses(wireWith(deniedOnly.slice(0, mid)))) hi = mid; else lo = mid;
+  }
+  console.log(`denied entries: passes with ${lo}, fails from ${hi} (policy has ${deniedOnly.length}).`);
+}
