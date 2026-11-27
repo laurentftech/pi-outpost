@@ -139,6 +139,17 @@ const results = {};
 for (const [variant, mutate] of Object.entries(variants)) {
   const sample = mutate(confine.policy({ tmp, shell, shellArgs: [], cwd: root, env }, 0));
   console.log(`\n== ${variant}: ${sample.filesystem.readwritePaths.length} rw, ${sample.filesystem.readonlyPaths.length} ro, ${sample.filesystem.deniedPaths.length} denied, ${(sample.processContainer?.filesystem?.enumeratePaths ?? []).length} enumerable`);
+  // What in the policy opens the marker beside the temporary directory: an allow that contains it
+  // (a broad read-only folder from the search path) is a leak the deny-list used to cover.
+  const within = (zone, target) => {
+    const rel = path.win32.relative(zone, target);
+    return rel === "" || (!rel.startsWith("..") && !path.win32.isAbsolute(rel));
+  };
+  const covering = [
+    ...sample.filesystem.readwritePaths.map((p) => `rw ${p}`),
+    ...sample.filesystem.readonlyPaths.map((p) => `ro ${p}`),
+  ].filter((entry) => within(entry.slice(3), marker));
+  console.log(`  allows containing the marker: ${covering.length ? covering.join(" | ") : "none"}`);
   results[variant] = {};
   for (const probe of probes) {
     const terminal = { tmp, shell, shellArgs: ["-NoProfile", "-NonInteractive", "-Command", probe.script], cwd: root, env };
