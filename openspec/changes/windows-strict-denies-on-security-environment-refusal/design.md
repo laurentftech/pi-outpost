@@ -15,7 +15,11 @@
   `mxcStrictDenies()` flag). In strict mode the beside-the-way listing is filtered with
   `strictlyDeniable`, and the final `deniedPaths` (siblings, beside-the-way, agentDir, configFile)
   is filtered with it too — so a path that would break the security environment is left out, while
-  openable folders (the temporary directory) stay denied.
+  openable folders (the temporary directory) stay denied. The foreign drive's way down is also not
+  made readable on top of the drive's root (`foreignWay` stays out of `readonlyPaths`, the drive root
+  stays in): a folder of the way down the security environment cannot open would refuse the whole
+  policy, and the drive's root being readable is enough for traversal (#572). The way down still
+  denies what lies beside it.
 - The retry chains step the enumeration level down first (0→1→2, as before). Only when a refusal
   still occurs at the lowest level do they call `noteMxcStrictDenies()` and rebuild once at the same
   level; the flag is remembered, so later launches on the host go straight to the pruned deny list.

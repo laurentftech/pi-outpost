@@ -396,6 +396,8 @@ MXC for no clipboard and no input injection. Limits:
   When the host's security environment cannot open a denied path at all (0x80070005, seen on
   domain-joined accounts), the deny list is pruned to what it can open — an openable folder such as
   the temporary directory stays denied — so the shell still starts, confined.
+  In that fallback the way down on another drive is not made readable on top of the drive's root
+  either — the drive's root alone is readable, which is enough to reach the tools.
   A tool reached through a link on the way down (scoop's `current` junction to the active version) has
   the link's target readable like the link, so `node` resolves on `PATH` through it; the link itself is
   never made listable. This needs a Windows whose MXC can list a folder without reading it; MXC says so

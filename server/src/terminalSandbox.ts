@@ -1436,6 +1436,9 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   // drive nothing opened through enumerated ancestors alone: `Get-Command node` found nothing and
   // even a full-path open was refused. Readable shows the folders' names, as enumeration would;
   // their other contents stay denied, the files beside the way are not in any allow.
+  // A host whose security environment cannot open a denied path refuses the whole policy: in strict
+  // mode, deny only what opens there (issue: 0x80070005 on a domain-joined account).
+  const strict = input.strictDenies ?? mxcStrictDeniesFlag;
   const foreignDrives = new Set(tools.map((p) => path.win32.parse(p).root.toLowerCase()).filter((d) => d !== drive.toLowerCase()));
   let foreignWay: string[] = [];
   if (foreignDrives.size > 0) {
@@ -1443,7 +1446,10 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     // From the way down itself, not from `enumeratePaths`: at level 2 there is no enumeration, yet
     // the foreign drive is readable whole and what lies beside the way must still be denied (issue #585).
     foreignWay = wayDownAll.filter(onForeign);
-    readonlyPaths = unique([...readonlyPaths, ...foreignWay, ...foreignDrives]);
+    // Strict mode: the drive's root stays readable (traversal, #572) but the way down itself is not
+    // made readable on top of it — a folder of it the security environment cannot open would refuse
+    // the whole policy. The way down still denies what lies beside it below.
+    readonlyPaths = unique([...readonlyPaths, ...(strict ? [] : foreignWay), ...foreignDrives]);
     enumeratePaths = enumeratePaths.filter((p) => !onForeign(p));
   }
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
@@ -1456,9 +1462,6 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   // bait with them (issue #582).
   const onTheWay = new Set([...allowed, ...enumerated].map((p) => p.replace(/[\\/]+$/, "")));
   const wayDown = [...enumeratePaths, ...foreignWay];
-  // A host whose security environment cannot open a denied path refuses the whole policy: in strict
-  // mode, deny only what opens there (issue: 0x80070005 on a domain-joined account).
-  const strict = input.strictDenies ?? mxcStrictDeniesFlag;
   const denyFilter = strict ? strictlyDeniable : deniable;
   const besideTheWay = wayDown.flatMap((dir) => {
     const trimmed = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");

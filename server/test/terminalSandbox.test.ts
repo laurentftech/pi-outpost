@@ -1358,6 +1358,12 @@ describe("grants, in every policy", () => {
     assert.ok(!strict.filesystem.deniedPaths.includes(unopenable), "strict mode leaves out a denied path the host cannot open");
     assert.ok(strict.filesystem.deniedPaths.includes(openable), "strict mode still denies an openable folder (Temp-class entries stay denied)");
     assert.ok(!strict.filesystem.deniedPaths.includes("C:\\Users\\me\\.pi\\agent"), "strict mode leaves out the unopenable agent directory too");
+    // The foreign drive's root stays readable (traversal, #572), but in strict mode the way down on it
+    // is not made readable on top of it: a folder the security environment cannot open there would
+    // refuse the whole policy (0x80070005).
+    assert.ok(strict.filesystem.readonlyPaths.some((p) => p.toLowerCase().replace(/[\\/]+$/, "") === "c:"), "strict mode keeps the foreign drive's root readable");
+    assert.ok(!strict.filesystem.readonlyPaths.includes("C:\\Windows"), "strict mode does not make the foreign way down itself readable");
+    assert.ok(loose.filesystem.readonlyPaths.includes("C:\\Windows"), "by default the foreign way down is readable (issue #572)");
   });
 
   test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {

@@ -7,7 +7,8 @@
 Under MXC on Windows, when the host's process security environment refuses the policy over a denied
 path it cannot open (`0x80070005`), the deny list SHALL be pruned — as the last fallback after the
 enumeration levels — to the entries the host can open there. Openable folders (the system temporary
-directory included) SHALL stay denied by name.
+directory included) SHALL stay denied by name, and on a foreign drive the way down SHALL not be made
+readable on top of the drive's root in strict mode (the drive root alone stays readable).
 
 #### Scenario: StrictDeniesKeepOnlyOpenableEntries
 - **GIVEN** a Windows host joined to a domain, where building the process security environment over
