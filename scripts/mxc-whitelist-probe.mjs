@@ -48,6 +48,10 @@ try {
   console.error(`cannot write the probe file in the project (${hello}): ${error.code ?? error.message}`);
   process.exit(1);
 }
+// A PowerShell script file in the container's temporary directory, as the canary's is.
+const psScript = path.join(tmp, "probe.ps1");
+writeFileSync(psScript, "﻿'ps1 ran: ' + $ExecutionContext.SessionState.LanguageMode\n");
+const psFile = "& (Join-Path $PSHOME powershell.exe)";
 const parent = path.dirname(root);
 const sibling = readdirSync(parent, { withFileTypes: true }).find((e) => e.isDirectory() && path.join(parent, e.name).toLowerCase() !== root.toLowerCase());
 const siblingPath = sibling ? path.join(parent, sibling.name) : undefined;
@@ -78,6 +82,13 @@ const probes = [
   { name: "node <file> (main only)", script: `$env:NODE_OPTIONS='--preserve-symlinks-main'; node '${ps(path.join(root, ".mxc-whitelist-probe-hello.cjs"))}'` },
   { name: "node <file>", script: `node '${ps(path.join(root, ".mxc-whitelist-probe-hello.cjs"))}'` },
   { name: "python", script: "python --version" },
+  // How the canary and the agent's commands run: a .ps1 under -ExecutionPolicy Bypass -File. When it
+  // fails "AuthorizationManager", the other rows say why: the language mode (ConstrainedLanguage:
+  // AppLocker/WDAC), the policy PowerShell reads inside, the same script through -Command.
+  { name: "ps1 via -File Bypass", script: `${psFile} -NoProfile -NonInteractive -ExecutionPolicy Bypass -File '${ps(psScript)}' 2>&1 | Out-String` },
+  { name: "ps1 content via -Command", script: `${psFile} -NoProfile -NonInteractive -Command (Get-Content -Raw '${ps(psScript)}') 2>&1 | Out-String` },
+  { name: "language mode", script: "$ExecutionContext.SessionState.LanguageMode" },
+  { name: "execution policy inside", script: "Get-ExecutionPolicy -List 2>&1 | ForEach-Object { \"$($_.Scope)=$($_.ExecutionPolicy)\" }" },
   { name: "rtk --version", script: "rtk --version" },
   { name: "rtk git status", script: "$o = (rtk git status 2>&1 | Out-String); $o; 'rtk-exit=' + $LASTEXITCODE" },
   { name: "git --version", script: "git --version" },
