@@ -4,9 +4,12 @@
 // Every variant starts from the REAL level-0 policy (buildTerminalConfinement + confinedEnvironment,
 // as mxc-find-unopenable-path.mjs builds it) and changes one thing at a time:
 //   real          — the policy as shipped (drive readable, siblings denied)
+//   strict        — as the server retries after a 0x80070005: deny-list pruned and capped
 //   no-drive      — drive roots removed from readonlyPaths, denies kept
 //   whitelist     — drive roots removed and deniedPaths emptied (the target of #593)
 //   whitelist+enum-drive — as whitelist, the drive roots enumerable instead of readable
+//   whitelist+enum-way — as whitelist, the drive roots and every folder above the temporary
+//                    directory or the profile enumerable instead of readable (the #593 target)
 //   whitelist-noenum — as whitelist, and no enumeratePaths either
 // In each, it runs: node -e, node <file>, npm (plain, and with Node's --preserve-symlinks-main /
 // --preserve-symlinks: Node lstats every component of a module's path, the drive root included),
@@ -23,7 +26,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { mxcSdk, sdkRequest, runThroughSdk, isSecurityEnvironmentRefusal } from "../server/src/mxcSdk.ts";
 import { buildTerminalConfinement } from "../server/src/confinementStatus.ts";
-import { confinedEnvironment } from "../server/src/terminalSandbox.ts";
+import { confinedEnvironment, noteMxcStrictDenies } from "../server/src/terminalSandbox.ts";
 
 if (process.platform !== "win32") {
   console.error("Windows MXC only.");
@@ -51,7 +54,6 @@ try {
 // A PowerShell script file in the container's temporary directory, as the canary's is.
 const psScript = path.join(tmp, "probe.ps1");
 writeFileSync(psScript, "﻿'ps1 ran: ' + $ExecutionContext.SessionState.LanguageMode\n");
-const psFile = "& (Join-Path $PSHOME powershell.exe)";
 const parent = path.dirname(root);
 const sibling = readdirSync(parent, { withFileTypes: true }).find((e) => e.isDirectory() && path.join(parent, e.name).toLowerCase() !== root.toLowerCase());
 const siblingPath = sibling ? path.join(parent, sibling.name) : undefined;
@@ -82,11 +84,11 @@ const probes = [
   { name: "node <file> (main only)", script: `$env:NODE_OPTIONS='--preserve-symlinks-main'; node '${ps(path.join(root, ".mxc-whitelist-probe-hello.cjs"))}'` },
   { name: "node <file>", script: `node '${ps(path.join(root, ".mxc-whitelist-probe-hello.cjs"))}'` },
   { name: "python", script: "python --version" },
-  // How the canary and the agent's commands run: a .ps1 under -ExecutionPolicy Bypass -File. When it
-  // fails "AuthorizationManager", the other rows say why: the language mode (ConstrainedLanguage:
-  // AppLocker/WDAC), the policy PowerShell reads inside, the same script through -Command.
-  { name: "ps1 via -File Bypass", script: `${psFile} -NoProfile -NonInteractive -ExecutionPolicy Bypass -File '${ps(psScript)}' 2>&1 | Out-String` },
-  { name: "ps1 content via -Command", script: `${psFile} -NoProfile -NonInteractive -Command (Get-Content -Raw '${ps(psScript)}') 2>&1 | Out-String` },
+  // As the canary and the agent's commands run: the sandbox's shell itself started on a .ps1 with
+  // -ExecutionPolicy Bypass -File (confinedBash.ts' POWERSHELL_SCRIPT_ARGS) — not a nested PowerShell.
+  // Beside it, the same content through -Command: an execution-policy refusal hits only the first.
+  { name: "canary-style .ps1 (-File Bypass)", shellArgs: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", psScript] },
+  { name: "same content via -Command", shellArgs: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "'ps1 ran: ' + $ExecutionContext.SessionState.LanguageMode"] },
   { name: "language mode", script: "$ExecutionContext.SessionState.LanguageMode" },
   { name: "execution policy inside", script: "Get-ExecutionPolicy -List 2>&1 | ForEach-Object { \"$($_.Scope)=$($_.ExecutionPolicy)\" }" },
   { name: "rtk --version", script: "rtk --version" },
@@ -105,8 +107,16 @@ const probes = [
 ];
 
 const isDriveRoot = (p) => /^[a-z]:\\?$/i.test(p);
+// A folder that holds the temporary directory or the profile: readable, it opens all of them.
+const within = (zone, target) => {
+  const rel = path.win32.relative(zone, target);
+  return rel === "" || (!rel.startsWith("..") && !path.win32.isAbsolute(rel));
+};
+const aboveTmpOrHome = (p) => [tmp, ...(home ? [home] : [])].some((t) => within(p, t) && path.win32.resolve(p).toLowerCase() !== path.win32.resolve(t).toLowerCase());
 const variants = {
   real: (w) => w,
+  // What the server retries with after a 0x80070005: the deny-list pruned and capped (#590, #592).
+  strict: { strict: true, mutate: (w) => w },
   "no-drive": (w) => ({ ...w, filesystem: { ...w.filesystem, readonlyPaths: w.filesystem.readonlyPaths.filter((p) => !isDriveRoot(p)) } }),
   whitelist: (w) => ({ ...w, filesystem: { ...w.filesystem, readonlyPaths: w.filesystem.readonlyPaths.filter((p) => !isDriveRoot(p)), deniedPaths: [] } }),
   // The drive root only enumerable, not readable: what Node's realpath (lstat of every component) needs?
@@ -115,6 +125,16 @@ const variants = {
     filesystem: { ...w.filesystem, readonlyPaths: w.filesystem.readonlyPaths.filter((p) => !isDriveRoot(p)), deniedPaths: [] },
     processContainer: { ...w.processContainer, filesystem: { enumeratePaths: [...new Set([...w.filesystem.readonlyPaths.filter(isDriveRoot), ...(w.processContainer?.filesystem?.enumeratePaths ?? [])])] } },
   }),
+  // The target of #593: no deny-list, and the way down (drive roots, the folders above the temporary
+  // directory and the profile) enumerable instead of readable — a readable way down opens all below.
+  "whitelist+enum-way": (w) => {
+    const moved = w.filesystem.readonlyPaths.filter((p) => isDriveRoot(p) || aboveTmpOrHome(p));
+    return {
+      ...w,
+      filesystem: { ...w.filesystem, readonlyPaths: w.filesystem.readonlyPaths.filter((p) => !moved.includes(p)), deniedPaths: [] },
+      processContainer: { ...w.processContainer, filesystem: { enumeratePaths: [...new Set([...moved, ...(w.processContainer?.filesystem?.enumeratePaths ?? [])])] } },
+    };
+  },
   "whitelist-noenum": (w) => ({
     ...w,
     filesystem: { ...w.filesystem, readonlyPaths: w.filesystem.readonlyPaths.filter((p) => !isDriveRoot(p)), deniedPaths: [] },
@@ -133,18 +153,22 @@ async function runProbe(wire) {
   }
 }
 
-const oneLine = (s) => s.replace(/\s+/g, " ").slice(0, 400);
+// PowerShell under a whitelist cannot initialise a drive and says so before every output: dropped
+// from the display, it hides the line that matters.
+const oneLine = (s) =>
+  s
+    .replace(/La tentative d.ex.{1,4}cution de l.op.{1,4}ration InitializeDefaultDrives[^.]*\.|Attempting to perform the InitializeDefaultDrives operation[^.]*\./g, "[InitializeDefaultDrives failed] ")
+    .replace(/\s+/g, " ")
+    .slice(0, 400);
 console.log(`root=${root}`);
 const results = {};
-for (const [variant, mutate] of Object.entries(variants)) {
+for (const [variant, spec] of Object.entries(variants)) {
+  const { strict = false, mutate } = typeof spec === "function" ? { mutate: spec } : spec;
+  noteMxcStrictDenies(strict);
   const sample = mutate(confine.policy({ tmp, shell, shellArgs: [], cwd: root, env }, 0));
   console.log(`\n== ${variant}: ${sample.filesystem.readwritePaths.length} rw, ${sample.filesystem.readonlyPaths.length} ro, ${sample.filesystem.deniedPaths.length} denied, ${(sample.processContainer?.filesystem?.enumeratePaths ?? []).length} enumerable`);
   // What in the policy opens the marker beside the temporary directory: an allow that contains it
   // (a broad read-only folder from the search path) is a leak the deny-list used to cover.
-  const within = (zone, target) => {
-    const rel = path.win32.relative(zone, target);
-    return rel === "" || (!rel.startsWith("..") && !path.win32.isAbsolute(rel));
-  };
   const covering = [
     ...sample.filesystem.readwritePaths.map((p) => `rw ${p}`),
     ...sample.filesystem.readonlyPaths.map((p) => `ro ${p}`),
@@ -152,7 +176,7 @@ for (const [variant, mutate] of Object.entries(variants)) {
   console.log(`  allows containing the marker: ${covering.length ? covering.join(" | ") : "none"}`);
   results[variant] = {};
   for (const probe of probes) {
-    const terminal = { tmp, shell, shellArgs: ["-NoProfile", "-NonInteractive", "-Command", probe.script], cwd: root, env };
+    const terminal = { tmp, shell, shellArgs: probe.shellArgs ?? ["-NoProfile", "-NonInteractive", "-Command", probe.script], cwd: root, env };
     const r = await runProbe(mutate(confine.policy(terminal, 0)));
     let verdict;
     if (r.refused) verdict = `LAUNCH REFUSED (${oneLine(r.refused)})`;
@@ -160,9 +184,10 @@ for (const [variant, mutate] of Object.entries(variants)) {
     else if (probe.mustFail) verdict = r.exitCode === 0 && r.out ? `LEAK! read: ${oneLine(r.out)}` : "refused (good)";
     else verdict = r.exitCode === 0 ? `ok: ${oneLine(r.out)}` : `FAIL exit ${r.exitCode}: ${oneLine(r.out)}`;
     results[variant][probe.name] = verdict;
-    console.log(`  ${probe.name.padEnd(30)} ${verdict}`);
+    console.log(`  ${probe.name.padEnd(32)} ${verdict}`);
   }
 }
+noteMxcStrictDenies(false);
 
 rmSync(hello, { force: true });
 // rtk writes its history beside the working directory when its own data folder is out of reach.
