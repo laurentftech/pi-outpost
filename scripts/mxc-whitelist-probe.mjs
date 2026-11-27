@@ -13,7 +13,7 @@
 // python, rtk, git status/rev-parse/log/diff, git status with GIT_CEILING_DIRECTORIES + GIT_DIR +
 // GIT_WORK_TREE set (does git still walk the parents?), and two leak checks that must be refused: a
 // marker beside the container's temporary directory, and a listing of a sibling of the root.
-// Read-only: nothing is committed; a probe file is written under scripts/ and removed.
+// Read-only: nothing is committed; a probe file is written at the root and removed.
 //
 // Run on the Windows host in a clone of this repository, against a project directory that is a git
 // work tree:
@@ -36,7 +36,7 @@ const beside = mkdtempSync(path.join(tmpdir(), "pi-outpost-whitelist-beside-"));
 const marker = path.join(beside, "marker");
 writeFileSync(marker, "LEAKED");
 // A script run from a file: Node resolves its main module's real path (lstat of every component).
-const hello = path.join(root, "scripts", "mxc-whitelist-probe-hello.cjs");
+const hello = path.join(root, ".mxc-whitelist-probe-hello.cjs");
 const rtkDirBefore = existsSync(path.join(root, "rtk"));
 writeFileSync(hello, "console.log('hello from a file')\n");
 const parent = path.dirname(root);
@@ -66,8 +66,8 @@ const probes = [
   { name: "npm", script: "npm.cmd --version" },
   { name: "npm (preserve-symlinks-main)", script: "$env:NODE_OPTIONS='--preserve-symlinks-main --preserve-symlinks'; npm.cmd --version" },
   { name: "npm (main only)", script: "$env:NODE_OPTIONS='--preserve-symlinks-main'; npm.cmd --version" },
-  { name: "node <file> (main only)", script: `$env:NODE_OPTIONS='--preserve-symlinks-main'; node '${ps(path.join(root, "scripts", "mxc-whitelist-probe-hello.cjs"))}'` },
-  { name: "node <file>", script: `node '${ps(path.join(root, "scripts", "mxc-whitelist-probe-hello.cjs"))}'` },
+  { name: "node <file> (main only)", script: `$env:NODE_OPTIONS='--preserve-symlinks-main'; node '${ps(path.join(root, ".mxc-whitelist-probe-hello.cjs"))}'` },
+  { name: "node <file>", script: `node '${ps(path.join(root, ".mxc-whitelist-probe-hello.cjs"))}'` },
   { name: "python", script: "python --version" },
   { name: "rtk --version", script: "rtk --version" },
   { name: "rtk git status", script: "$o = (rtk git status 2>&1 | Out-String); $o; 'rtk-exit=' + $LASTEXITCODE" },
