@@ -1358,11 +1358,13 @@ describe("grants, in every policy", () => {
     assert.ok(!strict.filesystem.deniedPaths.includes(unopenable), "strict mode leaves out a denied path the host cannot open");
     assert.ok(strict.filesystem.deniedPaths.includes(openable), "strict mode still denies an openable folder (Temp-class entries stay denied)");
     assert.ok(!strict.filesystem.deniedPaths.includes("C:\\Users\\me\\.pi\\agent"), "strict mode leaves out the unopenable agent directory too");
-    // The foreign drive's root stays readable (traversal, #572), but in strict mode the way down on it
-    // is not made readable on top of it: a folder the security environment cannot open there would
-    // refuse the whole policy (0x80070005).
+    // The foreign drive's root and the way down on it stay readable in strict mode too (traversal,
+    // #572): the security environment's size budget is spent on the denied list, which strict mode
+    // caps — pruning the readable way down instead left the folders above the temporary directory
+    // denied, and a path resolved through a denied folder fails (issue #553), which broke the
+    // canary's own script (its verdict never printed, 0x80070005 gone).
     assert.ok(strict.filesystem.readonlyPaths.some((p) => p.toLowerCase().replace(/[\\/]+$/, "") === "c:"), "strict mode keeps the foreign drive's root readable");
-    assert.ok(!strict.filesystem.readonlyPaths.includes("C:\\Windows"), "strict mode does not make the foreign way down itself readable");
+    assert.ok(strict.filesystem.readonlyPaths.includes("C:\\Windows"), "strict mode keeps the foreign way down readable; the deny-list cap carries the budget");
     assert.ok(loose.filesystem.readonlyPaths.includes("C:\\Windows"), "by default the foreign way down is readable (issue #572)");
   });
 

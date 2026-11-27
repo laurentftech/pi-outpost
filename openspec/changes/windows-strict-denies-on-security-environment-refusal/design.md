@@ -15,10 +15,15 @@
   `mxcStrictDenies()` flag). In strict mode the beside-the-way listing is filtered with
   `strictlyDeniable`, and the final `deniedPaths` (siblings, beside-the-way, agentDir, configFile)
   is filtered with it too — so a path that would break the security environment is left out, while
-  openable folders (the temporary directory) stay denied. The foreign drive's way down is also not
-  made readable on top of the drive's root (`foreignWay` stays out of `readonlyPaths`, the drive root
-  stays in): a folder of the way down the security environment cannot open would refuse the whole
-  policy, and the drive's root being readable is enough for traversal (#572). The way down still
+  openable folders (the temporary directory) stay denied. The deny list is then capped well under
+  the security environment's size budget (`STRICT_DENY_BUDGET = 256`; measured on a domain-joined
+  host: 556 denied entries pass, 557 refuse the launch), keeping first the entries that carry the
+  confinement — the root's-drive siblings, the agent directory and the configuration file, then the
+  temporary directory's parent (the canary's beside-root bait lives there). The foreign drive's way
+  down stays readable on top of the drive's root (`foreignWay` stays in `readonlyPaths`): the budget
+  is spent on the denied list, not the read-only one, and pruning the readable way down instead left
+  the folders above the temporary directory denied — a path resolved through a denied folder fails
+  (#553), which broke the canary's own script so its verdict never printed. The way down still
   denies what lies beside it.
 - The retry chains step the enumeration level down first (0→1→2, as before). Only when a refusal
   still occurs at the lowest level do they call `noteMxcStrictDenies()` and rebuild once at the same

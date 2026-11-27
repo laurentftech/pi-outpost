@@ -1446,10 +1446,13 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     // From the way down itself, not from `enumeratePaths`: at level 2 there is no enumeration, yet
     // the foreign drive is readable whole and what lies beside the way must still be denied (issue #585).
     foreignWay = wayDownAll.filter(onForeign);
-    // Strict mode: the drive's root stays readable (traversal, #572) but the way down itself is not
-    // made readable on top of it — a folder of it the security environment cannot open would refuse
-    // the whole policy. The way down still denies what lies beside it below.
-    readonlyPaths = unique([...readonlyPaths, ...(strict ? [] : foreignWay), ...foreignDrives]);
+    // The way down stays readable in strict mode too: the security environment's size budget is
+    // spent on the denied list (measured 556 denied pass, 557 refuse the launch, read-only entries
+    // notwithstanding), which strict mode caps — pruning the readable way down instead left the
+    // folders above the temporary directory denied, and resolving a path through a denied folder
+    // fails (issue #553), which broke the canary's own script. The way down still denies what lies
+    // beside it below.
+    readonlyPaths = unique([...readonlyPaths, ...foreignWay, ...foreignDrives]);
     enumeratePaths = enumeratePaths.filter((p) => !onForeign(p));
   }
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
