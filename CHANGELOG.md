@@ -7,6 +7,20 @@ version you had and the one you run now, without going online.
 Releases before 0.41.0 are described on
 [GitHub Releases](https://github.com/laurentftech/pi-outpost/releases).
 
+## [0.68.1] - 2026-11-27
+
+### Fixed
+
+- **On Windows under MXC, a domain-joined host whose security environment cannot open one denied path
+  (CreateProcessSecurityEnvironment failing 0x80070005) no longer loses its shell entirely.** Since
+  0.68.0's fix for the foreign-drive leak (#586), the level-2 policy also denied the entries beside the
+  way down on the other drive; when one of them cannot be opened where Windows builds the security
+  environment, the whole policy was refused and no confined command could start. As a last fallback
+  (after the enumeration levels), the deny list is now pruned to what the host can open there — an
+  openable folder such as the temporary directory stays denied, so the confinement canary still
+  verifies and `bashRunner: "auto"` keeps working.
+  ([#590](https://github.com/laurentftech/pi-outpost/pull/590))
+
 ## [0.68.0] - 2026-11-26
 
 ### Added
