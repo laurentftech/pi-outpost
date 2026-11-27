@@ -1324,6 +1324,42 @@ describe("grants, in every policy", () => {
     }
   });
 
+  // openlore: scenario=StrictDeniesKeepOnlyOpenableEntries spec=sandbox-runner-bash
+  test("StrictDeniesKeepOnlyOpenableEntries: when the host's security environment refuses a denied path (0x80070005, domain-joined account), strict mode leaves out what the host cannot open and still denies what it can \u2014 an openable folder stays denied", () => {
+    const openable = tmpdir(); // a real folder this host can open
+    const unopenable = "D:\\WRK\\no-such-entry";
+    const toolReader = {
+      isFile: () => false,
+      isDirectory: () => false,
+      readText: () => undefined,
+      list: () => [],
+      isLink: () => false,
+      resolveLink: () => undefined,
+    };
+    const base = {
+      root: "D:\\projects\\app",
+      allowWrite: true,
+      tmp: "C:\\Users\\me\\AppData\\Local\\Temp\\pi-outpost-bash-t",
+      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      shellArgs: [],
+      cwd: "D:\\projects\\app",
+      env: {},
+      siblings: [openable, unopenable],
+      searchPath: "C:\\Windows\\System32",
+      home: "C:\\Users\\me",
+      agentDir: "C:\\Users\\me\\.pi\\agent",
+      enumerateAncestors: false,
+      besideEnumerated: () => [],
+      toolReader,
+    };
+    const loose = mxcTerminalConfig({ ...base });
+    assert.ok(loose.filesystem.deniedPaths.includes(unopenable), "by default a denied entry is kept whatever the host can open");
+    const strict = mxcTerminalConfig({ ...base, strictDenies: true });
+    assert.ok(!strict.filesystem.deniedPaths.includes(unopenable), "strict mode leaves out a denied path the host cannot open");
+    assert.ok(strict.filesystem.deniedPaths.includes(openable), "strict mode still denies an openable folder (Temp-class entries stay denied)");
+    assert.ok(!strict.filesystem.deniedPaths.includes("C:\\Users\\me\\.pi\\agent"), "strict mode leaves out the unopenable agent directory too");
+  });
+
   test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {
     const home = "C:\\Users\\me";
     const found = ancestorsToEnumerate([`${home}\\.cargo\\bin`, `${home}\\AppData\\Roaming\\npm`], {

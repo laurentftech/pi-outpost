@@ -39,6 +39,8 @@ import {
   mxcTerminalConfig,
   enumerateLevelFlags,
   mxcEnumerateLevel,
+  mxcStrictDenies,
+  noteMxcStrictDenies,
   noteMxcEnumerateLevel,
   runnerKind,
   siblingsToDeny,
@@ -779,13 +781,16 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
               // cannot open. Nothing ran: step the enumeration down one level — first the
               // ancestors of the grants (the profile's folders), then all of it, the policy sent
               // before the layer — and try again. Confined the same at every level; never unconfined.
-              if (
-                rebuildPolicy === undefined ||
-                !isSecurityEnvironmentRefusal(error) ||
-                enumLevel >= 2 ||
-                (mxcWire!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) === 0
-              ) throw error;
-              rebuildPolicy((enumLevel + 1) as 0 | 1 | 2);
+              if (rebuildPolicy === undefined || !isSecurityEnvironmentRefusal(error)) throw error;
+              if (enumLevel < 2 && (mxcWire!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) > 0) {
+                rebuildPolicy((enumLevel + 1) as 0 | 1 | 2);
+              } else if (!mxcStrictDenies()) {
+                // Even with no listable folders left, a denied path this account cannot open where the
+                // security environment is built refuses the whole policy (0x80070005, domain-joined):
+                // prune the deny list to what opens there and try once more, same level.
+                noteMxcStrictDenies();
+                rebuildPolicy(enumLevel);
+              } else throw error;
             }
           }
           // A lower level ran: this host cannot take more, and no policy built afterwards on it
