@@ -249,9 +249,9 @@ export function mxcStrictDenies(): boolean {
   return mxcStrictDeniesFlag;
 }
 
-/** Remember that this host's security environment could not open a denied path: prune them from then on. */
-export function noteMxcStrictDenies(): void {
-  mxcStrictDeniesFlag = true;
+/** Remember that this host's security environment could not open a denied path: prune them from then on (false resets, for tests). */
+export function noteMxcStrictDenies(needed = true): void {
+  mxcStrictDeniesFlag = needed;
 }
 
 /** The enumeration level this host proved it can build a policy with: 0 full, 1 tools only, 2 none. */

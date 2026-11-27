@@ -15,7 +15,7 @@ import { after, before, beforeEach, describe, test } from "node:test";
 import { PassThrough } from "node:stream";
 import { confinedBashOperations } from "../src/confinedBash.ts";
 import type { MxcSdk, SdkRequest } from "../src/mxcSdk.ts";
-import { mxcEnumerateLevel, mxcTerminalConfig, noteMxcEnumerateLevel } from "../src/terminalSandbox.ts";
+import { mxcEnumerateLevel, mxcStrictDenies, mxcTerminalConfig, noteMxcEnumerateLevel, noteMxcStrictDenies } from "../src/terminalSandbox.ts";
 
 const REFUSAL =
   "MXC launcher: failed to create the process security environment: CreateProcessSecurityEnvironment failed (HRESULT = 0x80070005)";
@@ -71,9 +71,11 @@ describe("the shell's MXC request when Windows refuses the security environment"
   after(() => {
     process.env.PATH = savedPath;
   });
-  // The remembered level is process-wide: each test starts from a host that takes full enumeration.
+  // The remembered level and deny mode are process-wide: each test starts from a host that takes
+  // full enumeration and denies everything openable.
   beforeEach(() => {
     noteMxcEnumerateLevel(0);
+    noteMxcStrictDenies(false);
   });
 
   function operations(sdk: MxcSdk) {
@@ -156,9 +158,9 @@ describe("the shell's MXC request when Windows refuses the security environment"
     assert.ok(!paths.includes("C:\\grants"), "and not the grant ancestors");
   });
 
-  test("a refusal with nothing enumerated is not replayed: the error is the command's", async () => {
-    // The shell and the root share C:, the tools are on L: (readable since #572): nothing is made listable, so the refusal is not the layer's.
-    const { sdk, requests } = refusingSdk();
+  test("a refusal with nothing enumerated is replayed once with the deny list pruned to what the host can open; a second refusal is the command's", async () => {
+    // The shell and the root share C:, the tools are on L: (readable since #572): nothing is made listable, so the refusal is not the layer's — the last fallback prunes the deny list (strict mode) and replays once.
+    const { sdk, requests } = refusingSdk(2);
     const ops = confinedBashOperations({
       runner: "C:\\mxc\\wxc-exec.exe",
       platform: "win32",
@@ -170,8 +172,15 @@ describe("the shell's MXC request when Windows refuses the security environment"
       mxcSdk: async () => ({ sdk }),
     });
     await assert.rejects(ops.exec("Write-Output hi", "C:\\work\\app", { onData: () => {} }), /0x80070005/);
-    assert.equal(requests.length, 1);
+    assert.equal(requests.length, 2, "the first refusal, then the strict replay, which refused too");
     assert.deepEqual(enumerated(requests[0]!), []);
+    assert.deepEqual(enumerated(requests[1]!), []);
+    // The replay pruned the deny list: the agent directory, a path this host cannot open, is left out.
+    const denied0 = (requests[0]!.filesystem.deniedPaths ?? []) as string[];
+    const denied1 = (requests[1]!.filesystem.deniedPaths ?? []) as string[];
+    assert.ok(denied0.includes("C:\\Users\\me\\.pi\\agent"), "the first policy denies the agent directory");
+    assert.ok(!denied1.includes("C:\\Users\\me\\.pi\\agent"), "the strict replay leaves out a denied path the host cannot open");
+    assert.ok(mxcStrictDenies(), "the host is remembered as needing the pruned deny list");
   });
 
   test("a failure that is not the security environment is not replayed either", async () => {
