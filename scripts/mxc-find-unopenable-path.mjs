@@ -3,15 +3,15 @@
 // the current directory, then bisects the policy's paths through the real MXC SDK until each
 // offending path is named.
 //
-// Run on the Windows host, from the project root, in a clone of this repository:
-//   node --import tsx scripts/mxc-find-unopenable-path.mjs
+// Run on the Windows host in a clone of this repository, against a project directory:
+//   node --import tsx scripts/mxc-find-unopenable-path.mjs [project-dir]   (default: cwd)
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { mxcSdk, sdkRequest, isSecurityEnvironmentRefusal } from "../server/src/mxcSdk.ts";
 import { defaultSandboxCache, mxcTerminalConfig, siblingsToDeny } from "../server/src/terminalSandbox.ts";
 
-const root = process.cwd();
+const root = process.argv[2] ? path.resolve(process.argv[2]) : process.cwd();
 const tmp = mkdtempSync(path.join(tmpdir(), "pi-outpost-offender-"));
 const home = process.env.USERPROFILE;
 const agentDir = home ? path.join(home, ".pi", "agent") : undefined;
