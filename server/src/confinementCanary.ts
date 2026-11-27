@@ -208,7 +208,9 @@ export function readCanary(
     if (attempt === "write-git-dir" && host.wroteHeld !== undefined) outcome = host.wroteHeld ? "reached" : "refused";
     if (attempt === "signal-process" && host.victimAlive !== undefined) outcome = host.victimAlive ? "refused" : "reached";
     if (outcome === undefined) {
-      const tail = output.trim().split(/\r?\n/).slice(-3).join(" ").slice(0, 300);
+      // Head and tail, not only the tail: where the script died matters as much as its last words.
+      const lines = output.trim().split(/\r?\n/);
+      const tail = [...lines.slice(0, 6), ...(lines.length > 12 ? ["\u2026"] : []), ...lines.slice(-6)].join(" ").slice(0, 1500);
       return { state: "failed", runner: base.runner, checkedAt: base.checkedAt, reason: `the canary did not report "${attempt}"${tail ? `: ${tail}` : ""}` };
     }
     if (outcome === "reached") reached.push(attempt);
