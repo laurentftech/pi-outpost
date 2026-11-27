@@ -99,5 +99,25 @@ console.log(`removing a single env entry fixes it for: ${badEnv.length}`);
 for (const i of badEnv) console.log(`  env ${policy.process.env[i].split("=")[0]}=…`);
 
 if (badPaths.length === 0 && badEnv.length === 0) {
-  console.log("nothing single fixes it: the refusal is a pure combination/size effect.");
+  console.log("nothing single fixes it: the refusal is a pure combination/size effect. Measuring the budget…");
+  const withCounts = (deniedN, readonlyN) => {
+    const wire = structuredClone(policy);
+    wire.filesystem.deniedPaths = policy.filesystem.deniedPaths.slice(0, deniedN);
+    wire.filesystem.readonlyPaths = policy.filesystem.readonlyPaths.slice(0, readonlyN);
+    return wire;
+  };
+  const maxPassing = async (total, make) => {
+    let lo = 0, hi = total; // lo passes, hi fails
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (await refuses(make(mid))) hi = mid; else lo = mid;
+    }
+    return lo;
+  };
+  const deniedTotal = policy.filesystem.deniedPaths.length;
+  const readonlyTotal = policy.filesystem.readonlyPaths.length;
+  const deniedBudget = await maxPassing(deniedTotal, (n) => withCounts(n, readonlyTotal));
+  console.log(`denied entries: passes with <= ${deniedBudget}, fails from ${deniedBudget + 1} (policy has ${deniedTotal}).`);
+  const readonlyBudget = await maxPassing(readonlyTotal, (n) => withCounts(deniedTotal, n));
+  console.log(`read-only entries: passes with <= ${readonlyBudget}, fails from ${readonlyBudget + 1} (policy has ${readonlyTotal}).`);
 }
