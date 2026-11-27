@@ -43,7 +43,7 @@
     "test:webbench": "npm run build:e2e-host && playwright test --config e2e/web-bench.config.ts",
     "bench": "tsx scripts/embed-bench.mts",
     "sandbox:exercise": "tsx scripts/sandbox-exercise.mts",
-    "sandbox:doctor": "tsx server/src/cli.ts sandbox doctor",
+    "sandbox:doctor": "node --import tsx --import ./server/src/providerStackHook.mjs server/src/index.ts sandbox doctor",
     "sandbox:mxc-unopenable": "tsx scripts/mxc-find-unopenable-path.mjs",
     "check:export-chunk": "node scripts/check-export-chunk.mjs",
     "test:npm-install": "node scripts/check-npm-install.mjs"
