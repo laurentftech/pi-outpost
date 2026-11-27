@@ -31,6 +31,10 @@ if (process.platform !== "win32") {
 }
 
 const root = process.argv[2] ? path.resolve(process.argv[2]) : process.cwd();
+if (!existsSync(root)) {
+  console.error(`no such project directory: ${root}`);
+  process.exit(1);
+}
 const tmp = mkdtempSync(path.join(tmpdir(), "pi-outpost-whitelist-"));
 const beside = mkdtempSync(path.join(tmpdir(), "pi-outpost-whitelist-beside-"));
 const marker = path.join(beside, "marker");
@@ -38,7 +42,12 @@ writeFileSync(marker, "LEAKED");
 // A script run from a file: Node resolves its main module's real path (lstat of every component).
 const hello = path.join(root, ".mxc-whitelist-probe-hello.cjs");
 const rtkDirBefore = existsSync(path.join(root, "rtk"));
-writeFileSync(hello, "console.log('hello from a file')\n");
+try {
+  writeFileSync(hello, "console.log('hello from a file')\n");
+} catch (error) {
+  console.error(`cannot write the probe file in the project (${hello}): ${error.code ?? error.message}`);
+  process.exit(1);
+}
 const parent = path.dirname(root);
 const sibling = readdirSync(parent, { withFileTypes: true }).find((e) => e.isDirectory() && path.join(parent, e.name).toLowerCase() !== root.toLowerCase());
 const siblingPath = sibling ? path.join(parent, sibling.name) : undefined;
