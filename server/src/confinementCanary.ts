@@ -307,7 +307,13 @@ export async function runCanary(run: CanaryRun): Promise<ConfinementVerdict> {
     await new Promise((resolve) => setTimeout(resolve, 100));
     const victimAlive = bait.victim ? bait.victim.exitCode === null && bait.victim.signalCode === null : undefined;
     const serverSecrets = secretVariables(await serverEnvironment());
-    return readCanary(output, expectedAttempts(bait, options), { wroteBeside, wroteHeld, victimAlive, serverSecrets }, { runner: run.runner, checkedAt, notChecked: bait.notChecked });
+    const verdict = readCanary(output, expectedAttempts(bait, options), { wroteBeside, wroteHeld, victimAlive, serverSecrets }, { runner: run.runner, checkedAt, notChecked: bait.notChecked });
+    if (verdict.state === "failed" && verdict.reason?.startsWith("the canary did not report")) {
+      // The verdict's reason is capped; the server log keeps the whole output, so the refused path
+      // the error record names is never lost to a truncated line.
+      console.error(`[canary] full output of the failed run (${output.length} chars):\n${output}`);
+    }
+    return verdict;
   } catch (error) {
     const remedy = remedyOf(error);
     return { state: "failed", runner: run.runner, checkedAt, reason: reasonOf(error), ...(remedy ? { remedy } : {}) };
