@@ -20,6 +20,8 @@ import {
   enumerateLevelFlags,
   isPosixMxc,
   mxcEnumerateLevel,
+  mxcStrictDenies,
+  noteMxcStrictDenies,
   mxcPosixConfig,
   mxcTerminalConfig,
   noteMxcEnumerateLevel,
@@ -168,6 +170,13 @@ async function canaryThroughMxc(confine: TerminalConfinement, shell: string, she
         // same at every level; never unconfined.
         if (isSecurityEnvironmentRefusal(error) && level < 2 && (launch.mxc!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) > 0) {
           level = (level + 1) as 0 | 1 | 2;
+          continue;
+        }
+        if (isSecurityEnvironmentRefusal(error) && !mxcStrictDenies()) {
+          // Even at the lowest enumeration level, a denied path this account cannot open where the
+          // security environment is built refuses the whole policy (0x80070005, domain-joined):
+          // prune the deny list to what opens there and try once more, same level.
+          noteMxcStrictDenies();
           continue;
         }
         said += (error as Error).message;

@@ -236,6 +236,23 @@ let mxcEnumerates = true;
  * the account). Level 1 keeps enumeration for the search path's tools alone; level 2 drops all of it.
  */
 let mxcEnumerateGrants = true;
+/**
+ * Whether this host also needs the deny list pruned to what its security environment can open
+ * (`strictlyDeniable`): Windows refused a policy over a denied path the account cannot open there
+ * (0x80070005, domain-joined machines). Remembered like the level, so no policy built afterwards on
+ * this host denies an entry the host cannot open. Off for tests.
+ */
+let mxcStrictDeniesFlag = false;
+
+/** Whether this host proved it needs the strict deny list. */
+export function mxcStrictDenies(): boolean {
+  return mxcStrictDeniesFlag;
+}
+
+/** Remember that this host's security environment could not open a denied path: prune them from then on. */
+export function noteMxcStrictDenies(): void {
+  mxcStrictDeniesFlag = true;
+}
 
 /** The enumeration level this host proved it can build a policy with: 0 full, 1 tools only, 2 none. */
 export function mxcEnumerateLevel(): 0 | 1 | 2 {
@@ -682,6 +699,13 @@ export interface MxcTerminalInput {
   enumerateGrants?: boolean;
   /** What is in an enumerated folder, to deny by name (`deniableEntries`): the disk, or a test's. */
   besideEnumerated?: (dir: string) => string[];
+  /**
+   * Deny only what the host can open when it builds the process security environment
+   * (`strictlyDeniable`: files must open with no sharing, folders with a plain open). Unset, as this
+   * host last proved: Windows refuses the whole policy when one denied path cannot be opened there
+   * (0x80070005, seen on a domain-joined account) — the fallback after the enumeration levels.
+   */
+  strictDenies?: boolean;
 }
 
 /**
@@ -1432,10 +1456,14 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   // bait with them (issue #582).
   const onTheWay = new Set([...allowed, ...enumerated].map((p) => p.replace(/[\\/]+$/, "")));
   const wayDown = [...enumeratePaths, ...foreignWay];
+  // A host whose security environment cannot open a denied path refuses the whole policy: in strict
+  // mode, deny only what opens there (issue: 0x80070005 on a domain-joined account).
+  const strict = input.strictDenies ?? mxcStrictDeniesFlag;
+  const denyFilter = strict ? strictlyDeniable : deniable;
   const besideTheWay = wayDown.flatMap((dir) => {
     const trimmed = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
     const atDriveRoot = path.win32.parse(dir).root !== "" && trimmed(path.win32.parse(dir).root) === trimmed(dir);
-    return (input.besideEnumerated ?? deniableEntries)(dir).filter((entry) => {
+    return (input.besideEnumerated ?? ((d: string) => deniableEntries(d, denyFilter)))(dir).filter((entry) => {
       if (onTheWay.has(entry.toLowerCase())) return false;
       // Top-level system folders of a drive stay readable, as on the root's drive (siblingsToDeny).
       return !(atDriveRoot && WINDOWS_SYSTEM_FOLDERS.has(path.win32.basename(entry).toLowerCase()));
@@ -1443,7 +1471,10 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   });
   const deniedPaths = unique([...input.siblings, ...besideTheWay, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
-    .filter((p) => !allowed.has(p.toLowerCase()) && !enumerated.has(p.toLowerCase()));
+    .filter((p) => !allowed.has(p.toLowerCase()) && !enumerated.has(p.toLowerCase()))
+    // Strict mode: a denied path the host's security environment cannot open would refuse the whole
+    // policy — leave it out rather than lose the shell (folders still need only a plain open).
+    .filter((p) => !strict || strictlyDeniable(p));
   return {
     version: "1.0.0",
     containment: "processcontainer",
@@ -1560,14 +1591,14 @@ export function ancestorsToEnumerate(
 }
 
 /** The entries of a folder MXC can deny by name (`deniable`), or none when it cannot be listed. */
-export function deniableEntries(dir: string): string[] {
+export function deniableEntries(dir: string, filter: (entry: string) => boolean = deniable): string[] {
   let names: string[];
   try {
     names = readdirSync(dir);
   } catch {
     return [];
   }
-  return names.map((name) => path.join(dir, name)).filter(deniable);
+  return names.map((name) => path.join(dir, name)).filter(filter);
 }
 
 /**
@@ -1917,6 +1948,44 @@ export function siblingsToDeny(root: string): string[] {
     dir = path.join(dir, part);
   }
   return denied;
+}
+
+/**
+ * Stricter than `deniable`, for hosts whose process security environment cannot open some entries
+ * (0x80070005 on a domain-joined account): a denied FILE must open with no sharing at all — a file
+ * another process holds, or whose ACL grants read but not what the environment asks, is left out,
+ * and with it the policy is not refused whole. A denied folder only needs the plain open `deniable`
+ * asks (Windows cannot open directory handles exclusively), and must not be a link.
+ */
+export function strictlyDeniable(entry: string): boolean {
+  if (process.platform !== "win32") return deniable(entry); // the tests run on POSIX
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(entry, fsConstants.O_RDONLY | EXCLUSIVE_OPEN);
+    const opened = fstatSync(descriptor);
+    const atPath = lstatSync(entry);
+    if (opened.isDirectory()) return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
+    if (!opened.isFile()) return false;
+    return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
+  } catch {
+    // Windows cannot open directory handles exclusively: a folder falls back to the plain open.
+    let plain: number | undefined;
+    try {
+      plain = openSync(entry, fsConstants.O_RDONLY);
+    } catch {
+      return false;
+    } finally {
+      if (plain !== undefined) closeSync(plain);
+    }
+    try {
+      const stats = lstatSync(entry);
+      return stats.isDirectory() && !stats.isSymbolicLink();
+    } catch {
+      return false;
+    }
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
 }
 
 /**
