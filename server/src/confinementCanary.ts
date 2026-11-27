@@ -208,7 +208,9 @@ export function readCanary(
     if (attempt === "write-git-dir" && host.wroteHeld !== undefined) outcome = host.wroteHeld ? "reached" : "refused";
     if (attempt === "signal-process" && host.victimAlive !== undefined) outcome = host.victimAlive ? "refused" : "reached";
     if (outcome === undefined) {
-      const tail = output.trim().split(/\r?\n/).slice(-3).join(" ").slice(0, 300);
+      // Head and tail, not only the tail: where the script died matters as much as its last words.
+      const lines = output.trim().split(/\r?\n/);
+      const tail = [...lines.slice(0, 6), ...(lines.length > 12 ? ["\u2026"] : []), ...lines.slice(-6)].join(" ").slice(0, 1500);
       return { state: "failed", runner: base.runner, checkedAt: base.checkedAt, reason: `the canary did not report "${attempt}"${tail ? `: ${tail}` : ""}` };
     }
     if (outcome === "reached") reached.push(attempt);
@@ -305,7 +307,13 @@ export async function runCanary(run: CanaryRun): Promise<ConfinementVerdict> {
     await new Promise((resolve) => setTimeout(resolve, 100));
     const victimAlive = bait.victim ? bait.victim.exitCode === null && bait.victim.signalCode === null : undefined;
     const serverSecrets = secretVariables(await serverEnvironment());
-    return readCanary(output, expectedAttempts(bait, options), { wroteBeside, wroteHeld, victimAlive, serverSecrets }, { runner: run.runner, checkedAt, notChecked: bait.notChecked });
+    const verdict = readCanary(output, expectedAttempts(bait, options), { wroteBeside, wroteHeld, victimAlive, serverSecrets }, { runner: run.runner, checkedAt, notChecked: bait.notChecked });
+    if (verdict.state === "failed" && verdict.reason?.startsWith("the canary did not report")) {
+      // The verdict's reason is capped; the server log keeps the whole output, so the refused path
+      // the error record names is never lost to a truncated line.
+      console.error(`[canary] full output of the failed run (${output.length} chars):\n${output}`);
+    }
+    return verdict;
   } catch (error) {
     const remedy = remedyOf(error);
     return { state: "failed", runner: run.runner, checkedAt, reason: reasonOf(error), ...(remedy ? { remedy } : {}) };

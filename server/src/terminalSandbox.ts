@@ -1436,6 +1436,9 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   // drive nothing opened through enumerated ancestors alone: `Get-Command node` found nothing and
   // even a full-path open was refused. Readable shows the folders' names, as enumeration would;
   // their other contents stay denied, the files beside the way are not in any allow.
+  // A host whose security environment cannot open a denied path refuses the whole policy: in strict
+  // mode, deny only what opens there (issue: 0x80070005 on a domain-joined account).
+  const strict = input.strictDenies ?? mxcStrictDeniesFlag;
   const foreignDrives = new Set(tools.map((p) => path.win32.parse(p).root.toLowerCase()).filter((d) => d !== drive.toLowerCase()));
   let foreignWay: string[] = [];
   if (foreignDrives.size > 0) {
@@ -1443,6 +1446,12 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     // From the way down itself, not from `enumeratePaths`: at level 2 there is no enumeration, yet
     // the foreign drive is readable whole and what lies beside the way must still be denied (issue #585).
     foreignWay = wayDownAll.filter(onForeign);
+    // The way down stays readable in strict mode too: the security environment's size budget is
+    // spent on the denied list (measured 556 denied pass, 557 refuse the launch, read-only entries
+    // notwithstanding), which strict mode caps — pruning the readable way down instead left the
+    // folders above the temporary directory denied, and resolving a path through a denied folder
+    // fails (issue #553), which broke the canary's own script. The way down still denies what lies
+    // beside it below.
     readonlyPaths = unique([...readonlyPaths, ...foreignWay, ...foreignDrives]);
     enumeratePaths = enumeratePaths.filter((p) => !onForeign(p));
   }
@@ -1456,9 +1465,6 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
   // bait with them (issue #582).
   const onTheWay = new Set([...allowed, ...enumerated].map((p) => p.replace(/[\\/]+$/, "")));
   const wayDown = [...enumeratePaths, ...foreignWay];
-  // A host whose security environment cannot open a denied path refuses the whole policy: in strict
-  // mode, deny only what opens there (issue: 0x80070005 on a domain-joined account).
-  const strict = input.strictDenies ?? mxcStrictDeniesFlag;
   const denyFilter = strict ? strictlyDeniable : deniable;
   const besideTheWay = wayDown.flatMap((dir) => {
     const trimmed = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
@@ -1469,12 +1475,23 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
       return !(atDriveRoot && WINDOWS_SYSTEM_FOLDERS.has(path.win32.basename(entry).toLowerCase()));
     });
   });
-  const deniedPaths = unique([...input.siblings, ...besideTheWay, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
+  let deniedPaths = unique([...input.siblings, ...besideTheWay, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
     .filter((p) => !allowed.has(p.toLowerCase()) && !enumerated.has(p.toLowerCase()))
     // Strict mode: a denied path the host's security environment cannot open would refuse the whole
     // policy — leave it out rather than lose the shell (folders still need only a plain open).
     .filter((p) => !strict || strictlyDeniable(p));
+  if (strict) {
+    // …and cap the list under the security environment's size budget (STRICT_DENY_BUDGET), keeping
+    // first what carries the confinement: the siblings of the root's path, the agent directory and
+    // the configuration file, the temporary directory's parent (the canary's beside-root bait lives
+    // there), then the rest.
+    const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
+    const essential = new Set([...(input.siblings ?? []), input.agentDir, input.configFile].filter((p): p is string => Boolean(p)).map(lower));
+    const tmpParent = lower(path.win32.dirname(input.tmp));
+    const rank = (p: string) => (essential.has(lower(p)) ? 0 : lower(p) === tmpParent || lower(path.win32.dirname(p)) === tmpParent ? 1 : 2);
+    deniedPaths = deniedPaths.sort((a, b) => rank(a) - rank(b)).slice(0, STRICT_DENY_BUDGET);
+  }
   return {
     version: "1.0.0",
     containment: "processcontainer",
@@ -1913,6 +1930,14 @@ export function quotePosixArgument(argument: string): string {
 
 /** Top-level folders of a drive a shell needs: readable, never denied. */
 const WINDOWS_SYSTEM_FOLDERS = new Set(["windows", "program files", "program files (x86)", "programdata"]);
+
+/**
+ * The deny-list cap in strict mode. Windows builds the process security environment from every
+ * policy path and refuses the whole launch when it is too large (measured 0x80070005 with 557
+ * denied entries on a domain-joined host; 556 passed) — so on a host that needed strict mode, the
+ * deny list is capped well under that, the entries that carry the confinement first.
+ */
+const STRICT_DENY_BUDGET = 256;
 
 /**
  * Every entry beside the path from the drive root down to `root`, for MXC to deny.

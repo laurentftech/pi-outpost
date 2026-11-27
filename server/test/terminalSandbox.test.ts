@@ -1358,6 +1358,49 @@ describe("grants, in every policy", () => {
     assert.ok(!strict.filesystem.deniedPaths.includes(unopenable), "strict mode leaves out a denied path the host cannot open");
     assert.ok(strict.filesystem.deniedPaths.includes(openable), "strict mode still denies an openable folder (Temp-class entries stay denied)");
     assert.ok(!strict.filesystem.deniedPaths.includes("C:\\Users\\me\\.pi\\agent"), "strict mode leaves out the unopenable agent directory too");
+    // The foreign drive's root and the way down on it stay readable in strict mode too (traversal,
+    // #572): the security environment's size budget is spent on the denied list, which strict mode
+    // caps — pruning the readable way down instead left the folders above the temporary directory
+    // denied, and a path resolved through a denied folder fails (issue #553), which broke the
+    // canary's own script (its verdict never printed, 0x80070005 gone).
+    assert.ok(strict.filesystem.readonlyPaths.some((p) => p.toLowerCase().replace(/[\\/]+$/, "") === "c:"), "strict mode keeps the foreign drive's root readable");
+    assert.ok(strict.filesystem.readonlyPaths.includes("C:\\Windows"), "strict mode keeps the foreign way down readable; the deny-list cap carries the budget");
+    assert.ok(loose.filesystem.readonlyPaths.includes("C:\\Windows"), "by default the foreign way down is readable (issue #572)");
+  });
+
+  // openlore: scenario=StrictDeniesKeepOnlyOpenableEntries spec=sandbox-runner-bash
+  test("StrictDeniesKeepOnlyOpenableEntries caps the deny list under the security environment's size budget (measured 556 denied on a domain-joined host), essentials first", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "pi-outpost-cap-"));
+    try {
+      const many = await Promise.all(Array.from({ length: 300 }, (_, i) => mkdir(path.join(parent, `d${i}`)).then(() => path.join(parent, `d${i}`))));
+      const tmpParent = path.join(parent, "Temp");
+      await mkdir(tmpParent);
+      const tmp = path.join(tmpParent, "pi-outpost-bash-t");
+      const toolReader = { isFile: () => false, isDirectory: () => false, readText: () => undefined, list: () => [], isLink: () => false, resolveLink: () => undefined };
+      const base = {
+        root: "D:\\projects\\app",
+        allowWrite: true,
+        tmp,
+        shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        shellArgs: [],
+        cwd: "D:\\projects\\app",
+        env: {},
+        siblings: [tmpParent, ...many],
+        searchPath: "C:\\Windows\\System32",
+        home: "C:\\Users\\me",
+        agentDir: "C:\\Users\\me\\.pi\\agent",
+        enumerateAncestors: false,
+        besideEnumerated: () => [],
+        toolReader,
+      };
+      const loose = mxcTerminalConfig({ ...base });
+      assert.ok(loose.filesystem.deniedPaths.length > 256, "by default the deny list is not capped");
+      const strict = mxcTerminalConfig({ ...base, strictDenies: true });
+      assert.ok(strict.filesystem.deniedPaths.length <= 256, `strict mode caps the deny list (got ${strict.filesystem.deniedPaths.length})`);
+      assert.ok(strict.filesystem.deniedPaths.includes(tmpParent), "the temporary directory's parent stays denied first (the canary's beside-root bait lives there)");
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
   });
 
   test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {
