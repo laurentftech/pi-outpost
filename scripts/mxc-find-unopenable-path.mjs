@@ -1,7 +1,9 @@
-// Finds which policy path Windows cannot open when it builds the process security environment
+// Finds which policy paths Windows cannot open when it builds the process security environment
 // (CreateProcessSecurityEnvironment failing 0x80070005): builds the agent shell's real policy for
-// the current directory, then bisects the policy's paths through the real MXC SDK until each
-// offending path is named.
+// the project directory, checks the full policy fails, then bisects the paths — each kept in its
+// original role (denied / read-only / enumerable) — until every individually offending path is
+// named. If none fails alone, the failure only happens in combination (size or interaction) and the
+// script says so.
 //
 // Run on the Windows host in a clone of this repository, against a project directory:
 //   node --import tsx scripts/mxc-find-unopenable-path.mjs [project-dir]   (default: cwd)
@@ -40,20 +42,33 @@ if ("reason" in loaded) {
 }
 const sdk = loaded.sdk;
 
-/** Whether the SDK refuses to build the security environment over `paths` placed as `where`. */
-async function refuses(paths, where) {
+// Candidates with the role they have in the real policy.
+const candidates = [
+  ...policy.filesystem.deniedPaths.map((p) => ({ path: p, role: "denied" })),
+  ...policy.filesystem.readonlyPaths.map((p) => ({ path: p, role: "readonly" })),
+  ...(policy.processContainer?.filesystem?.enumeratePaths ?? []).map((p) => ({ path: p, role: "enumerate" })),
+];
+
+function wireFor(batch) {
   const wire = {
     version: "1.0.0",
     containment: "processcontainer",
     process: { commandLine: "cmd.exe /c exit 0", cwd: root, env: [`PATH=${process.env.PATH ?? ""}`] },
     filesystem: {
       readwritePaths: [root, tmp],
-      readonlyPaths: where === "readonly" ? paths : [],
-      deniedPaths: where === "denied" ? paths : [],
+      readonlyPaths: batch.filter((c) => c.role === "readonly").map((c) => c.path),
+      deniedPaths: batch.filter((c) => c.role === "denied").map((c) => c.path),
     },
   };
+  const enumerated = batch.filter((c) => c.role === "enumerate").map((c) => c.path);
+  if (enumerated.length > 0) wire.processContainer = { filesystem: { enumeratePaths: enumerated } };
+  return wire;
+}
+
+/** Whether the SDK refuses to build the security environment over this batch. */
+async function refuses(batch) {
   try {
-    const proc = await sdk.spawn(sdkRequest(wire));
+    const proc = await sdk.spawn(sdkRequest(wireFor(batch)));
     await proc.wait();
     return false;
   } catch (error) {
@@ -61,29 +76,26 @@ async function refuses(paths, where) {
   }
 }
 
-/** Bisect `paths` down to the ones whose presence makes the build fail. */
-async function bisect(paths, where) {
-  if (paths.length === 0) return [];
-  if (!(await refuses(paths, where))) return [];
-  if (paths.length === 1) return paths;
-  const mid = Math.ceil(paths.length / 2);
-  const first = await bisect(paths.slice(0, mid), where);
-  if (first.length > 0) return first;
-  return bisect(paths.slice(mid), where);
+/** All entries of `batch` that fail on their own (bisect both halves when the batch fails). */
+async function offenders(batch) {
+  if (batch.length === 0 || !(await refuses(batch))) return [];
+  if (batch.length === 1) return batch;
+  const mid = Math.ceil(batch.length / 2);
+  return [...(await offenders(batch.slice(0, mid))), ...(await offenders(batch.slice(mid)))];
 }
 
-const denied = policy.filesystem.deniedPaths;
-const readonly = policy.filesystem.readonlyPaths;
-const enumerated = policy.processContainer?.filesystem?.enumeratePaths ?? [];
 console.log(`root=${root}`);
-console.log(`policy: ${policy.filesystem.readwritePaths.length} read-write, ${readonly.length} read-only, ${denied.length} denied, ${enumerated.length} enumerable`);
+console.log(`policy: ${policy.filesystem.readwritePaths.length} read-write, ${policy.filesystem.readonlyPaths.length} read-only, ${policy.filesystem.deniedPaths.length} denied, ${(policy.processContainer?.filesystem?.enumeratePaths ?? []).length} enumerable`);
 
-const badDenied = await bisect(denied, "denied");
-console.log("denied paths the security environment cannot open:");
-for (const p of badDenied) console.log(`  ${p}`);
-if (badDenied.length === 0) {
-  const badReadonly = await bisect(readonly, "readonly");
-  console.log("read-only paths the security environment cannot open:");
-  for (const p of badReadonly) console.log(`  ${p}`);
-  if (badReadonly.length === 0) console.log("  (none found in read-only either — the failure may need the paths combined)");
+if (!(await refuses(candidates))) {
+  console.log("the full policy does NOT fail here — the refusal needs the real launch's other parts (process, network, env); nothing to bisect in the paths.");
+  process.exit(0);
+}
+console.log("the full policy fails as expected; bisecting…");
+const bad = await offenders(candidates);
+if (bad.length === 0) {
+  console.log("no single path fails alone: the refusal only happens in combination (size or interaction between entries).");
+} else {
+  console.log(`paths that fail alone (${bad.length}):`);
+  for (const c of bad) console.log(`  [${c.role}] ${c.path}`);
 }
