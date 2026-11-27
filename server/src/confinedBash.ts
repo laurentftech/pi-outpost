@@ -314,6 +314,14 @@ export function networkNote(answers: ReadonlyMap<string, HostAnswer>): string {
   return lines.join("\n");
 }
 
+/** The first of the directories that exists, or undefined. */
+async function firstExisting(directories: readonly string[]): Promise<string | undefined> {
+  for (const directory of directories) {
+    if (await stat(directory).then(() => true, () => false)) return directory;
+  }
+  return undefined;
+}
+
 /** A grant's directories as the policies take them: read only, and read-write. */
 function grantedDirectories(grant: Grant): { grantedRead: string[]; grantedWrite: string[] } {
   return {
@@ -574,7 +582,14 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
       networkProxy = dedicated;
     }
 
-    const tmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-bash-"));
+    // The command's scratch directory. On Windows under MXC, under a granted write folder when
+    // there is one (the sandbox cache first): every folder above it is then on the way down and
+    // readable, and PowerShell's `-File` resolves the script path through its parents — the
+    // profile's Temp is denied by name as a child of the way down, and a denied parent fails that
+    // resolution with UnauthorizedAccess before the command runs at all. Elsewhere, the system
+    // temporary directory, whose parent is then not denied either.
+    const scratchParent = toolchains?.cacheDir ?? (windows ? ((await firstExisting(directories.grantedWrite)) ?? tmpdir()) : tmpdir());
+    const tmp = await mkdtemp(path.join(scratchParent, "pi-outpost-bash-"));
     // Where MXC writes a diagnosis' report: a directory of the server's, given to no sandbox. Never
     // the path announced on stderr — the command writes there too, and could name any file.
     let reportDir: string | undefined;

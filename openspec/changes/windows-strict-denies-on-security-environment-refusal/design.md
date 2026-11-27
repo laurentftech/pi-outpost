@@ -25,6 +25,13 @@
   the folders above the temporary directory denied — a path resolved through a denied folder fails
   (#553), which broke the canary's own script so its verdict never printed. The way down still
   denies what lies beside it.
+- The command's scratch directory is created under a granted write folder (the sandbox cache)
+  when there is one, not under the system temporary directory: on a foreign drive the profile's
+  Temp is denied by name as a child of the way down, and PowerShell's `-File` resolves the script
+  path through its parents — a denied parent fails that (AuthorizationManager,
+  UnauthorizedAccess) before any command line runs, so the canary's own script died with no verdict
+  (observed on the 0x80070005 host). Under the cache, every ancestor is on the way down and
+  readable.
 - The retry chains step the enumeration level down first (0→1→2, as before). Only when a refusal
   still occurs at the lowest level do they call `noteMxcStrictDenies()` and rebuild once at the same
   level; the flag is remembered, so later launches on the host go straight to the pruned deny list.
