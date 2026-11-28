@@ -89,6 +89,11 @@ const probes = [
   // Beside it, the same content through -Command: an execution-policy refusal hits only the first.
   { name: "canary-style .ps1 (-File Bypass)", shellArgs: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", psScript] },
   { name: "same content via -Command", shellArgs: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "'ps1 ran: ' + $ExecutionContext.SessionState.LanguageMode"] },
+  // A cmdlet that autoloads a script module (Get-FileHash lives in Microsoft.PowerShell.Utility.psm1):
+  // loading it asks the AuthorizationManager, which reads the execution policy from the registry —
+  // refused inside the container. The canary's own -Command has no -ExecutionPolicy Bypass.
+  { name: "module autoload, -Command", script: "(Get-FileHash -InputStream ([IO.MemoryStream]::new())).Hash.Substring(0, 8)" },
+  { name: "module autoload, -Command Bypass", shellArgs: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "(Get-FileHash -InputStream ([IO.MemoryStream]::new())).Hash.Substring(0, 8)"] },
   { name: "language mode", script: "$ExecutionContext.SessionState.LanguageMode" },
   { name: "execution policy inside", script: "Get-ExecutionPolicy -List 2>&1 | ForEach-Object { \"$($_.Scope)=$($_.ExecutionPolicy)\" }" },
   { name: "rtk --version", script: "rtk --version" },
@@ -162,7 +167,15 @@ const oneLine = (s) =>
     .slice(0, 400);
 console.log(`root=${root}`);
 const results = {};
+// Optional variant names after the root: only those run (`… <root> strict whitelist+enum-way`).
+const only = process.argv.slice(3);
+const unknown = only.filter((name) => !(name in variants));
+if (unknown.length > 0) {
+  console.error(`unknown variant(s): ${unknown.join(", ")} — known: ${Object.keys(variants).join(", ")}`);
+  process.exit(1);
+}
 for (const [variant, spec] of Object.entries(variants)) {
+  if (only.length > 0 && !only.includes(variant)) continue;
   const { strict = false, mutate } = typeof spec === "function" ? { mutate: spec } : spec;
   noteMxcStrictDenies(strict);
   const sample = mutate(confine.policy({ tmp, shell, shellArgs: [], cwd: root, env }, 0));
