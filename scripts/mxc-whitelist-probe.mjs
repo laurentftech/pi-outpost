@@ -21,6 +21,8 @@
 // Run on the Windows host in a clone of this repository, against a project directory that is a git
 // work tree:
 //   npm run sandbox:mxc-whitelist -- [project-dir]   (default: cwd)
+// By default only `strict` and `whitelist+enum-way`, six checks each, and two VERDICT lines at the
+// end; `--all` runs every variant and probe, and variant names after the directory pick variants.
 import { existsSync, mkdtempSync, writeFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -78,11 +80,11 @@ const ps = (s) => s.replace(/'/g, "''");
 const git = (args) => `$o = (git ${args} 2>&1 | Out-String); $o; 'git-exit=' + $LASTEXITCODE`;
 const probes = [
   { name: "node", script: "node -e \"console.log(process.version)\"" },
-  { name: "npm", script: "npm.cmd --version" },
+  { name: "npm", script: "npm.cmd --version", focus: true },
   { name: "npm (preserve-symlinks-main)", script: "$env:NODE_OPTIONS='--preserve-symlinks-main --preserve-symlinks'; npm.cmd --version" },
   { name: "npm (main only)", script: "$env:NODE_OPTIONS='--preserve-symlinks-main'; npm.cmd --version" },
   { name: "node <file> (main only)", script: `$env:NODE_OPTIONS='--preserve-symlinks-main'; node '${ps(path.join(root, ".mxc-whitelist-probe-hello.cjs"))}'` },
-  { name: "node <file>", script: `node '${ps(path.join(root, ".mxc-whitelist-probe-hello.cjs"))}'` },
+  { name: "node <file>", script: `node '${ps(path.join(root, ".mxc-whitelist-probe-hello.cjs"))}'`, focus: true },
   { name: "python", script: "python --version" },
   // As the canary and the agent's commands run: the sandbox's shell itself started on a .ps1 with
   // -ExecutionPolicy Bypass -File (confinedBash.ts' POWERSHELL_SCRIPT_ARGS) — not a nested PowerShell.
@@ -92,14 +94,14 @@ const probes = [
   // A cmdlet that autoloads a script module (Get-FileHash lives in Microsoft.PowerShell.Utility.psm1):
   // loading it asks the AuthorizationManager, which reads the execution policy from the registry —
   // refused inside the container. The canary's own -Command has no -ExecutionPolicy Bypass.
-  { name: "module autoload, -Command", script: "(Get-FileHash -InputStream ([IO.MemoryStream]::new())).Hash.Substring(0, 8)" },
-  { name: "module autoload, -Command Bypass", shellArgs: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "(Get-FileHash -InputStream ([IO.MemoryStream]::new())).Hash.Substring(0, 8)"] },
+  { name: "module autoload, -Command", script: "(Get-FileHash -InputStream ([IO.MemoryStream]::new())).Hash.Substring(0, 8)", focus: true },
+  { name: "module autoload, -Command Bypass", shellArgs: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "(Get-FileHash -InputStream ([IO.MemoryStream]::new())).Hash.Substring(0, 8)"], focus: true },
   { name: "language mode", script: "$ExecutionContext.SessionState.LanguageMode" },
   { name: "execution policy inside", script: "Get-ExecutionPolicy -List 2>&1 | ForEach-Object { \"$($_.Scope)=$($_.ExecutionPolicy)\" }" },
   { name: "rtk --version", script: "rtk --version" },
   { name: "rtk git status", script: "$o = (rtk git status 2>&1 | Out-String); $o; 'rtk-exit=' + $LASTEXITCODE" },
   { name: "git --version", script: "git --version" },
-  { name: "git status", script: git("status --short --branch") },
+  { name: "git status", script: git("status --short --branch"), focus: true },
   { name: "git rev-parse", script: git("rev-parse --show-toplevel") },
   { name: "git log -1", script: git("log -1 --format=%h") },
   { name: "git diff --stat", script: git("diff --shortstat HEAD~1") },
@@ -107,7 +109,7 @@ const probes = [
     name: "git status (ceiling+GIT_DIR)",
     script: `$env:GIT_CEILING_DIRECTORIES='${ps(parent)}'; $env:GIT_DIR='${ps(path.join(root, ".git"))}'; $env:GIT_WORK_TREE='${ps(root)}'; ${git("status --short --branch")}`,
   },
-  { name: "leak: marker beside tmp", script: `Get-Content -LiteralPath '${ps(marker)}' -ErrorAction Stop`, mustFail: true },
+  { name: "leak: marker beside tmp", script: `Get-Content -LiteralPath '${ps(marker)}' -ErrorAction Stop`, mustFail: true, focus: true },
   ...(siblingPath ? [{ name: "leak: list root's sibling", script: `Get-ChildItem -LiteralPath '${ps(siblingPath)}' -Force -ErrorAction Stop | Select-Object -First 3 | ForEach-Object Name`, mustFail: true }] : []),
 ];
 
@@ -165,17 +167,32 @@ const oneLine = (s) =>
     .replace(/La tentative d.ex.{1,4}cution de l.op.{1,4}ration InitializeDefaultDrives[^.]*\.|Attempting to perform the InitializeDefaultDrives operation[^.]*\./g, "[InitializeDefaultDrives failed] ")
     .replace(/\s+/g, " ")
     .slice(0, 400);
-console.log(`root=${root}`);
-const results = {};
-// Optional variant names after the root: only those run (`… <root> strict whitelist+enum-way`).
-const only = process.argv.slice(3);
-const unknown = only.filter((name) => !(name in variants));
+// Default: the two policies and six checks that decide what is left open (about a minute).
+// `--all`: every variant and every probe. Variant names after the root: only those.
+const args = process.argv.slice(3);
+const all = args.includes("--all");
+const named = args.filter((a) => a !== "--all");
+const unknown = named.filter((name) => !(name in variants));
 if (unknown.length > 0) {
   console.error(`unknown variant(s): ${unknown.join(", ")} — known: ${Object.keys(variants).join(", ")}`);
   process.exit(1);
 }
+const only = named.length > 0 ? named : all ? Object.keys(variants) : ["strict", "whitelist+enum-way"];
+const chosen = all ? probes : probes.filter((p) => p.focus);
+const cleanUp = () => {
+  rmSync(hello, { force: true });
+  // rtk writes its history beside the working directory when its own data folder is out of reach.
+  if (!rtkDirBefore) rmSync(path.join(root, "rtk"), { recursive: true, force: true });
+  rmSync(beside, { recursive: true, force: true });
+  rmSync(tmp, { recursive: true, force: true });
+};
+// Cleaned up however it ends: Ctrl+C, or a pipeline cut short.
+process.on("exit", cleanUp);
+process.on("SIGINT", () => process.exit(130));
+console.log(`root=${root}`);
+const results = {};
 for (const [variant, spec] of Object.entries(variants)) {
-  if (only.length > 0 && !only.includes(variant)) continue;
+  if (!only.includes(variant)) continue;
   const { strict = false, mutate } = typeof spec === "function" ? { mutate: spec } : spec;
   noteMxcStrictDenies(strict);
   const sample = mutate(confine.policy({ tmp, shell, shellArgs: [], cwd: root, env }, 0));
@@ -188,7 +205,7 @@ for (const [variant, spec] of Object.entries(variants)) {
   ].filter((entry) => within(entry.slice(3), marker));
   console.log(`  allows containing the marker: ${covering.length ? covering.join(" | ") : "none"}`);
   results[variant] = {};
-  for (const probe of probes) {
+  for (const probe of chosen) {
     const terminal = { tmp, shell, shellArgs: probe.shellArgs ?? ["-NoProfile", "-NonInteractive", "-Command", probe.script], cwd: root, env };
     const r = await runProbe(mutate(confine.policy(terminal, 0)));
     let verdict;
@@ -197,13 +214,28 @@ for (const [variant, spec] of Object.entries(variants)) {
     else if (probe.mustFail) verdict = r.exitCode === 0 && r.out ? `LEAK! read: ${oneLine(r.out)}` : "refused (good)";
     else verdict = r.exitCode === 0 ? `ok: ${oneLine(r.out)}` : `FAIL exit ${r.exitCode}: ${oneLine(r.out)}`;
     results[variant][probe.name] = verdict;
-    console.log(`  ${probe.name.padEnd(32)} ${verdict}`);
+    console.log(`  ${probe.name.padEnd(32)} ${all ? verdict : verdict.slice(0, 140)}`);
   }
 }
 noteMxcStrictDenies(false);
 
-rmSync(hello, { force: true });
-// rtk writes its history beside the working directory when its own data folder is out of reach.
-if (!rtkDirBefore) rmSync(path.join(root, "rtk"), { recursive: true, force: true });
-rmSync(beside, { recursive: true, force: true });
-rmSync(tmp, { recursive: true, force: true });
+// The two answers, in one line each.
+const s = results.strict;
+if (s?.["module autoload, -Command"] !== undefined) {
+  const plain = s["module autoload, -Command"];
+  const bypass = s["module autoload, -Command Bypass"];
+  console.log(
+    `\nVERDICT canary: ${
+      /AuthorizationManager/i.test(plain) && bypass.startsWith("ok")
+        ? "CAUSE FOUND — a module autoload without -ExecutionPolicy Bypass fails; with it, it runs"
+        : plain.startsWith("ok")
+          ? "not this — a module autoload runs without Bypass"
+          : `unclear — without Bypass: ${plain.slice(0, 80)} / with: ${bypass.slice(0, 80)}`
+    }`,
+  );
+}
+const w = results["whitelist+enum-way"];
+if (w) {
+  const bad = Object.entries(w).filter(([name, v]) => (name.startsWith("leak: marker") ? v !== "refused (good)" : name.startsWith("leak:") ? false : !v.startsWith("ok")));
+  console.log(`VERDICT whitelist: ${bad.length === 0 ? "OK — everything runs, nothing beside the temporary directory is readable" : `NOT OK — ${bad.map(([n]) => n).join(", ")}`}`);
+}
