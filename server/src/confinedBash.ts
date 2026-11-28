@@ -39,11 +39,9 @@ import {
   mxcTerminalConfig,
   enumerateLevelFlags,
   mxcEnumerateLevel,
-  mxcStrictDenies,
-  noteMxcStrictDenies,
+  MXC_NO_SHELL_REASON,
   noteMxcEnumerateLevel,
   runnerKind,
-  siblingsToDeny,
   terminalPolicy,
   type MxcMacConfig,
   type MxcTerminalInput,
@@ -720,7 +718,6 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
           shellArgs,
           cwd: startIn,
           env,
-          siblings: siblingsToDeny(options.root),
           searchPath: env.PATH,
           ...(process.env.USERPROFILE ? { home: process.env.USERPROFILE } : {}),
           readOnlyFiles,
@@ -737,6 +734,7 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
             ? request
             : mxcDiagnosticConfig(request, { root: options.root, agentDir: options.agentDir, configFile: options.configFile, reportPath: path.join(reportDir, "report.json") })) as MxcWireRequest;
         };
+        if (enumLevel === 2) throw new Error(`bash is confined by MXC, which cannot list folders on this host: ${MXC_NO_SHELL_REASON}`);
         mxcWire = build(enumLevel);
         rebuildPolicy = (level) => {
           enumLevel = level;
@@ -793,19 +791,12 @@ export function confinedBashOperations(options: ConfinedBashOptions): ConfinedBa
               // Windows builds the process security environment from the policy's paths and refuses
               // the whole request when one of them cannot be opened there — 0x80070005 on a
               // domain-joined account, where the folders made listable name entries the machine
-              // cannot open. Nothing ran: step the enumeration down one level — first the
-              // ancestors of the grants (the profile's folders), then all of it, the policy sent
-              // before the layer — and try again. Confined the same at every level; never unconfined.
+              // cannot open. Nothing ran: try once without the way down to the grants and the
+              // temporary directory (the profile's folders). Below that the whitelist resolves
+              // nothing beside the root: no shell, never a looser policy, never unconfined.
               if (rebuildPolicy === undefined || !isSecurityEnvironmentRefusal(error)) throw error;
-              if (enumLevel < 2 && (mxcWire!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) > 0) {
-                rebuildPolicy((enumLevel + 1) as 0 | 1 | 2);
-              } else if (!mxcStrictDenies()) {
-                // Even with no listable folders left, a denied path this account cannot open where the
-                // security environment is built refuses the whole policy (0x80070005, domain-joined):
-                // prune the deny list to what opens there and try once more, same level.
-                noteMxcStrictDenies();
-                rebuildPolicy(enumLevel);
-              } else throw error;
+              if (enumLevel === 0) rebuildPolicy(1);
+              else throw new Error(`${(error as Error).message}: ${MXC_NO_SHELL_REASON}`);
             }
           }
           // A lower level ran: this host cannot take more, and no policy built afterwards on it

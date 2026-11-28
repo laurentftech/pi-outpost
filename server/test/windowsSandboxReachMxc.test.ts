@@ -65,8 +65,8 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
     return { output, exitCode };
   }
 
-  // openlore: scenario=AToolBesideTheRootResolves spec=sandbox-runner-bash
-  test("AToolBesideTheRootResolves, as a user's machine lays it out: a project in the home, a global npm CLI in AppData, the rest of the home out", async () => {
+  // openlore: scenario=TheWindowsMxcPolicyIsAWhitelist spec=sandbox-runner-bash
+  test("a tool beside the root resolves, as a user's machine lays it out: a project in the home, a global npm CLI in AppData, the rest of the home unreadable", async () => {
     // Every root above was in the temporary folder, under AppData: AppData was on the way down and never
     // denied, which is how a project in the home with its global npm CLIs escaped every test (#553).
     const userHome = path.join(base, "layout", "Users", "me");
@@ -91,8 +91,8 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
       const { exitCode } = await ops.exec(
         [
           "corp-cli",
-          `try { Get-ChildItem -Force '${path.join(userHome, ".ssh")}' -ErrorAction Stop | Out-Null; "ssh: listed" } catch { "ssh: refused" }`,
-          `try { Get-ChildItem -Force '${path.join(userHome, ".cargo")}' -ErrorAction Stop | Out-Null; "cargo: listed" } catch { "cargo: refused" }`,
+          `try { Get-Content -Raw '${path.join(userHome, ".ssh", "id_ed25519")}' -ErrorAction Stop } catch { "ssh: refused" }`,
+          `try { Get-Content -Raw '${path.join(userHome, ".cargo", "credentials.toml")}' -ErrorAction Stop } catch { "cargo: refused" }`,
           `try { Get-Content -Raw '${path.join(userHome, "Documents", "taxes.pdf")}' -ErrorAction Stop } catch { "documents: refused" }`,
           `try { Get-ChildItem -Force '${path.join(userHome, "AppData", "Roaming")}' -Name -ErrorAction Stop } catch { "roaming: refused" }`,
         ].join("; "),
@@ -102,8 +102,9 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
       assert.equal(exitCode, 0, output);
       assert.match(output, /corp-cli-ran .*cli\.js/, "the global CLI runs and resolves its own path");
       assert.doesNotMatch(output, /EPERM/);
+      // Names under an enumerated drive can be listed (microsoft/mxc#1461); no content is read.
       assert.match(output, /ssh: refused/);
-      assert.match(output, /cargo: refused/, "a folder directly in the home is never enumerated: ~\\.cargo holds credentials.toml");
+      assert.match(output, /cargo: refused/, "~\\.cargo's credentials.toml is not readable");
       assert.match(output, /documents: refused/);
       assert.doesNotMatch(output, /secret-content/);
     } finally {
@@ -112,24 +113,42 @@ describe("what a confined command reaches beside the root, under MXC", { skip },
     }
   });
 
-  // openlore: scenario=AToolBesideTheRootResolves spec=sandbox-runner-bash
-  test("AToolBesideTheRootResolves: a script beside the root runs by its launcher on PATH, and what lies beside stays out", async () => {
+  // openlore: scenario=NothingBesideTheWayDownIsReadable spec=sandbox-runner-bash
+  test("NothingBesideTheWayDownIsReadable: a file beside the command's temporary directory and beside the way down to a tool is refused; node, npm and git run", async () => {
     const run = await ps("foo");
     assert.equal(run.exitCode, 0, run.output);
     assert.match(run.output, /foo-ran .*foo\.js/, "Node resolved the script's real path through the folders above it");
     assert.doesNotMatch(run.output, /EPERM/);
 
-    const beside = await ps(
-      [
-        `try { Get-Content -Raw "${path.join(base, "dev", "notes.txt")}" -ErrorAction Stop } catch { "notes: refused" }`,
-        `try { Get-ChildItem -Name "${path.join(base, "dev", "other-project")}" -ErrorAction Stop } catch { "other: refused" }`,
-        `try { Get-Content -Raw "${path.join(base, "dev", "other-project", "secret.txt")}" -ErrorAction Stop } catch { "secret: refused" }`,
-      ].join("; "),
-    );
-    assert.match(beside.output, /notes: refused/, beside.output);
-    assert.match(beside.output, /other: refused/, beside.output);
-    assert.match(beside.output, /secret: refused/, beside.output);
-    assert.doesNotMatch(beside.output, /notes-secret|other-secret|secret\.txt/);
+    // A fresh folder beside the command's own temporary directory, under %TEMP% (#593's marker).
+    const besideTmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-beside-"));
+    await writeFile(path.join(besideTmp, "marker"), "beside-secret");
+    await writeFile(path.join(root, "hello.cjs"), "console.log('hello ' + require('node:fs').realpathSync(__filename));\n");
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    try {
+      const beside = await ps(
+        [
+          `try { Get-Content -Raw "${path.join(besideTmp, "marker")}" -ErrorAction Stop } catch { "marker: refused" }`,
+          `try { Get-Content -Raw "${path.join(base, "dev", "notes.txt")}" -ErrorAction Stop } catch { "notes: refused" }`,
+          `try { Get-Content -Raw "${path.join(base, "dev", "other-project", "secret.txt")}" -ErrorAction Stop } catch { "secret: refused" }`,
+          `node "${path.join(root, "hello.cjs")}"`,
+          "npm.cmd --version",
+          "git status --short --branch",
+        ].join("; "),
+      );
+      assert.match(beside.output, /marker: refused/, beside.output);
+      assert.match(beside.output, /notes: refused/, beside.output);
+      assert.match(beside.output, /secret: refused/, beside.output);
+      // Names may be listed under an enumerated drive (microsoft/mxc#1461); no content is read.
+      assert.doesNotMatch(beside.output, /beside-secret|notes-secret|other-secret/);
+      assert.match(beside.output, /hello .*hello\.cjs/, "node runs a file in the root and resolves its real path");
+      assert.match(beside.output, /^\d+\.\d+\.\d+$/m, "npm runs");
+      assert.match(beside.output, /^## /m, "git answers");
+    } finally {
+      await rm(besideTmp, { recursive: true, force: true });
+      await rm(path.join(root, ".git"), { recursive: true, force: true });
+      await rm(path.join(root, "hello.cjs"), { force: true });
+    }
   });
 
   /**

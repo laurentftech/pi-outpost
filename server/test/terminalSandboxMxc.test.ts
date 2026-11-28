@@ -3,7 +3,7 @@
  *
  * The Linux twin is `terminalSandboxReal.test.ts`. This one drives a real pty through
  * `TerminalManager` with `wxc-exec.exe` and the policy pi-outpost builds for it
- * (`mxcTerminalConfig` + `siblingsToDeny`), and checks from inside `cmd` what the
+ * (`mxcTerminalConfig`), and checks from inside `cmd` what the
  * scenarios promise: reads stop at the root, writes at the writable zone, git runs, and
  * no key of the server's reaches the shell.
  *
@@ -18,7 +18,7 @@ import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import type { WebSocket } from "ws";
 import { TerminalManager } from "../src/terminalManager.ts";
-import { checkRunner, mxcTerminalConfig, siblingsToDeny } from "../src/terminalSandbox.ts";
+import { checkRunner, mxcTerminalConfig } from "../src/terminalSandbox.ts";
 
 const RUNNER = process.env.MXC_EXEC;
 const skip = process.platform !== "win32" ? "MXC confines on Windows only" : !RUNNER ? "MXC_EXEC is not set (the path of wxc-exec.exe)" : false;
@@ -60,7 +60,7 @@ describe("a confined terminal under MXC's real executor", { skip }, () => {
         runner: RUNNER!,
         kind: "mxc",
         root,
-        policy: (terminal) => mxcTerminalConfig({ root, writableRoot, allowWrite: true, agentDir, ...terminal, siblings: siblingsToDeny(root) }),
+        policy: (terminal) => mxcTerminalConfig({ root, writableRoot, allowWrite: true, agentDir, ...terminal }),
       },
     );
   }
@@ -131,8 +131,23 @@ describe("a confined terminal under MXC's real executor", { skip }, () => {
     assert.match(await run("git rev-parse --is-inside-work-tree", "whole"), /^true$/m);
     assert.match(await run("git status --short --branch", "whole"), /^## /m);
     assert.match(await run("type nul && echo nul-ok", "whole"), /nul-ok/, "NUL, which landstrip's AppContainer refuses, opens");
-    // Still confined: the drive is readable for git, the keys are not.
+    // Still confined: git needs no drive readable; the keys are not readable.
     assert.match(await run(`type "${path.join(agentDir, "auth.json")}"`, "whole"), /(Access is denied|Accès refusé)/i);
+  });
+
+  // openlore: scenario=TheConfinedTerminalUsesTheWindowsMxcWhitelist spec=terminal
+  test("TheConfinedTerminalUsesTheWindowsMxcWhitelist: git answers; a file beside the terminal's temporary directory and the agent's keys are refused", async () => {
+    const besideTmp = await mkdtemp(path.join(tmpdir(), "pi-outpost-beside-"));
+    try {
+      await writeFile(path.join(besideTmp, "marker"), "beside-secret");
+      assert.match(await run("git status --short --branch", "whole"), /^## /m);
+      const beside = await run(`type "${path.join(besideTmp, "marker")}"`, "whole");
+      assert.match(beside, /(Access is denied|Accès refusé)/i);
+      assert.doesNotMatch(beside, /beside-secret/);
+      assert.match(await run(`type "${path.join(agentDir, "auth.json")}"`, "whole"), /(Access is denied|Accès refusé)/i);
+    } finally {
+      await rm(besideTmp, { recursive: true, force: true });
+    }
   });
 
   test("a profile's data never lands in the project: PowerShell's history, the container's own folders", async () => {
@@ -141,7 +156,7 @@ describe("a confined terminal under MXC's real executor", { skip }, () => {
     output.ps = "";
     await manager.open(socket, "ps", root, 120, 40, (_id, data) => (output.ps += data), (_id, code) => (exited.ps = code ?? -1),
       { shell: path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), shellArgs: ["-NoLogo"] },
-      { runner: RUNNER!, kind: "mxc", root, policy: (terminal) => mxcTerminalConfig({ root, allowWrite: true, agentDir, ...terminal, siblings: siblingsToDeny(root) }) });
+      { runner: RUNNER!, kind: "mxc", root, policy: (terminal) => mxcTerminalConfig({ root, allowWrite: true, agentDir, ...terminal }) });
     const deadline = Date.now() + 30_000;
     while (!/PS [A-Z]:\\/.test(output.ps) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 200));
     manager.write(socket, "ps", "echo history-line\r");
@@ -156,7 +171,7 @@ describe("a confined terminal under MXC's real executor", { skip }, () => {
     // drawn inside the sandbox reads the console buffer back, which is refused.
     output.def = "";
     await manager.open(socket, "def", root, 120, 40, (_id, data) => (output.def += data), (_id, code) => (exited.def = code ?? -1), undefined,
-      { runner: RUNNER!, kind: "mxc", root, policy: (terminal) => mxcTerminalConfig({ root, allowWrite: true, agentDir, ...terminal, siblings: siblingsToDeny(root) }) });
+      { runner: RUNNER!, kind: "mxc", root, policy: (terminal) => mxcTerminalConfig({ root, allowWrite: true, agentDir, ...terminal }) });
     const deadline = Date.now() + 30_000;
     while (!/PS [A-Z]:\\/.test(output.def) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 200));
     const start = output.def.length;

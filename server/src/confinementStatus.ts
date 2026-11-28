@@ -20,15 +20,13 @@ import {
   enumerateLevelFlags,
   isPosixMxc,
   mxcEnumerateLevel,
-  mxcStrictDenies,
-  noteMxcStrictDenies,
+  MXC_NO_SHELL_REASON,
   mxcPosixConfig,
   mxcTerminalConfig,
   noteMxcEnumerateLevel,
   runnerKind,
   type RunnerCheck,
   seatbeltPolicy,
-  siblingsToDeny,
   terminalPolicy,
   userGitConfig,
   windowsToolchains,
@@ -93,7 +91,6 @@ export function buildTerminalConfinement(input: {
                 mxcTerminalConfig({
                   ...limits,
                   ...terminal,
-                  siblings: siblingsToDeny(root),
                   ...(hostLoopback === undefined ? {} : { hostLoopback }),
                   ...(privateNetwork === undefined ? {} : { privateNetwork }),
                   ...(toolchains ? { grantedWrite: [toolchains.cacheDir], grantedRead: toolchains.readable } : {}),
@@ -147,12 +144,13 @@ export async function agentShellVerdict(sandbox: SandboxConfig, neverReadable: {
  * The canary's one command through a terminal's MXC launch, in process through the SDK: what the
  * canary tries is what a command would. Windows builds the process security environment from the
  * policy's paths and refuses the whole request when one of them cannot be opened there
- * (`isSecurityEnvironmentRefusal`): the launch is then retried at a lower enumeration level —
- * first without the ancestors of the grants, then without any listable folder — confined the same
- * at every level, never unconfined.
+ * (`isSecurityEnvironmentRefusal`): the launch is then retried once without the way down to the
+ * grants (level 1). Below that the whitelist resolves nothing beside the root: the canary reports
+ * no shell, never a looser policy, never unconfined.
  */
 async function canaryThroughMxc(confine: TerminalConfinement, shell: string, shellArgs: string[]): Promise<string> {
   const startLevel = mxcEnumerateLevel();
+  if (startLevel === 2) return `mxc cannot list folders on this host: ${MXC_NO_SHELL_REASON}`;
   let level = startLevel;
   for (;;) {
     const launch = await confinedLaunch(confine, shell, shellArgs, confine.root, level);
@@ -165,21 +163,14 @@ async function canaryThroughMxc(confine: TerminalConfinement, shell: string, she
         await runThroughSdk(loaded.sdk, sdkRequest(launch.mxc!), { onData: write, timeoutMs: CANARY_TIMEOUT_MS, timeout: CANARY_TIMEOUT_MS / 1000 });
       } catch (error) {
         // Windows builds the process security environment from the policy's paths and refuses the
-        // whole request when one of them cannot be opened there: step the enumeration down one
-        // level — first the ancestors of the grants, then all of it — and try again. Confined the
-        // same at every level; never unconfined.
-        if (isSecurityEnvironmentRefusal(error) && level < 2 && (launch.mxc!.processContainer?.filesystem?.enumeratePaths?.length ?? 0) > 0) {
-          level = (level + 1) as 0 | 1 | 2;
-          continue;
-        }
-        if (isSecurityEnvironmentRefusal(error) && !mxcStrictDenies()) {
-          // Even at the lowest enumeration level, a denied path this account cannot open where the
-          // security environment is built refuses the whole policy (0x80070005, domain-joined):
-          // prune the deny list to what opens there and try once more, same level.
-          noteMxcStrictDenies();
+        // whole request when one of them cannot be opened there: once without the way down to the
+        // grants, and no further.
+        if (isSecurityEnvironmentRefusal(error) && level === 0) {
+          level = 1;
           continue;
         }
         said += (error as Error).message;
+        if (isSecurityEnvironmentRefusal(error)) said += `: ${MXC_NO_SHELL_REASON}`;
       }
       // A lower level ran: this host cannot take more, and no policy built afterwards asks for it.
       if (level > startLevel) noteMxcEnumerateLevel(level);

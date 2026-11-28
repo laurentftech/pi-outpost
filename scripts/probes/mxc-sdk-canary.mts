@@ -9,7 +9,7 @@ import path from "node:path";
 import { runCanary } from "../../server/src/confinementCanary.ts";
 import { mxcSdk, runThroughSdk, sdkRequest, type MxcWireRequest } from "../../server/src/mxcSdk.ts";
 import { bundledMxcExecutor } from "../../server/src/mxcExecutor.ts";
-import { confinedEnvironment, mxcTerminalConfig, prepareConfinedTerminal, siblingsToDeny } from "../../server/src/terminalSandbox.ts";
+import { confinedEnvironment, mxcTerminalConfig, prepareConfinedTerminal } from "../../server/src/terminalSandbox.ts";
 
 const shell = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 const base = await mkdtemp(path.join(tmpdir(), "mxc-canary-"));
@@ -34,7 +34,7 @@ for (const through of ["sdk", "executor"] as const) {
       const oneLine = command.split(/\r?\n/).filter(Boolean).join("; ");
       const files = await prepareConfinedTerminal((tmp) => {
         const env = confinedEnvironment(process.env, { root, tmp, shell });
-        return mxcTerminalConfig({ root, allowWrite: true, agentDir, tmp, shell, shellArgs: ["-NoProfile", "-NonInteractive", "-Command", oneLine], cwd: root, env, siblings: siblingsToDeny(root), searchPath: env.PATH });
+        return mxcTerminalConfig({ root, allowWrite: true, agentDir, tmp, shell, shellArgs: ["-NoProfile", "-NonInteractive", "-Command", oneLine], cwd: root, env, searchPath: env.PATH });
       });
       try {
         if (through === "sdk") {

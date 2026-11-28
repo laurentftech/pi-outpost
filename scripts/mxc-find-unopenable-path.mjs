@@ -56,7 +56,7 @@ console.log(
 );
 
 if (!(await refuses(policy))) {
-  console.log("the real policy at level 0 does NOT fail here — try level 1/2 or the strict rebuild (the server retries those).");
+  console.log("the real policy at level 0 does NOT fail here — try level 1 (the server retries it once).");
   process.exit(0);
 }
 console.log("the real policy fails; bisecting inside it.");

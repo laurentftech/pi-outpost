@@ -47,7 +47,6 @@ describe("each runner is given it in its own words", () => {
     shellArgs: ["-File", "x.ps1"],
     cwd: "C:\\work\\app",
     env: { PATH: "C:\\Windows\\System32" },
-    siblings: [],
   };
 
   test("MXC on Windows: a read-only path inside the writable root", () => {

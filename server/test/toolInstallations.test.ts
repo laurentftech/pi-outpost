@@ -180,7 +180,6 @@ describe("toolInstallations", () => {
       shellArgs: [],
       cwd: ROOT,
       env: { PATH: `${git}\\cmd` },
-      siblings: [],
       searchPath: `${git}\\cmd`,
       home: HOME,
       agentDir: AGENT_DIR,
@@ -275,7 +274,7 @@ describe("MSYS2 folders", () => {
 });
 
 describe("on the real disk, a junction on the search path", { skip: process.platform !== "win32" ? "a junction is a Windows reparse point" : false }, () => {
-  // openlore: scenario=AToolBehindALinkOnTheWayDownResolves spec=sandbox-runner-bash
+  // openlore: scenario=TheWindowsMxcPolicyIsAWhitelist spec=sandbox-runner-bash
   test("AToolBehindALinkOnTheWayDownResolves: scoop's `current` junction is seen as a link even where Node's lstat does not flag it, and its target is taken", () => {
     const base = mkdtempSync(path.join(tmpdir(), "toolinst-junction-"));
     try {

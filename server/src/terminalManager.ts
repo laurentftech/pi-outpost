@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { carryUserConfigs, confinedEnvironment, mxcEnumerateLevel, prepareConfinedTerminal, signingShimFor, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
+import { carryUserConfigs, confinedEnvironment, MXC_NO_SHELL_REASON, mxcEnumerateLevel, prepareConfinedTerminal, signingShimFor, type ConfinedTerminalFiles, type MxcLinuxConfig, type MxcMacConfig, type MxcTerminalConfig, type SeatbeltPolicy, type RunnerKind, type TerminalPolicy, type WindowsToolchains } from "./terminalSandbox.ts";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -638,6 +638,9 @@ export interface ConfinedLaunch {
  * it. Shared by the terminal and by the confinement canary, which must check what runs.
  */
 export async function confinedLaunch(confine: TerminalConfinement, shell: string, givenArgs: string[], cwd: string, enumerateLevel: 0 | 1 | 2 = mxcEnumerateLevel()): Promise<ConfinedLaunch> {
+  // MXC on Windows confines by a whitelist whose way down must be listable: a host that takes no
+  // enumeration gets no confined shell, never a policy under which nothing beside the root resolves.
+  if (confine.kind === "mxc" && process.platform === "win32" && enumerateLevel === 2) throw new Error(`mxc cannot list folders on this host: ${MXC_NO_SHELL_REASON}`);
   // A starting directory outside the root could not be entered from inside.
   const startIn = isInside(path.resolve(cwd), confine.root) ? path.resolve(cwd) : confine.root;
   const shellArgs = confine.kind === "mxc" && process.platform === "win32" ? withTemporaryDirectoryRestored(shell, givenArgs) : givenArgs;
@@ -747,8 +750,9 @@ export interface TerminalConfinement {
   /**
    * The policy for this terminal, given its private temporary directory and what it runs.
    * `enumerateLevel`: MXC on Windows, the enumeration level this host proved it can take
-   * (0 full, 1 the tools' ancestors only, 2 none — see `mxcEnumerateLevel`), when it refused the
-   * policy over the folders made listable (`isSecurityEnvironmentRefusal`).
+   * (0 full, 1 without the way down to the grants, 2 none: no confined shell — see
+   * `mxcEnumerateLevel`), when it refused the policy over the folders made listable
+   * (`isSecurityEnvironmentRefusal`).
    */
   policy: (terminal: ConfinedShell, enumerateLevel?: 0 | 1 | 2) => TerminalPolicy | MxcTerminalConfig | MxcLinuxConfig | MxcMacConfig | SeatbeltPolicy;
 }

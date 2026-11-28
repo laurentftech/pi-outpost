@@ -1,0 +1,11 @@
+# Tasks
+
+- [x] 1. Archive `windows-strict-denies-on-security-environment-refusal`, `windows-foreign-drive-denied-at-every-level` and `windows-foreign-drive-beside-denied` (their requirements reach the main spec, so this change can remove them).
+- [x] 2. `server/src/terminalSandbox.ts` `mxcTerminalConfig`: no drive root in `readonlyPaths`; Windows' own folders (`SystemRoot`, `ProgramFiles*`, `ProgramData`) readable; `enumeratePaths` = the drive roots of every allowed path plus `ancestorsToEnumerate` of the shell's folder and the tools (and the grants at level 0); no readable foreign way down; `deniedPaths` = agent directory and configuration file; paths deduplicated without case.
+- [x] 3. Remove the strict mode (`strictDenies`, `mxcStrictDenies`, `noteMxcStrictDenies`, `strictlyDeniable`, `STRICT_DENY_BUDGET`), the `siblings`/`besideEnumerated` inputs, `siblingsToDeny`, `deniableEntries` and `deniable`.
+- [x] 4. `server/src/confinedBash.ts`, `server/src/confinementStatus.ts`, `server/src/terminalManager.ts`: on a security-environment refusal, step 0 → 1 once; refused at level 1, or a host known at level 2, the shell and the terminal are unavailable with `MXC_NO_SHELL_REASON`.
+- [x] 5. `server/src/sandboxDoctor.ts`: no sibling class in the denied-path summary.
+- [x] 6. Tests: the policy shape, levels, retries and level 2 (`terminalSandbox.test.ts`, `confinedBashMxcSecurityEnvironment.test.ts`); the real executor (`windowsSandboxReachMxc.test.ts`, `windowsToolchainsMxc.test.ts`, `terminalSandboxMxc.test.ts`); listings of names are no longer asserted refused, contents are.
+- [x] 7. `docs/sandboxing.md`: the policy, the names it discloses and why (microsoft/mxc#1461), no shell without enumeration; strict and foreign-way paragraphs removed; the investigation log marked superseded.
+- [ ] 8. On the domain-joined target: `npm run dev` on this branch — the canary verifies the shell (its `command.ps1` resolved through parents no longer denied) — and `npm run sandbox:mxc-whitelist` (`real` now matches the measured `whitelist+enum-way`).
+- [x] 9. `npx tsc --noEmit -p server/tsconfig.test.json`, `npm run lint`, the server suites with `MXC_EXEC=mxc`, `npx openspec validate windows-mxc-whitelist-policy --strict`, `npm run check:scenarios`.

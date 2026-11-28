@@ -149,7 +149,9 @@ fallback) fails with EPERM in every configuration tried. That will hit Node tool
 MXC fixes it. The fix belongs to MXC (or the OS policy): **to report**, with `path-apis.cs` as the
 reproduction.
 
-**Workaround that works today: drive root readable, every sibling denied by name.** On this repository
+> Superseded (#593): the policy is now a whitelist with the way down listable and no deny list beside it — see [Sandboxing](../sandboxing.md). Kept as the record of what was measured.
+
+**Workaround that worked then: drive root readable, every sibling denied by name.** On this repository
 (`C:\Users\lfran\pi-outpost`, writable), with `C:\` readable and a deny for every entry of `C:\`,
 `C:\Users`, `C:\Users\lfran` other than the path down to the project (and the system folders at the
 root), as `mxc-deny-siblings.mjs` computes it (65 entries here):

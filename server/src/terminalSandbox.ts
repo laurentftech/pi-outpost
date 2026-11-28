@@ -23,7 +23,7 @@
  * writes in the shape MXC generates (`seatbeltPolicy`).
  */
 import { execFile, execFileSync } from "node:child_process";
-import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, constants as fsConstants, existsSync, lstatSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -236,23 +236,13 @@ let mxcEnumerates = true;
  * the account). Level 1 keeps enumeration for the search path's tools alone; level 2 drops all of it.
  */
 let mxcEnumerateGrants = true;
+
 /**
- * Whether this host also needs the deny list pruned to what its security environment can open
- * (`strictlyDeniable`): Windows refused a policy over a denied path the account cannot open there
- * (0x80070005, domain-joined machines). Remembered like the level, so no policy built afterwards on
- * this host denies an entry the host cannot open. Off for tests.
+ * Why there is no MXC shell on a Windows host that cannot take the whitelist's enumeration: what
+ * the user can do about it. The policy has no looser shape to fall back to.
  */
-let mxcStrictDeniesFlag = false;
-
-/** Whether this host proved it needs the strict deny list. */
-export function mxcStrictDenies(): boolean {
-  return mxcStrictDeniesFlag;
-}
-
-/** Remember that this host's security environment could not open a denied path: prune them from then on (false resets, for tests). */
-export function noteMxcStrictDenies(needed = true): void {
-  mxcStrictDeniesFlag = needed;
-}
+export const MXC_NO_SHELL_REASON =
+  "the Windows sandbox needs the folders above each tool listable, and this host refused them; set sandbox.bashRunner to \"none\" to run without it (microsoft/mxc#1461)";
 
 /** The enumeration level this host proved it can build a policy with: 0 full, 1 tools only, 2 none. */
 export function mxcEnumerateLevel(): 0 | 1 | 2 {
@@ -573,6 +563,20 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+/** The environment variables naming Windows' own folders and the machine's installations. */
+const WINDOWS_SYSTEM_FOLDER_VARIABLES = ["SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData"];
+
+/** Windows paths once each, compared as Windows does: without case, trailing separator aside. */
+function uniqueIgnoringCase(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.toLowerCase().replace(/(?<=[^:\\/])[\\/]+$/, "");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /** MXC's request document (schema 1.0.0), as much of it as a terminal uses. */
 export interface MxcTerminalConfig {
   version: "1.0.0";
@@ -649,8 +653,6 @@ export interface MxcTerminalInput {
   cwd: string;
   /** The shell's whole environment: MXC passes the executor's own to nobody. */
   env: Record<string, string>;
-  /** Everything beside the path down to the root, from `siblingsToDeny`. */
-  siblings: string[];
   /** Single files readable besides the trees: the user's git configuration. */
   readOnlyFiles?: string[];
   /**
@@ -697,15 +699,6 @@ export interface MxcTerminalInput {
    * only — the profile's folders are the entries a domain machine most often refuses.
    */
   enumerateGrants?: boolean;
-  /** What is in an enumerated folder, to deny by name (`deniableEntries`): the disk, or a test's. */
-  besideEnumerated?: (dir: string) => string[];
-  /**
-   * Deny only what the host can open when it builds the process security environment
-   * (`strictlyDeniable`: files must open with no sharing, folders with a plain open). Unset, as this
-   * host last proved: Windows refuses the whole policy when one denied path cannot be opened there
-   * (0x80070005, seen on a domain-joined account) — the fallback after the enumeration levels.
-   */
-  strictDenies?: boolean;
 }
 
 /**
@@ -1363,21 +1356,21 @@ export function toolInstallations(
 }
 
 /**
- * What one terminal may touch, as MXC's tier 1 reads it.
+ * What one terminal may touch, as MXC's tier 1 reads it: a whitelist (issue #593).
  *
- * The root's drive is readable and everything beside the path down to the root is denied
- * by name (`siblings`): Git for Windows finds its working directory by listing every
- * parent folder, because the sandbox cannot reach the Mount Manager to turn a handle back
- * into a `C:\` path (microsoft/mxc#1464). Without the drive, git cannot run a single
- * command that needs its work tree. A more specific allow wins over a deny, so the root,
- * the temporary directory (under the denied profile) and the shell's folder stay usable.
+ * Readable or writable: only what a command opens — the root, the temporary directory, the
+ * shell's folder, the search path's tools and their installations, a junction's target, the
+ * grants. Enumerable: each of their drives' roots and the folders above them, so a path resolves
+ * through them (Node lstats every component, the drive root included). Denied: the agent
+ * directory and the configuration file. No drive is readable and nothing beside the way down is
+ * denied by name: that deny list is what Windows refused on managed hosts (0x80070005). Git needs
+ * neither the drive nor a relay under it (measured on two hosts, #594).
  *
  * The root is readable rather than only writable when no writable zone covers it: a
  * `readonlyPaths` folder cannot be listed nor be a working directory under tier 1, so
  * `cd` into a read-only subfolder is refused. That is the sandbox's, and it is documented.
  */
 export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
-  const drive = path.win32.parse(input.root).root;
   const writable = input.allowWrite ? [input.writableRoot ?? input.root] : [];
   const shellDir = path.win32.isAbsolute(input.shell) ? [path.win32.dirname(input.shell)] : [];
   const readwritePaths = unique([...writable, ...(input.grantedWrite ?? []), input.tmp]);
@@ -1407,91 +1400,41 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
     toolKeys.add(key);
     tools.push(target);
   }
-  let readonlyPaths = unique([drive, input.root, ...shellDir, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? []), ...(input.readOnlyInside ?? [])].filter((p) => !readwritePaths.includes(p)));
-  // The way down to every opened folder — the shell's, the search path's tools', the grants' —
-  // whatever the enumeration level: what lies beside it is denied by name at every level, so a host
-  // whose MXC refuses enumeration altogether (level 2) does not open a foreign drive whole
-  // (issue #585). Enumeration itself stays what the host proved it can take. Not the temporary
-  // directory, under a profile of hundreds of entries each to deny, nor git's single files.
-  const wayDownGuard = {
-    root: input.root,
-    siblings: input.siblings,
-    readable: [...readwritePaths, ...readonlyPaths],
-    agentDir: input.agentDir,
-    configFile: input.configFile,
-    linkTarget,
-    ...(input.home ? { home: input.home } : {}),
-  };
-  const wayDownAll = ancestorsToEnumerate([...shellDir, ...tools, ...(input.grantedRead ?? []), ...(input.grantedWrite ?? [])], wayDownGuard);
-  let enumeratePaths = !(input.enumerateAncestors ?? mxcEnumerates)
+  // Windows' own folders and the machine's installations, readable as they always were (the old
+  // policy never denied them): what a tool finds without PATH lives there — rustc's MSVC `link.exe`
+  // and the Windows SDK, .NET, Java. Not the profile, not another drive.
+  const systemFolders = WINDOWS_SYSTEM_FOLDER_VARIABLES.map((name) => input.env[name]).filter((p): p is string => typeof p === "string" && path.win32.isAbsolute(p) && p !== path.win32.parse(p).root);
+  const readonlyPaths = uniqueIgnoringCase([input.root, ...shellDir, ...systemFolders, ...tools, ...(input.readOnlyFiles ?? []), ...(input.grantedRead ?? []), ...(input.readOnlyInside ?? [])].filter((p) => !readwritePaths.includes(p)));
+  // The way down to what is opened, enumerable — names only, never one byte of a file. Not
+  // readable: a readable folder is read with its whole subtree, and `C:\Users\me\AppData\Local`
+  // readable opened the temporary directory's neighbours (#582, #593). Enumerable, a tool on another
+  // drive than the root's still resolves (measured on a domain-joined host, root on `L:`, tools on
+  // `C:` and `L:`). What a command opens by path beside the root: the shell's folder, the tools and —
+  // at level 0 — the grants, under the profile; the root and the temporary directory resolve through
+  // their drive's root alone (measured). Level 2 takes no enumeration: the launchers give no shell.
+  const opened = [...shellDir, ...tools];
+  const enumerates = input.enumerateAncestors ?? mxcEnumerates;
+  const enumeratePaths = !enumerates
     ? []
-    // What a command opens beside the root by path: the search path's tools and — at level 0 — the
-    // grants.
-    : (input.enumerateGrants ?? mxcEnumerateGrants)
-      ? wayDownAll
-      : ancestorsToEnumerate([...shellDir, ...tools], wayDownGuard);
-  // A tool on another drive than the root's (scoop on a second disk, issue #572): the way down to
-  // it — its drive's root and every folder above it — must be readable, not merely enumerable.
-  // The root's own drive is readable whole, which is why a tool on it always resolved; on another
-  // drive nothing opened through enumerated ancestors alone: `Get-Command node` found nothing and
-  // even a full-path open was refused. Readable shows the folders' names, as enumeration would;
-  // their other contents stay denied, the files beside the way are not in any allow.
-  // A host whose security environment cannot open a denied path refuses the whole policy: in strict
-  // mode, deny only what opens there (issue: 0x80070005 on a domain-joined account).
-  const strict = input.strictDenies ?? mxcStrictDeniesFlag;
-  const foreignDrives = new Set(tools.map((p) => path.win32.parse(p).root.toLowerCase()).filter((d) => d !== drive.toLowerCase()));
-  let foreignWay: string[] = [];
-  if (foreignDrives.size > 0) {
-    const onForeign = (p: string) => foreignDrives.has(path.win32.parse(p).root.toLowerCase());
-    // From the way down itself, not from `enumeratePaths`: at level 2 there is no enumeration, yet
-    // the foreign drive is readable whole and what lies beside the way must still be denied (issue #585).
-    foreignWay = wayDownAll.filter(onForeign);
-    // The way down stays readable in strict mode too: the security environment's size budget is
-    // spent on the denied list (measured 556 denied pass, 557 refuse the launch, read-only entries
-    // notwithstanding), which strict mode caps — pruning the readable way down instead left the
-    // folders above the temporary directory denied, and resolving a path through a denied folder
-    // fails (issue #553), which broke the canary's own script. The way down still denies what lies
-    // beside it below.
-    readonlyPaths = unique([...readonlyPaths, ...foreignWay, ...foreignDrives]);
-    enumeratePaths = enumeratePaths.filter((p) => !onForeign(p));
-  }
+    : uniqueIgnoringCase([
+        // Each drive's root: Node's `realpathSync` lstats it before walking a path (`EPERM: lstat
+        // 'L:\'` without it), and only enumeration lets it do so without reading the drive.
+        // MXC enumerates a folder's whole subtree, so every name on that drive can be listed until
+        // a non-recursive grant exists (microsoft/mxc#1461).
+        ...[...readwritePaths, ...readonlyPaths].filter((p) => path.win32.isAbsolute(p)).map((p) => path.win32.parse(p).root),
+        ...ancestorsToEnumerate(
+          (input.enumerateGrants ?? mxcEnumerateGrants) ? [...opened, ...granted(input)] : opened,
+          { readable: [...readwritePaths, ...readonlyPaths], agentDir: input.agentDir, configFile: input.configFile, linkTarget, ...(input.home ? { home: input.home } : {}) },
+        ),
+      ]);
   const allowed = new Set([...readwritePaths, ...readonlyPaths].map((p) => p.toLowerCase()));
   const enumerated = new Set(enumeratePaths.map((p) => p.toLowerCase()));
-  // MXC enumerates a folder's whole subtree: what is beside the way down is denied by name in
-  // each, as the siblings of the path to the root are, so a listing shows those names alone.
-  // The readable way down a foreign drive (#572) denies what lies beside it the same way: the
-  // drive's root being readable would otherwise leave everything beside the way open — the
-  // profile's AppData\Local, the temporary directory, and the confinement canary's beside-root
-  // bait with them (issue #582).
-  const onTheWay = new Set([...allowed, ...enumerated].map((p) => p.replace(/[\\/]+$/, "")));
-  const wayDown = [...enumeratePaths, ...foreignWay];
-  const denyFilter = strict ? strictlyDeniable : deniable;
-  const besideTheWay = wayDown.flatMap((dir) => {
-    const trimmed = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
-    const atDriveRoot = path.win32.parse(dir).root !== "" && trimmed(path.win32.parse(dir).root) === trimmed(dir);
-    return (input.besideEnumerated ?? ((d: string) => deniableEntries(d, denyFilter)))(dir).filter((entry) => {
-      if (onTheWay.has(entry.toLowerCase())) return false;
-      // Top-level system folders of a drive stay readable, as on the root's drive (siblingsToDeny).
-      return !(atDriveRoot && WINDOWS_SYSTEM_FOLDERS.has(path.win32.basename(entry).toLowerCase()));
-    });
-  });
-  let deniedPaths = unique([...input.siblings, ...besideTheWay, input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
+  // Nothing else is denied: what is not allowed is not reachable. The agent directory and the
+  // configuration file stay denied as a second line — two entries Windows can always open, where a
+  // deny list beside the way down was refused whole past ~556 entries or over one it could not open.
+  const deniedPaths = unique([input.agentDir, input.configFile].filter((p): p is string => Boolean(p)))
     // Denying a path that is also allowed leaves which one wins to the sandbox: never ask.
-    .filter((p) => !allowed.has(p.toLowerCase()) && !enumerated.has(p.toLowerCase()))
-    // Strict mode: a denied path the host's security environment cannot open would refuse the whole
-    // policy — leave it out rather than lose the shell (folders still need only a plain open).
-    .filter((p) => !strict || strictlyDeniable(p));
-  if (strict) {
-    // …and cap the list under the security environment's size budget (STRICT_DENY_BUDGET), keeping
-    // first what carries the confinement: the siblings of the root's path, the agent directory and
-    // the configuration file, the temporary directory's parent (the canary's beside-root bait lives
-    // there), then the rest.
-    const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
-    const essential = new Set([...(input.siblings ?? []), input.agentDir, input.configFile].filter((p): p is string => Boolean(p)).map(lower));
-    const tmpParent = lower(path.win32.dirname(input.tmp));
-    const rank = (p: string) => (essential.has(lower(p)) ? 0 : lower(p) === tmpParent || lower(path.win32.dirname(p)) === tmpParent ? 1 : 2);
-    deniedPaths = deniedPaths.sort((a, b) => rank(a) - rank(b)).slice(0, STRICT_DENY_BUDGET);
-  }
+    .filter((p) => !allowed.has(p.toLowerCase()) && !enumerated.has(p.toLowerCase()));
   return {
     version: "1.0.0",
     containment: "processcontainer",
@@ -1541,24 +1484,21 @@ export function mxcTerminalConfig(input: MxcTerminalInput): MxcTerminalConfig {
  * so any script or module outside the root died on `EPERM: lstat 'C:\dev'` (issue #553), and
  * PowerShell's and cmd's command lookup, which query the folder, found nothing there.
  *
- * Only a folder nothing else lets the command read: on another drive than the root's, or a sibling
- * of the path to the root (or inside one) — never one the root's readable drive already covers,
- * where enumeration, the more specific rule, would take reading away. Enumerating a folder shows the
- * names in its whole subtree and their metadata, never one byte of a file; `mxcTerminalConfig`
- * denies by name what lies beside the way down, so only those names show. The agent directory and
- * the configuration file are never enumerated, nor any folder inside them. Nor a folder directly in
- * the home but `AppData`, as `toolInstallations` never opens one: `~\.cargo` holds `credentials.toml`,
+ * Only a folder nothing else lets the command read: one inside a readable folder is read, and
+ * enumeration, the more specific rule, would take reading away. Enumerating a folder shows the names
+ * in its whole subtree and their metadata, never one byte of a file. The agent directory and the
+ * configuration file are never enumerated, nor any folder inside them. Nor a folder directly in the
+ * home but `AppData`, as `toolInstallations` never opens one: `~\.cargo` holds `credentials.toml`,
  * and a tool there is a program, which needs nothing above its folder — Node's CLIs live in `AppData`.
+ * The drive's root is not returned: `mxcTerminalConfig` enumerates every drive's root itself.
  *
  * A link on the way down (scoop's `current` junction to the active version) is never enumerated:
- * listing it would show its target's children, each then denied by name as beside the way. Its
- * target is readable where it was taken (`mxcTerminalConfig`), and the walk goes on above the link.
+ * listing it would show its target's children. Its target is readable where it was taken
+ * (`mxcTerminalConfig`), and the walk goes on above the link.
  */
 export function ancestorsToEnumerate(
   opened: readonly string[],
   guard: {
-    root: string;
-    siblings: readonly string[];
     readable?: readonly string[];
     agentDir?: string;
     configFile?: string;
@@ -1571,12 +1511,9 @@ export function ancestorsToEnumerate(
   const lower = (p: string) => p.toLowerCase().replace(/[\\/]+$/, "");
   const under = (child: string, parent: string) => child === parent || child.startsWith(`${parent}\\`);
   const secrets = [guard.agentDir, guard.configFile].filter((p): p is string => Boolean(p)).map(lower);
-  const rootDrive = lower(win.parse(guard.root).root);
-  const siblings = guard.siblings.map(lower);
-  // Readable folders other than the drive: a folder inside one is read, not merely enumerated.
+  // Readable folders other than a drive: a folder inside one is read, not merely enumerated.
   const reading = (guard.readable ?? opened).filter((p) => win.isAbsolute(p) && lower(p) !== lower(win.parse(p).root)).map(lower);
-  const covered = (key: string) =>
-    reading.some((p) => under(key, p)) || (key.startsWith(rootDrive) && !siblings.some((sibling) => under(key, sibling)));
+  const covered = (key: string) => reading.some((p) => under(key, p));
   const found: string[] = [];
   const seen = new Set<string>();
   for (const entry of opened) {
@@ -1587,13 +1524,7 @@ export function ancestorsToEnumerate(
       const key = lower(dir);
       if (seen.has(key)) break; // Its own ancestors are already decided.
       seen.add(key);
-      // The root of another drive than the root's (a partition gets its own letter, as a second
-      // disk does): the walk reaches it, and `mxcTerminalConfig` makes the way down on that drive
-      // readable — nothing on it opens without traversing its root (issue #572).
-      if (key === drive) {
-        if (drive !== rootDrive && !covered(key) && !secrets.some((secret) => under(key, secret))) found.push(dir);
-        break;
-      }
+      if (key === drive) break;
       // A link on the way down is not enumerated (see above); the walk goes on above it.
       if (guard.linkTarget !== undefined && guard.linkTarget(dir) !== undefined) {
         dir = win.dirname(dir);
@@ -1605,17 +1536,6 @@ export function ancestorsToEnumerate(
     }
   }
   return found;
-}
-
-/** The entries of a folder MXC can deny by name (`deniable`), or none when it cannot be listed. */
-export function deniableEntries(dir: string, filter: (entry: string) => boolean = deniable): string[] {
-  let names: string[];
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  return names.map((name) => path.join(dir, name)).filter(filter);
 }
 
 /**
@@ -1926,150 +1846,6 @@ function isUnder(child: string, parent: string): boolean {
 /** One argument of a POSIX command line: bare when safe, else single-quoted. */
 export function quotePosixArgument(argument: string): string {
   return /^[\w@%+=:,./-]+$/.test(argument) ? argument : `'${argument.replaceAll("'", `'\\''`)}'`;
-}
-
-/** Top-level folders of a drive a shell needs: readable, never denied. */
-const WINDOWS_SYSTEM_FOLDERS = new Set(["windows", "program files", "program files (x86)", "programdata"]);
-
-/**
- * The deny-list cap in strict mode. Windows builds the process security environment from every
- * policy path and refuses the whole launch when it is too large (measured 0x80070005 with 557
- * denied entries on a domain-joined host; 556 passed) — so on a host that needed strict mode, the
- * deny list is capped well under that, the entries that carry the confinement first.
- */
-const STRICT_DENY_BUDGET = 256;
-
-/**
- * Every entry beside the path from the drive root down to `root`, for MXC to deny.
- *
- * The folders on the way down, and the system folders at the drive root, are left out.
- * So are two kinds of entry that make MXC reject the whole policy: junctions and
- * symbolic links (`0x8007010B` — the compatibility junctions such as `Application Data`
- * point at folders denied or system anyway) and files another process holds open, such as
- * a loaded `NTUSER.DAT` or a delete-on-close temp file (`0x80070020`, sharing violation).
- * Read when a terminal opens: an entry created later, or a file held open at that moment,
- * is not denied, which the documentation says.
- */
-export function siblingsToDeny(root: string): string[] {
-  // The host's own path rules: this walks the disk the server runs on (Windows for MXC,
-  // whatever the tests run on), and Windows rules on a POSIX host make "\tmp\…", unlistable.
-  const { root: drive } = path.parse(root);
-  const parts = root.slice(drive.length).split(/[\\/]+/).filter(Boolean);
-  const denied: string[] = [];
-  let dir = drive;
-  for (const part of parts) {
-    let names: string[];
-    try {
-      names = readdirSync(dir);
-    } catch {
-      break; // A folder the server cannot list: nothing beside it to name.
-    }
-    for (const name of names) {
-      if (name.toLowerCase() === part.toLowerCase()) continue;
-      if (dir === drive && WINDOWS_SYSTEM_FOLDERS.has(name.toLowerCase())) continue;
-      const entry = path.join(dir, name);
-      if (deniable(entry)) denied.push(entry);
-    }
-    dir = path.join(dir, part);
-  }
-  return denied;
-}
-
-/**
- * Stricter than `deniable`, for hosts whose process security environment cannot open some entries
- * (0x80070005 on a domain-joined account): a denied FILE must open with no sharing at all — a file
- * another process holds, or whose ACL grants read but not what the environment asks, is left out,
- * and with it the policy is not refused whole. A denied folder only needs the plain open `deniable`
- * asks (Windows cannot open directory handles exclusively), and must not be a link.
- */
-export function strictlyDeniable(entry: string): boolean {
-  if (process.platform !== "win32") return deniable(entry); // the tests run on POSIX
-  let descriptor: number | undefined;
-  try {
-    descriptor = openSync(entry, fsConstants.O_RDONLY | EXCLUSIVE_OPEN);
-    const opened = fstatSync(descriptor);
-    const atPath = lstatSync(entry);
-    if (opened.isDirectory()) return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
-    if (!opened.isFile()) return false;
-    return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
-  } catch {
-    // Windows cannot open directory handles exclusively: a folder falls back to the plain open.
-    let plain: number | undefined;
-    try {
-      plain = openSync(entry, fsConstants.O_RDONLY);
-    } catch {
-      return false;
-    } finally {
-      if (plain !== undefined) closeSync(plain);
-    }
-    try {
-      const stats = lstatSync(entry);
-      return stats.isDirectory() && !stats.isSymbolicLink();
-    } catch {
-      return false;
-    }
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
-  }
-}
-
-/**
- * libuv's exclusive open on Windows (no sharing at all). Node does not export it everywhere.
- *
- * MXC opens each denied file without sharing deletion, so a file another process holds
- * with delete access (a delete-on-close `.tmp`) fails the whole launch with a sharing
- * violation — while a plain open, which shares everything, succeeds. An exclusive open
- * fails whenever anything holds the file: stricter than MXC, never looser.
- */
-const EXCLUSIVE_OPEN = (fsConstants as { UV_FS_O_EXLOCK?: number }).UV_FS_O_EXLOCK ?? 0x10000000;
-
-function deniable(entry: string): boolean {
-  let descriptor: number | undefined;
-  try {
-    const flags = process.platform === "win32"
-      ? fsConstants.O_RDONLY | EXCLUSIVE_OPEN
-      : fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW;
-    descriptor = openSync(entry, flags);
-    const opened = fstatSync(descriptor);
-    if (opened.isDirectory()) {
-      if (process.platform !== "win32") return true;
-      const atPath = lstatSync(entry);
-      return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
-    }
-    // O_NONBLOCK keeps FIFOs from hanging; sockets and devices are left out too.
-    if (!opened.isFile()) return false;
-    if (process.platform === "win32") {
-      const atPath = lstatSync(entry);
-      return !atPath.isSymbolicLink() && atPath.dev === opened.dev && atPath.ino === opened.ino;
-    }
-    return true;
-  } catch {
-    // Windows cannot open directory handles this way; retain directory entries, but
-    // do the fallback metadata check only after the attempted open.
-    if (process.platform === "win32") {
-      // A plain open (full sharing) succeeds wherever reading is allowed, directories included
-      // (libuv opens them with FILE_FLAG_BACKUP_SEMANTICS). One it fails on — access denied — is
-      // never denied by name: MXC opens every denied path where it builds the security
-      // environment, and a single one it cannot open fails the whole policy (0x80070005).
-      let plain: number | undefined;
-      try {
-        plain = openSync(entry, fsConstants.O_RDONLY);
-      } catch {
-        return false;
-      } finally {
-        if (plain !== undefined) closeSync(plain);
-      }
-      try {
-        const stats = lstatSync(entry);
-        return !stats.isSymbolicLink() && stats.isDirectory();
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
-  }
 }
 
 /** One argument of a Windows command line, quoted the way `CommandLineToArgvW` reads it back. */

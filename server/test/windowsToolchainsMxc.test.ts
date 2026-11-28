@@ -229,6 +229,7 @@ describe("toolchains under MXC's real executor", { skip }, () => {
   });
 
   // openlore: scenario=OnWindowsCargoTestsConfined spec=sandbox-runner-bash
+  // openlore: scenario=ToolsFoundWithoutPathStillRun spec=sandbox-runner-bash
   test("OnWindowsCargoTestsConfined: rustup's toolchain is found and a crate with a registry dependency tests", { skip: existsSync(path.join(homedir(), ".rustup")) && onPath("cargo") ? false : "no rustup toolchain for this user" }, async () => {
     const { output, exitCode } = await ps("cargo new -q --vcs none crate1; Set-Location crate1; cargo add -q itoa; cargo test -q");
     assert.doesNotMatch(output, /no default is configured/);
@@ -239,9 +240,9 @@ describe("toolchains under MXC's real executor", { skip }, () => {
   // openlore: scenario=CargoCredentialsStayOut spec=sandbox-runner-bash
   test("CargoCredentialsStayOut: the user's Cargo home is not readable", { skip: existsSync(path.join(homedir(), ".cargo")) ? false : "no ~/.cargo here" }, async () => {
     const cargo = path.join(homedir(), ".cargo");
-    const { output } = await ps(`try { Get-ChildItem -Force -LiteralPath "${cargo}" -ErrorAction Stop | Out-Null; "LISTED" } catch { "REFUSED" }; try { Get-Content -LiteralPath "${path.join(cargo, "credentials.toml")}" -ErrorAction Stop | Out-Null; "READ" } catch { "NOT READ" }`);
-    // ~\.cargo\bin is on PATH and readable; its home, with credentials.toml, is not.
-    assert.match(output, /^REFUSED$/m, output);
+    const { output } = await ps(`try { Get-Content -LiteralPath "${path.join(cargo, "credentials.toml")}" -ErrorAction Stop | Out-Null; "READ" } catch { "NOT READ" }`);
+    // ~\.cargo\bin is on PATH and readable; its home, with credentials.toml, is not. Its names may
+    // be listed under the enumerated drive (microsoft/mxc#1461): the content is what must stay out.
     assert.match(output, /^NOT READ$/m, output);
   });
 

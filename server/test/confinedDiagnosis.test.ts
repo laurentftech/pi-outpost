@@ -27,7 +27,6 @@ function request(networkProxy?: string) {
     shellArgs: ["-File", "x.ps1"],
     cwd: ROOT,
     env: {},
-    siblings: ["C:\\Users\\me\\work\\other", "C:\\Users\\Public", "C:\\Users\\me\\Documents"],
     searchPath: "C:\\Windows\\System32;C:\\Tools",
     home: "C:\\Users\\me",
     ...(networkProxy ? { networkProxy } : {}),
@@ -42,13 +41,13 @@ describe("mxcDiagnosticConfig", () => {
     const subset = (a: string[], b: string[]) => a.every((p) => b.includes(p));
     assert.ok(subset(diagnosis.filesystem.readwritePaths, original.filesystem.readwritePaths), "no writable path added");
     assert.ok(subset(diagnosis.filesystem.readonlyPaths, original.filesystem.readonlyPaths), "no readable path added");
-    assert.ok(original.filesystem.readonlyPaths.includes("C:\\") && !diagnosis.filesystem.readonlyPaths.includes("C:\\"), "the drive goes");
+    assert.ok(!diagnosis.filesystem.readonlyPaths.includes("C:\\"), "no drive");
     assert.deepEqual(diagnosis.filesystem.deniedPaths.sort(), [AGENT, CONFIG].filter((p) => original.filesystem.deniedPaths.includes(p)).sort());
     assert.ok(diagnosis.filesystem.deniedPaths.includes(AGENT), "the agent directory stays named");
     assert.ok(diagnosis.filesystem.deniedPaths.includes(CONFIG), "the configuration inside the root stays named");
     assert.deepEqual(diagnosis.network, { egress: { default: "deny" } });
     assert.equal(diagnosis.runtimeConfig, undefined, "no proxy");
-    assert.deepEqual(diagnosis.processContainer, { captureDenials: { mode: "block", outputPath: "C:\\srv\\d\\report.json" } });
+    assert.deepEqual(diagnosis.processContainer, { filesystem: original.processContainer?.filesystem, captureDenials: { mode: "block", outputPath: "C:\\srv\\d\\report.json" } }, "the enumerated way down kept, capture added");
     assert.deepEqual(diagnosis.ui, original.ui);
     assert.equal(diagnosis.process, original.process);
   });

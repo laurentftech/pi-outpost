@@ -68,7 +68,6 @@ const windowsInput = {
   shellArgs: ["-File", "x.ps1"],
   cwd: "C:\\work\\app",
   env: { PATH: "C:\\Windows\\System32", EQ: "a=b" },
-  siblings: ["C:\\work\\other"],
 };
 const posixInput = {
   root: "/work/app",
@@ -102,9 +101,7 @@ describe("sdkRequest", () => {
       mxcTerminalConfig({
         ...windowsInput,
         searchPath: "C:\\dev\\nodejs\\current",
-        siblings: ["C:\\dev"],
         enumerateAncestors: true,
-        besideEnumerated: (dir) => (dir === "C:\\dev" ? ["C:\\dev\\nodejs", "C:\\dev\\other"] : []),
       });
     cases.push(["Windows, the folders above a tool enumerated", () => enumerating() as MxcWireRequest]);
     cases.push([
@@ -114,7 +111,7 @@ describe("sdkRequest", () => {
     test("the folders above a tool reach the SDK as the process container's enumerated paths", () => {
       assert.deepEqual(sdkRequest(enumerating() as MxcWireRequest).containment, {
         type: "processcontainer",
-        config: { filesystem: { enumeratePaths: ["C:\\dev\\nodejs", "C:\\dev"] } },
+        config: { filesystem: { enumeratePaths: ["C:\\", "C:\\Windows\\System32\\WindowsPowerShell", "C:\\Windows\\System32", "C:\\Windows", "C:\\dev\\nodejs", "C:\\dev"] } },
       });
     });
   }

@@ -28,7 +28,6 @@ import {
   mxcTerminalConfig,
   readableSearchEntries,
   runnerKind,
-  siblingsToDeny,
   toolInstallations,
   windowsToolchains,
   type MxcTerminalConfig,
@@ -175,7 +174,6 @@ function policyRequestFor(sandbox: SandboxConfig, root: string, agentDir: string
     shellArgs: [],
     cwd: root,
     env,
-    siblings: siblingsToDeny(root),
     searchPath: env.PATH,
     ...(serverEnv.USERPROFILE ? { home: serverEnv.USERPROFILE } : {}),
     ...(agentDir ? { agentDir } : {}),
@@ -188,11 +186,10 @@ function policyRequestFor(sandbox: SandboxConfig, root: string, agentDir: string
 }
 
 /** The request summarized by class, with each denied path's reason class. */
-function summarizePolicy(request: MxcRequest, siblings: string[], agentDir: string | undefined, configFile: string | undefined): PolicySummary {
+function summarizePolicy(request: MxcRequest, agentDir: string | undefined, configFile: string | undefined): PolicySummary {
   const fs = request.filesystem;
   const enumeratePaths = request.processContainer?.filesystem?.enumeratePaths ?? [];
   const enumerated = new Set(enumeratePaths.map((p) => p.toLowerCase()));
-  const siblingSet = new Set(siblings.map((p) => p.toLowerCase()));
   const denied = fs.deniedPaths.map((p) => ({
     path: p,
     reasonClass:
@@ -200,11 +197,9 @@ function summarizePolicy(request: MxcRequest, siblings: string[], agentDir: stri
         ? "agent directory (the keys)"
         : configFile !== undefined && p.toLowerCase() === configFile.toLowerCase()
           ? "the configuration file"
-          : siblingSet.has(p.toLowerCase())
-            ? "sibling of the path to the root"
-            : enumerated.has(p.toLowerCase())
-              ? "on the way down (enumerated)"
-              : "beside the way down",
+          : enumerated.has(p.toLowerCase())
+            ? "on the way down (enumerated)"
+            : "denied",
   }));
   return { backend: "mxc-processcontainer-windows", readwritePaths: fs.readwritePaths, readonlyPaths: fs.readonlyPaths, denied, enumeratePaths };
 }
@@ -344,10 +339,10 @@ export async function collectSandboxSnapshot(input: DoctorInput): Promise<Sandbo
   let links: LinkEntry[] = [];
   if (platform === "win32" && sandbox?.bashRunner && sandbox.bashImage === undefined && kind === "mxc") {
     const request = policyRequestFor(sandbox, root, input.agentDir, input.configFile, serverEnv, platform);
-    policy = summarizePolicy(request, siblingsToDeny(root), input.agentDir, input.configFile);
+    policy = summarizePolicy(request, input.agentDir, input.configFile);
     // What commands actually get: the same policy at the enumeration level this host proved (issue #585).
     const runtimeRequest = policyRequestFor(sandbox, root, input.agentDir, input.configFile, serverEnv, platform, mxcEnumerateLevel());
-    runtimePolicy = summarizePolicy(runtimeRequest, siblingsToDeny(root), input.agentDir, input.configFile);
+    runtimePolicy = summarizePolicy(runtimeRequest, input.agentDir, input.configFile);
     // The link flags compare against the runtime policy's granted paths, not the wanted one's.
     links = linkTableFor(request, runtimeRequest, serverEnv, root, platform);
   } else {

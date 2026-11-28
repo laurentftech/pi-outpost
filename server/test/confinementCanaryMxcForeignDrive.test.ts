@@ -94,7 +94,7 @@ describe("the canary under real MXC, root and system temp on different drives (i
     if (movedTemp) await rm(movedTemp, { recursive: true, force: true }).catch(() => {});
   });
 
-  // openlore: scenario=BesideTheForeignWayDownStaysDenied spec=sandbox-runner-bash
+  // openlore: scenario=NothingBesideTheWayDownIsReadable spec=sandbox-runner-bash
   test("beside-root and write-beside-root are refused when the temporary directory is on another drive than the root", async (t) => {
     if (unavailable) return t.skip(unavailable);
     assert.notEqual(path.parse(root).root.toLowerCase(), path.parse(tmpdir()).root.toLowerCase(), "the test needs the root and the system temp on different drives");

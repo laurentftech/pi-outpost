@@ -5,7 +5,7 @@ import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { mxcPty, mxcSdk, sdkRequest, type MxcWireRequest } from "../../server/src/mxcSdk.ts";
-import { confinedEnvironment, mxcTerminalConfig, siblingsToDeny } from "../../server/src/terminalSandbox.ts";
+import { confinedEnvironment, mxcTerminalConfig } from "../../server/src/terminalSandbox.ts";
 
 const base = await mkdtemp(path.join(tmpdir(), "mxc-pty-"));
 const root = path.join(base, "app");
@@ -14,7 +14,7 @@ await mkdir(root, { recursive: true });
 await mkdir(tmp, { recursive: true });
 const shell = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "cmd.exe");
 const env = confinedEnvironment(process.env, { root, tmp, shell });
-const wire = mxcTerminalConfig({ root, allowWrite: true, tmp, shell, shellArgs: [], cwd: root, env, siblings: siblingsToDeny(root) }) as MxcWireRequest;
+const wire = mxcTerminalConfig({ root, allowWrite: true, tmp, shell, shellArgs: [], cwd: root, env }) as MxcWireRequest;
 const loaded = await mxcSdk();
 if ("reason" in loaded) throw new Error(loaded.reason);
 const started = Date.now();

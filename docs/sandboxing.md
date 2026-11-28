@@ -366,10 +366,16 @@ Inside: native git (`status`, `log`, `diff`, branches, commits with your identit
 type or click in your session, move the cursor, see your windows or read the clipboard — pi-outpost asks
 MXC for no clipboard and no input injection. Limits:
 
-- The root's drive is readable, minus every folder beside the path down to the root (your `.ssh`,
-  other projects…), denied by name at each launch — git needs it (microsoft/mxc#1464). Something created
-  after the launch is not denied, and `Program Files` and `ProgramData` stay readable. Never make a
-  drive's root the sandbox root: nothing would be left to deny.
+- The sandbox is a whitelist: only what a command opens is readable — the root, its temporary
+  directory, the shell's folder, the tools below, the grants — plus Windows' own folders and the
+  machine's installations (`Windows`, `Program Files`, `ProgramData`), where a tool finds what it needs
+  without `PATH` (rustc's MSVC `link.exe`). No drive is readable whole, and nothing else is denied
+  but the agent directory and the configuration: what no rule allows is out of reach, so a deny list
+  never grows past what Windows accepts. Git needs nothing more (measured on two hosts, #593).
+  **File names are visible, not contents**: each drive holding something the shell opens can be
+  listed, because Node resolves a path from the drive's root and MXC's listing covers a folder's whole
+  subtree. Your `.ssh` or another project shows its names; none of its files can be read. The names go
+  when MXC offers a listing of one folder alone ([microsoft/mxc#1461](https://github.com/microsoft/mxc/issues/1461)).
 - Every folder on the shell's `PATH` is readable, so a tool installed for you runs — Python in
   `AppDataLocalPrograms`, `uv`. A `PATH` entry that is or holds your home directory, or holds the
   agent directory or the configuration, is left out. Where a `PATH` folder only holds launchers, the
@@ -384,31 +390,19 @@ MXC for no clipboard and no input injection. Limits:
   program elsewhere — goes in [`sandbox.readOnlyPaths`](#tools-installed-for-you-sandboxreadonlypaths). The Python launcher `py.exe` still finds no
   interpreter (it reads the registry); `python` runs. scoop's `shims` are followed wherever they are,
   a global install's (`C:\tools\scoop\shims`) too.
-- The folders above such a tool, when it is beside the root (`C:\dev` for `C:\dev\nodejs` while the
-  project is `C:\projects\app`), can be listed but not read: a path through them resolves, so Node runs
-  a global npm CLI. Everything else in them stays denied by name, as beside the root — another project
-  in `C:\dev` is out of reach. A folder the root's drive already makes readable is left as it is.
-  On another drive than the root's, the way down to a tool is readable; what lies beside it stays
-  denied by name, as on the root's drive — the temporary directory included.
-  That holds whatever enumeration level the host's MXC proved: when it refuses listable folders
-  altogether, the way down on the other drive is still what is readable, and what lies beside it —
-  the temporary directory included — is still denied by name, not opened with the drive.
-  When the host's security environment cannot open a denied path at all (0x80070005, seen on
-  domain-joined accounts), the deny list is pruned to what it can open — an openable folder such as
-  the temporary directory stays denied — and capped well under the environment's size budget
-  (measured: 556 denied entries pass, 557 refuse the whole launch), so the shell still starts,
-  confined. In that fallback the way down on another drive stays readable as usual: the budget is
-  spent on the denied list, and a path resolved through a denied folder fails, which would break the
-  shell's own scripts.
-  A command's scratch directory is therefore created under a granted write folder (the sandbox
-  cache) when there is one, not under the system temporary directory: the profile's Temp is denied
-  by name as a child of the way down, and PowerShell's `-File` resolves the script path through its
-  parents — a denied parent fails that resolution (AuthorizationManager, UnauthorizedAccess)
-  before the command runs.
+- The folders above such a tool, and above a grant, can be listed but not read — on any drive: a
+  path through them resolves, so Node runs a global npm CLI from `C:\dev` while the project is in
+  `L:\projects\app`. Making them readable instead would open everything beside them: the profile's
+  `AppData\Local`, the temporary directory included.
   A tool reached through a link on the way down (scoop's `current` junction to the active version) has
   the link's target readable like the link, so `node` resolves on `PATH` through it; the link itself is
-  never made listable. This needs a Windows whose MXC can list a folder without reading it; MXC says so
-  in its probe.
+  never made listable.
+  This needs a Windows whose MXC can list a folder without reading it; MXC says so in its probe. Where
+  it cannot — or where Windows refuses the listable folders when it builds the process security
+  environment (`CreateProcessSecurityEnvironment` `0x80070005`, seen on domain-joined accounts) once
+  pi-outpost has tried without the grants' — the agent's shell and the confined terminal are
+  unavailable, with the reason; there is no looser policy to fall back to. `sandbox.bashRunner: "none"`
+  runs without the sandbox.
 - A folder readable but not writable can be neither listed nor entered: leave the whole root writable
   (no narrower `writableRoot`) where git runs.
 - `git push` has no credentials. Commits are signed through the server when your `~/.gitconfig`
@@ -726,7 +720,8 @@ would start, is the "Remaining work" of the `windows-sandbox-reach` change's `de
 | A proxy configured by PAC or WinHTTP alone is not seen | set `HTTPS_PROXY` (and `NO_PROXY`) for the server |
 | A connection refused to a host the command never names (a library's, deep in a build) is told only when the program's own error says so — MXC does not report refused connections ([microsoft/mxc#1843](https://github.com/microsoft/mxc/issues/1843)) | if a build fails on the network, check the intranet hosts it uses against `sandbox.privateNetwork` |
 | Two pi-outpost servers of the same Windows user share the sandbox cache, and with it the carried configuration: one's commands may meet the other's relay and get a 404 | run one server per user, or give each its own `sandbox.cacheDir` |
-| On a machine where Windows refuses the policy over the folders made listable (a domain-joined account, `CreateProcessSecurityEnvironment` `0x80070005`), pi-outpost steps the enumeration down per command: first without the ancestors of the grants (the profile's folders), then without any listable folder. At the last level the folders above a tool beside the root are not listable and `realpath` of the tool's folder fails | nothing to do: the command runs, confined the same at every level; a tool beside the root that needs its folder resolved by path takes a grant (`run_with_grant` or `sandbox.readOnlyPaths` on its ancestor folders) |
+| On a machine where Windows refuses the policy over the folders made listable (a domain-joined account, `CreateProcessSecurityEnvironment` `0x80070005`), pi-outpost retries once without the folders above the grants; refused again, the shell is unavailable with the reason | `npm run sandbox:mxc-unopenable` names the path Windows could not open; `sandbox.bashRunner: "none"` runs without the sandbox |
+| File names (not contents) on each drive the shell opens something on can be listed: MXC lists a folder's whole subtree ([microsoft/mxc#1461](https://github.com/microsoft/mxc/issues/1461)) | keep a file whose name is itself a secret off those drives, or wait for the MXC fix |
 
 ## Older Windows
 

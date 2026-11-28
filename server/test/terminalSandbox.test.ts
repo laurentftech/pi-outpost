@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, stat, readFile, symlink, writeFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
-import { envWithoutCoverageSink } from "./childEnv.mjs";
+import { mkdir, mkdtemp, rm, stat, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -26,7 +23,6 @@ import {
   quotePosixArgument,
   quoteWindowsArgument,
   runnerKind,
-  siblingsToDeny,
   terminalPolicy,
   userGitConfig,
   gitSigningKeysEnabled,
@@ -679,7 +675,6 @@ describe("mxcTerminalConfig", () => {
     shellArgs: [],
     cwd: wroot,
     env: { PATH: "C:\\Windows", HOME: wroot },
-    siblings: ["C:\\Users\\me\\.ssh", "C:\\Users\\me\\tools", "C:\\Users\\me\\AppData", "C:\\Users\\other", "C:\\mxc-lab"],
     agentDir: "C:\\Users\\me\\.pi\\agent",
     configFile: "C:\\Users\\me\\work\\app\\pi-outpost.config.json",
   };
@@ -707,17 +702,16 @@ describe("mxcTerminalConfig", () => {
     for (const entry of ["C:\\Users\\me", "c:\\users", "C:\\Users\\me\\.pi", "relative\\bin"]) {
       assert.ok(!config.filesystem.readonlyPaths.includes(entry), `${entry} made readable`);
     }
-    // The secrets stay denied, and a granted tool folder is not also denied as a sibling.
+    // The secrets stay denied.
     assert.ok(config.filesystem.deniedPaths.includes(base.agentDir));
     assert.deepEqual(readableSearchEntries(undefined, {}), []);
   });
 
-  test("the drive is readable for git, everything beside the root denied, secrets denied by name", () => {
+  test("no drive is readable and nothing beside the root is denied: only the secrets", () => {
     const config = mxcTerminalConfig({ ...base, writableRoot: wroot + "\\out" });
     assert.deepEqual(config.filesystem.readwritePaths, [wroot + "\\out", wtmp]);
-    assert.deepEqual(config.filesystem.readonlyPaths, ["C:\\", wroot, "C:\\Users\\me\\tools"]);
-    // The shell's own folder is allowed: denying it as well would leave the winner to the sandbox.
-    assert.deepEqual(config.filesystem.deniedPaths, ["C:\\Users\\me\\.ssh", "C:\\Users\\me\\AppData", "C:\\Users\\other", "C:\\mxc-lab", base.agentDir, base.configFile]);
+    assert.deepEqual(config.filesystem.readonlyPaths, [wroot, "C:\\Users\\me\\tools"]);
+    assert.deepEqual(config.filesystem.deniedPaths, [base.agentDir, base.configFile]);
     assert.equal(config.containment, "processcontainer");
     assert.equal(config.ui.disable, false, "PowerShell and git need Win32k");
     assert.deepEqual(config.network, { egress: { default: "allow" }, ingress: { default: "deny", hostLoopback: "allow" } }, "the terminal keeps the network, as the user's shell does, its own loopback included");
@@ -849,14 +843,14 @@ describe("git's identity inside", () => {
       assert.ok(linuxPolicy.filesystem.allowRead.includes("/home/me/.gitconfig"));
       assert.ok(!linuxPolicy.filesystem.allowRead.includes("/home/me"));
       assert.ok(!linuxPolicy.filesystem.allowWrite.includes("/home/me/.gitconfig"), "read-only");
-      // MXC: read-only, and taken out of the deny list that names it as a sibling.
+      // MXC: read-only, on its own: the folder holding it is under no allow.
       const mxc = mxcTerminalConfig({
         root: "C:\\Users\\me\\work\\app", allowWrite: true, tmp: "C:\\t", shell: "cmd.exe", shellArgs: [], cwd: "C:\\Users\\me\\work\\app", env: {},
-        siblings: ["C:\\Users\\me\\.gitconfig", "C:\\Users\\me\\.ssh"], readOnlyFiles: ["C:\\Users\\me\\.gitconfig"],
+        readOnlyFiles: ["C:\\Users\\me\\.gitconfig"],
       });
       assert.ok(mxc.filesystem.readonlyPaths.includes("C:\\Users\\me\\.gitconfig"));
       assert.ok(!mxc.filesystem.readwritePaths.includes("C:\\Users\\me\\.gitconfig"), "read-only");
-      assert.deepEqual(mxc.filesystem.deniedPaths, ["C:\\Users\\me\\.ssh"], "the rest of the home stays denied");
+      assert.ok(!mxc.filesystem.readonlyPaths.includes("C:\\Users\\me"), "the rest of the home is under no allow");
     } finally {
       await rm(home, { recursive: true, force: true });
     }
@@ -901,51 +895,6 @@ describe("quoteWindowsArgument", () => {
     assert.equal(quoteWindowsArgument('say "x"'), '"say \\"x\\""');
     assert.equal(quoteWindowsArgument("C:\\dir with space\\"), '"C:\\dir with space\\\\"');
     assert.equal(quoteWindowsArgument('a\\"b'), '"a\\\\\\"b"');
-  });
-});
-
-describe("siblingsToDeny", () => {
-  // A walk of the real drive is the Windows real-runner test's job; here a layout under a
-  // temp directory stands in, and the path down to the root is what must stay out.
-  test("everything beside the path to the root, not the path itself, nor links", async () => {
-    const base = await mkdtemp(path.join(tmpdir(), "siblings-"));
-    try {
-      const me = path.join(base, "users", "me");
-      const root = path.join(me, "work", "app");
-      await mkdir(root, { recursive: true });
-      await mkdir(path.join(me, ".ssh"));
-      await mkdir(path.join(base, "users", "other"));
-      await writeFile(path.join(me, ".gitconfig"), "[user]");
-      await mkdir(path.join(me, "work", "sibling-project"));
-      // A junction on Windows, a symlink elsewhere: MXC rejects a policy naming one.
-      await symlink(path.join(me, "work", "sibling-project"), path.join(me, "link"), "junction");
-      const denied = siblingsToDeny(root).map((entry) => path.resolve(entry));
-      for (const secret of [path.join(me, ".ssh"), path.join(base, "users", "other"), path.join(me, ".gitconfig"), path.join(me, "work", "sibling-project")]) {
-        assert.ok(denied.includes(secret), `${secret} is denied`);
-      }
-      for (const onTheWay of [path.join(base, "users"), me, path.join(me, "work"), root]) {
-        assert.ok(!denied.includes(onTheWay), `${onTheWay} is on the way down and stays`);
-      }
-      assert.ok(!denied.includes(path.join(me, "link")), "a link is never named");
-    } finally {
-      await rm(base, { recursive: true, force: true });
-    }
-  });
-
-  test("a FIFO beside the path is never opened: reading one blocks until a writer comes", { skip: process.platform === "win32" && "no FIFOs on Windows" }, async () => {
-    const base = await mkdtemp(path.join(tmpdir(), "siblings-fifo-"));
-    try {
-      const root = path.join(base, "app");
-      await mkdir(root);
-      execFileSync("mkfifo", [path.join(base, "pipe")]);
-      // Run in a child with a deadline: a regression blocks synchronously, and would
-      // otherwise hang this whole test file — which is how it was found.
-      const script = `import { siblingsToDeny } from ${JSON.stringify(pathToFileURL(path.resolve("src/terminalSandbox.ts")).href)}; console.log(JSON.stringify(siblingsToDeny(${JSON.stringify(root)})));`;
-      const out = execFileSync(process.execPath, ["--import", "tsx/esm", "--input-type=module", "-e", script], { timeout: 20_000, encoding: "utf8", env: envWithoutCoverageSink() });
-      assert.ok(!JSON.parse(out).includes(path.join(base, "pipe")), "a FIFO was named, so it was opened");
-    } finally {
-      await rm(base, { recursive: true, force: true });
-    }
   });
 });
 
@@ -1005,7 +954,9 @@ describe("grants, in every policy", () => {
     assert.ok(seatbelt.lastIndexOf("/srv/agent") > seatbelt.lastIndexOf(beside), "the agent directory's deny comes last and wins");
   });
 
-  test("MXC on Windows: a grant beside the root is allowed over its denied sibling", () => {
+  const noTools = { isFile: () => false, isDirectory: () => false, readText: () => undefined, list: () => [], isLink: () => false, resolveLink: () => undefined };
+
+  test("MXC on Windows: a grant beside the root is allowed, the way down to it enumerable, nothing else denied", () => {
     const wroot = "C:\\Users\\me\\work\\app";
     const config = mxcTerminalConfig({
       root: wroot,
@@ -1015,75 +966,108 @@ describe("grants, in every policy", () => {
       shellArgs: [],
       cwd: wroot,
       env: {},
-      siblings: ["C:\\Users\\me\\work\\beside", "C:\\Users\\me\\Documents"],
       grantedWrite: ["C:\\Users\\me\\work\\beside"],
       grantedRead: ["C:\\Users\\me\\Documents\\notes"],
+      home: "C:\\Users\\me",
+      agentDir: "C:\\Users\\me\\.pi\\agent",
       enumerateAncestors: true,
-      besideEnumerated: (dir) => (dir === "C:\\Users\\me\\Documents" ? ["C:\\Users\\me\\Documents\\notes", "C:\\Users\\me\\Documents\\taxes", "C:\\Users\\me\\Documents\\cv.docx"] : []),
+      enumerateGrants: true,
+      toolReader: noTools,
     });
     assert.ok(config.filesystem.readwritePaths.includes("C:\\Users\\me\\work\\beside"));
-    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Users\\me\\work\\beside"), "a path both allowed and denied is never sent");
     assert.ok(config.filesystem.readonlyPaths.includes("C:\\Users\\me\\Documents\\notes"));
-    // The sibling holding the grant is listable, so its path resolves; the rest of it stays denied, by name.
-    assert.deepEqual(config.processContainer?.filesystem?.enumeratePaths, ["C:\\Users\\me\\Documents"]);
-    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents"), "enumerated, so not also denied");
-    assert.ok(config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents\\taxes"));
-    assert.ok(config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents\\cv.docx"));
-    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Users\\me\\Documents\\notes"), "the grant itself is not denied");
+    assert.ok(!config.filesystem.readonlyPaths.includes("C:\\Users\\me\\Documents"), "the folder holding a grant is not readable");
+    const enumeratePaths = config.processContainer?.filesystem?.enumeratePaths ?? [];
+    for (const listed of ["C:\\", "C:\\Users", "C:\\Users\\me"]) assert.ok(enumeratePaths.includes(listed), `${listed} is enumerable`);
+    assert.ok(!enumeratePaths.includes("C:\\Users\\me\\Documents"), "a folder directly in the home is never enumerated");
+    assert.deepEqual(config.filesystem.deniedPaths, ["C:\\Users\\me\\.pi\\agent"], "no sibling or beside-the-way entry is denied");
   });
 
-  // openlore: scenario=AToolBesideTheRootResolves spec=sandbox-runner-bash
-  test("AToolBesideTheRootResolves: the folders above a tool beside the root are enumerated, what lies beside the way denied", () => {
-    const wroot = "C:\\projects\\repo";
-    const disk: Record<string, string[]> = {
-      "C:\\dev": ["C:\\dev\\nodejs", "C:\\dev\\other-project", "C:\\dev\\notes.txt"],
-      "C:\\dev\\nodejs": ["C:\\dev\\nodejs\\current", "C:\\dev\\nodejs\\v24"],
+  // openlore: scenario=TheWindowsMxcPolicyIsAWhitelist spec=sandbox-runner-bash
+  test("TheWindowsMxcPolicyIsAWhitelist: root on L:, tools on L: behind a junction and under the profile on C: — no drive readable, the way down enumerable, only the secrets denied", () => {
+    const wroot = "L:\\Python\\app";
+    const home = "C:\\Users\\me";
+    const scoop = "L:\\WRK\\Scoop";
+    const current = `${scoop}\\apps\\nodejs\\current`;
+    const versioned = `${scoop}\\apps\\nodejs\\v26.8.2`;
+    const python = `${home}\\AppData\\Local\\Programs\\Python\\Python312`;
+    const key = (p: string) => p.toLowerCase();
+    const toolReader = {
+      isFile: () => false,
+      isDirectory: () => false,
+      readText: () => undefined,
+      list: () => [],
+      isLink: (p: string) => key(p) === key(current),
+      resolveLink: (p: string) => (key(p) === key(current) ? versioned : undefined),
     };
     const input = {
       root: wroot,
       allowWrite: true,
-      tmp: "C:\\Users\\me\\AppData\\Local\\Temp\\t",
+      tmp: `${home}\\AppData\\Local\\Temp\\pi-outpost-bash-t`,
       shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       shellArgs: [],
       cwd: wroot,
       env: {},
-      siblings: ["C:\\dev", "C:\\Users"],
-      searchPath: "C:\\dev\\nodejs\\current;C:\\Program Files\\Git\\cmd",
-      agentDir: "C:\\Users\\me\\.pi\\agent",
+      searchPath: `C:\\Windows\\System32;${scoop}\\shims;${current}\\bin;${python}`,
+      home,
+      agentDir: `${home}\\.pi\\agent`,
+      configFile: `${home}\\.config\\pi-outpost\\config.json`,
       enumerateAncestors: true,
-      besideEnumerated: (dir: string) => disk[dir] ?? [],
-      toolReader: { isFile: () => false, isDirectory: () => false, readText: () => undefined, list: () => [], isLink: () => false, resolveLink: () => undefined },
+      enumerateGrants: true,
+      toolReader,
     };
     const config = mxcTerminalConfig(input);
-    assert.ok(config.filesystem.readonlyPaths.includes("C:\\dev\\nodejs\\current"));
-    // Only what nothing else lets the command read: not C:\Program Files, readable through the drive.
-    assert.deepEqual(config.processContainer?.filesystem?.enumeratePaths, ["C:\\dev\\nodejs", "C:\\dev"]);
-    for (const denied of ["C:\\dev\\other-project", "C:\\dev\\notes.txt", "C:\\dev\\nodejs\\v24"]) {
-      assert.ok(config.filesystem.deniedPaths.includes(denied), `${denied} is beside the way down and must stay denied`);
+    const lowerAll = (paths: string[]) => paths.map(key);
+    const readonly = lowerAll(config.filesystem.readonlyPaths);
+    const readable = [...readonly, ...lowerAll(config.filesystem.readwritePaths)];
+    const enumeratePaths = config.processContainer?.filesystem?.enumeratePaths ?? [];
+    const enumerated = lowerAll(enumeratePaths);
+    for (const drive of ["C:\\", "L:\\"]) {
+      assert.ok(!readable.includes(key(drive)), `${drive} is not readable`);
+      assert.ok(enumerated.includes(key(drive)), `${drive} is enumerable`);
     }
-    for (const kept of ["C:\\dev", "C:\\dev\\nodejs", "C:\\dev\\nodejs\\current"]) {
-      assert.ok(!config.filesystem.deniedPaths.includes(kept), `${kept} is on the way down`);
+    assert.equal(enumerated.filter((p) => p === "c:\\").length, 1, "a drive's root is listed once, whatever its case");
+    for (const wayDown of ["C:\\Users", home, `${home}\\AppData`, `${home}\\AppData\\Local`, "L:\\WRK", scoop]) {
+      assert.ok(enumerated.includes(key(wayDown)), `${wayDown} is enumerable`);
+      assert.ok(!readable.includes(key(wayDown)), `${wayDown} is not readable`);
     }
-    // A host whose MXC cannot enumerate gets the request as before.
-    const without = mxcTerminalConfig({ ...input, enumerateAncestors: false });
-    assert.equal(without.processContainer, undefined);
-    assert.ok(without.filesystem.deniedPaths.includes("C:\\dev"));
+    // The temporary directory's neighbours: under no allow, so not readable (the marker beside it, #593).
+    assert.ok(!readable.some((p) => key(`${home}\\AppData\\Local\\Temp\\other`).startsWith(`${p}\\`)), "nothing readable holds a folder beside the temporary directory");
+    assert.ok(readonly.includes(key(versioned)), "the junction's target is readable");
+    assert.ok(!enumerated.includes(key(current)), "the junction is never enumerated");
+    assert.deepEqual(config.filesystem.deniedPaths, [input.agentDir, input.configFile], "only the agent directory and the configuration are denied");
   });
 
-  // openlore: scenario=AToolBehindALinkOnTheWayDownResolves spec=sandbox-runner-bash
-  test("AToolBehindALinkOnTheWayDownResolves: a scoop `current` junction's target is readable and on the way down, the link itself never enumerated", () => {
+  // openlore: scenario=ALevelLowerDropsOnlyTheGrantsWayDown spec=sandbox-runner-bash
+  test("the way down to the grants is enumerable at level 0 only; level 2 asks for no enumeration", () => {
+    const wroot = "L:\\Python\\app";
+    const cache = "C:\\Users\\me\\AppData\\Local\\pi-outpost\\sandbox-cache";
+    const base = {
+      root: wroot,
+      allowWrite: true,
+      tmp: "C:\\Users\\me\\AppData\\Local\\Temp\\pi-outpost-bash-t",
+      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      shellArgs: [],
+      cwd: wroot,
+      env: {},
+      home: "C:\\Users\\me",
+      grantedWrite: [cache],
+      toolReader: noTools,
+    };
+    const enumerated = (flags: { enumerateAncestors?: boolean; enumerateGrants?: boolean }) => mxcTerminalConfig({ ...base, ...flags }).processContainer?.filesystem?.enumeratePaths ?? [];
+    assert.ok(enumerated({ enumerateAncestors: true, enumerateGrants: true }).includes("C:\\Users\\me\\AppData\\Local\\pi-outpost"), "level 0: the grant's way down");
+    const level1 = enumerated({ enumerateAncestors: true, enumerateGrants: false });
+    assert.ok(!level1.includes("C:\\Users\\me\\AppData\\Local\\pi-outpost"), "level 1: not the grant's way down");
+    assert.ok(level1.includes("C:\\") && level1.includes("L:\\"), "level 1: the drive roots still");
+    assert.deepEqual(enumerated({ enumerateAncestors: false }), [], "level 2: nothing");
+  });
+
+  // openlore: scenario=TheWindowsMxcPolicyIsAWhitelist spec=sandbox-runner-bash
+  test("a scoop `current` junction's target is readable, the link itself never enumerated, the way down to it enumerable", () => {
     const wroot = "D:\\Python\\isai_oper";
     const scoop = "D:\\WRK\\Scoop";
     const current = `${scoop}\\apps\\nodejs\\current`;
     const versioned = `${scoop}\\apps\\nodejs\\v26.8.2`;
-    const listing: Record<string, string[]> = {
-      "D:\\": ["D:\\WRK", "D:\\Python"],
-      "D:\\Python": ["D:\\Python\\isai_oper", "D:\\Python\\other"],
-      "D:\\WRK": [scoop],
-      [scoop]: [`${scoop}\\shims`, `${scoop}\\apps`, `${scoop}\\buckets`],
-      [`${scoop}\\apps`]: [`${scoop}\\apps\\nodejs`],
-      [`${scoop}\\apps\\nodejs`]: [current, versioned],
-    };
     const key = (p: string) => p.toLowerCase();
     const toolReader = {
       isFile: (p: string) => key(p) === key(`${current}\\npm.cmd`),
@@ -1101,316 +1085,32 @@ describe("grants, in every policy", () => {
       shellArgs: [],
       cwd: wroot,
       env: {},
-      siblings: ["D:\\WRK", "D:\\Python\\other"],
-      // scoop's shims, and the app's bin behind its `current` junction — node.exe itself lives in the junction's target.
       searchPath: `C:\\Windows\\System32;${scoop}\\shims;${current}\\bin`,
       home: "C:\\Users\\me",
       agentDir: "C:\\Users\\me\\.pi\\agent",
       enumerateAncestors: true,
-      besideEnumerated: (dir) => listing[dir] ?? [],
       toolReader,
     });
     const enumeratePaths = config.processContainer?.filesystem?.enumeratePaths ?? [];
-    // The way down to the tool behind the junction is enumerated and not denied.
-    for (const onTheWay of ["D:\\WRK", scoop, `${scoop}\\apps`, `${scoop}\\apps\\nodejs`]) {
+    for (const onTheWay of ["D:\\", "D:\\WRK", scoop, `${scoop}\\apps`, `${scoop}\\apps\\nodejs`]) {
       assert.ok(enumeratePaths.includes(onTheWay), `${onTheWay} is enumerated`);
-      assert.ok(!config.filesystem.deniedPaths.includes(onTheWay), `${onTheWay} is not denied`);
+      assert.ok(!config.filesystem.readonlyPaths.includes(onTheWay), `${onTheWay} is not readable`);
     }
     assert.ok(!enumeratePaths.includes(current), "a link is never enumerated: listing it would show its target's children");
-    // The junction's target is readable like the link, never denied as beside the way down (#562).
     assert.ok(config.filesystem.readonlyPaths.includes(current));
     assert.ok(config.filesystem.readonlyPaths.includes(versioned), "the target of the link is readable");
-    assert.ok(!config.filesystem.deniedPaths.includes(versioned), "the target is not denied");
-    assert.ok(config.filesystem.deniedPaths.includes(`${scoop}\\buckets`), "what lies beside the way down stays denied");
+    assert.ok(!config.filesystem.readonlyPaths.includes(`${scoop}\\buckets`), "what lies beside the way down is under no allow");
   });
 
-  test("ancestorsToEnumerate never names the agent directory, the configuration, nor a folder inside them", () => {
-    const found = ancestorsToEnumerate(["C:\\secret\\agent\\tools\\bin", "D:\\tools\\x\\bin"], {
-      root: "C:\\projects\\repo",
-      siblings: ["C:\\secret"],
-      agentDir: "C:\\secret\\agent",
-    });
-    assert.deepEqual(found, ["C:\\secret", "D:\\tools\\x", "D:\\tools", "D:\\"], "another drive's folders are enumerated, its root included (issue #572); the agent directory and below are not");
-  });
-
-  // openlore: scenario=AToolOnAnotherDriveThanTheRootsResolves spec=sandbox-runner-bash
-  test("AToolOnAnotherDriveThanTheRootsResolves: scoop on a second drive (D:), root on C: — the way down on D: is readable, the junction's target too, nothing beside it denied", () => {
-    const wroot = "C:\\Users\\me\\work\\app";
-    const scoop = "D:\\WRK\\Scoop";
-    const current = `${scoop}\\apps\\nodejs\\current`;
-    const versioned = `${scoop}\\apps\\nodejs\\v26.8.2`;
-    const listing: Record<string, string[]> = {
-      "D:\\": ["D:\\WRK", "D:\\private"],
-      "D:\\WRK": [scoop, "D:\\WRK\\notes.txt"],
-      [scoop]: [`${scoop}\\shims`, `${scoop}\\apps`, `${scoop}\\buckets`],
-      [`${scoop}\\apps`]: [`${scoop}\\apps\\nodejs`],
-      [`${scoop}\\apps\\nodejs`]: [current, versioned],
-    };
-    const key = (p: string) => p.toLowerCase();
-    const toolReader = {
-      isFile: (p: string) => key(p) === key(`${versioned}\\node.exe`),
-      isDirectory: () => false,
-      readText: () => undefined,
-      list: () => [],
-      isLink: (p: string) => key(p) === key(current),
-      resolveLink: (p: string) => (key(p) === key(current) ? versioned : undefined),
-    };
-    const config = mxcTerminalConfig({
-      root: wroot,
-      allowWrite: true,
-      tmp: "C:\\Users\\me\\AppData\\Local\\Temp\\t",
-      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-      shellArgs: [],
-      cwd: wroot,
-      env: {},
-      siblings: ["C:\\Users"],
-      // node.exe sits at the ROOT of the junction's target, and the PATH names the junction twice plus a shims folder.
-      searchPath: `C:\\Windows\\System32;${current}\\bin;${current};${scoop}\\shims`,
-      home: "C:\\Users\\me",
-      agentDir: "C:\\Users\\me\\.pi\\agent",
-      enumerateAncestors: true,
-      besideEnumerated: (dir) => listing[dir] ?? [],
-      toolReader,
-    });
-    const enumeratePaths = config.processContainer?.filesystem?.enumeratePaths ?? [];
-    // The way down on the other drive is READABLE (the root's drive is readable whole; the other
-    // drive's root and ancestors must be too, or nothing on it opens — issue #572), not enumerated.
-    for (const readable of ["D:\\", "D:\\WRK", scoop, `${scoop}\\apps`, `${scoop}\\apps\\nodejs`]) {
-      assert.ok(config.filesystem.readonlyPaths.includes(readable), `${readable} is readable`);
-      assert.ok(!enumeratePaths.includes(readable), `${readable} is not merely enumerated`);
-      assert.ok(!config.filesystem.deniedPaths.includes(readable), `${readable} is not denied`);
-    }
-    // The junction itself and its target (where node.exe sits, at the root) are readable, never denied.
-    assert.ok(config.filesystem.readonlyPaths.includes(current));
-    assert.ok(config.filesystem.readonlyPaths.includes(versioned), "the target is readable even though node.exe sits at its root");
-    assert.ok(!config.filesystem.deniedPaths.includes(versioned));
-    assert.ok(!enumeratePaths.includes(current), "a link is never enumerated");
-    // What lies beside the way down on the other drive is not readable: the way-down folders are
-    // readable (their names show, as on the root's drive), their other contents stay protected.
-    for (const beside of ["D:\\private", `${scoop}\\buckets`, `${scoop}\\shims\\..\\..\\secret`]) {
-      assert.ok(!config.filesystem.readonlyPaths.includes(beside), `${beside} is not readable`);
-      assert.ok(!config.filesystem.readwritePaths.includes(beside), `${beside} is not writable`);
-    }
-    // On the root's drive nothing changes: C:\ is readable whole, its folders are not enumerated.
-    assert.ok(config.filesystem.readonlyPaths.includes("C:\\"));
-    assert.ok(!enumeratePaths.some((p) => p.startsWith("C:")));
-  });
-
-
-  // openlore: scenario=BesideTheForeignWayDownStaysDenied spec=sandbox-runner-bash
-  test("BesideTheForeignWayDownStaysDenied: root on D:, a tool and the temporary directory under the profile on C: — the way down on C: is readable, what lies beside it (Temp) is denied by name (issue #582)", () => {
-    const wroot = "D:\\projects\\app";
-    const home = "C:\\Users\\me";
-    const python = `${home}\\AppData\\Local\\Python\\3.11.4`;
-    const tmp = `${home}\\AppData\\Local\\Temp\\pi-outpost-bash-t`;
-    const listing: Record<string, string[]> = {
-      "C:\\": ["C:\\Users", "C:\\Windows", "C:\\Program Files"],
-      "C:\\Users": [home],
-      [home]: [`${home}\\AppData`],
-      [`${home}\\AppData`]: [`${home}\\AppData\\Local`, `${home}\\AppData\\Roaming`],
-      [`${home}\\AppData\\Local`]: [`${home}\\AppData\\Local\\Python`, `${home}\\AppData\\Local\\Temp`],
-      [`${home}\\AppData\\Local\\Python`]: [python],
-    };
-    const toolReader = {
-      isFile: () => false,
-      isDirectory: () => false,
-      readText: () => undefined,
-      list: () => [],
-      isLink: () => false,
-      resolveLink: () => undefined,
-    };
-    const config = mxcTerminalConfig({
-      root: wroot,
-      allowWrite: true,
-      tmp,
-      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-      shellArgs: [],
-      cwd: wroot,
-      env: {},
-      siblings: ["D:\\WRK", "D:\\private"],
-      searchPath: `C:\\Windows\\System32;${python}\\Scripts;${python}`,
-      home,
-      agentDir: `${home}\\.pi\\agent`,
-      enumerateAncestors: true,
-      besideEnumerated: (dir) => listing[dir] ?? [],
-      toolReader,
-    });
-    // The way down to the tool under the profile on the foreign drive is readable (issue #572)...
-    for (const readable of ["C:\\", "C:\\Users", home, `${home}\\AppData`, `${home}\\AppData\\Local`, `${home}\\AppData\\Local\\Python`, python]) {
-      assert.ok(config.filesystem.readonlyPaths.includes(readable), `${readable} is readable`);
-      assert.ok(!config.filesystem.deniedPaths.includes(readable), `${readable} is on the way down`);
-    }
-    // ...but what lies beside it is denied by name — the temporary directory included, so the
-    // confinement canary's beside-root bait there is refused, not reached (issue #582).
-    const temp = `${home}\\AppData\\Local\\Temp`;
-    assert.ok(config.filesystem.deniedPaths.includes(temp), "Temp beside the way down on the foreign drive is denied");
-    assert.ok(config.filesystem.deniedPaths.includes(`${home}\\AppData\\Roaming`), "Roaming beside the way down is denied");
-    // The command's own temporary folder stays read-write: the more specific allow wins over the deny.
-    assert.ok(config.filesystem.readwritePaths.includes(tmp), "the command's tmp stays writable");
-    assert.ok(!config.filesystem.deniedPaths.includes(tmp), "the command's tmp is not denied");
-    // System folders at the drive root stay as on the root's drive: readable, never denied.
-    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Windows"));
-    assert.ok(!config.filesystem.deniedPaths.includes("C:\\Program Files"));
-  });
-
-  // openlore: scenario=ForeignWayDownDeniedWithoutEnumeration spec=sandbox-runner-bash
-  test("ForeignWayDownDeniedWithoutEnumeration: whatever the enumeration level \u2014 level 2, the host's MXC refusing enumeratePaths altogether, or level 1 \u2014 the way down on the foreign drive stays readable and what lies beside it, the temporary directory included, stays denied by name (issue #585)", () => {
-    const wroot = "D:\\projects\\app";
-    const home = "C:\\Users\\me";
-    const python = `${home}\\AppData\\Local\\Python\\3.11.4`;
-    const tmp = `${home}\\AppData\\Local\\Temp\\pi-outpost-bash-t`;
-    const cache = `${home}\\AppData\\Local\\pi-outpost\\sandbox-cache`;
-    const listing: Record<string, string[]> = {
-      "C:\\": ["C:\\Users", "C:\\Windows", "C:\\Program Files"],
-      "C:\\Users": [home],
-      [home]: [`${home}\\AppData`],
-      [`${home}\\AppData`]: [`${home}\\AppData\\Local`, `${home}\\AppData\\Roaming`],
-      [`${home}\\AppData\\Local`]: [`${home}\\AppData\\Local\\Python`, `${home}\\AppData\\Local\\Temp`, `${home}\\AppData\\Local\\pi-outpost`],
-      [`${home}\\AppData\\Local\\pi-outpost`]: [cache],
-      [`${home}\\AppData\\Local\\Python`]: [python],
-    };
-    const toolReader = {
-      isFile: () => false,
-      isDirectory: () => false,
-      readText: () => undefined,
-      list: () => [],
-      isLink: () => false,
-      resolveLink: () => undefined,
-    };
-    const levels = [
-      { name: "level 2 (no enumeration)", flags: { enumerateAncestors: false as const } },
-      { name: "level 1 (tools' ancestors only)", flags: { enumerateAncestors: true, enumerateGrants: false } },
-    ];
-    for (const { name, flags } of levels) {
-      const config = mxcTerminalConfig({
-        root: wroot,
-        allowWrite: true,
-        tmp,
-        shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-        shellArgs: [],
-        cwd: wroot,
-        env: {},
-        siblings: ["D:\\WRK", "D:\\private"],
-        searchPath: `C:\\Windows\\System32;${python}\\Scripts;${python}`,
-        home,
-        agentDir: `${home}\\.pi\\agent`,
-        grantedRead: [cache],
-        ...flags,
-        besideEnumerated: (dir) => listing[dir] ?? [],
-        toolReader,
-      });
-      // The foreign drive stays readable whole, so the tools on it resolve (issue #572) \u2014 but the
-      // way down to them and to the grant is readable, and what lies beside it is denied by name at
-      // every level, enumeration or not (issues #582, #585): the drive being readable must not open
-      // the profile's AppData\\Local\\Temp, the canary's beside-root bait included.
-      assert.ok(config.filesystem.readonlyPaths.includes("C:\\"), `${name}: C:\\ is readable`);
-      for (const readable of ["C:\\Users", home, `${home}\\AppData`, `${home}\\AppData\\Local`, `${home}\\AppData\\Local\\pi-outpost`, `${home}\\AppData\\Local\\Python`, python]) {
-        assert.ok(config.filesystem.readonlyPaths.includes(readable), `${name}: ${readable} is readable`);
-        assert.ok(!config.filesystem.deniedPaths.includes(readable), `${name}: ${readable} is on the way down`);
-      }
-      const temp = `${home}\\AppData\\Local\\Temp`;
-      assert.ok(config.filesystem.deniedPaths.includes(temp), `${name}: Temp beside the way down is denied`);
-      assert.ok(config.filesystem.deniedPaths.includes(`${home}\\AppData\\Roaming`), `${name}: Roaming beside the way down is denied`);
-      // The command's own temporary folder stays read-write: the more specific allow wins over the deny.
-      assert.ok(config.filesystem.readwritePaths.includes(tmp), `${name}: the command's tmp stays writable`);
-      assert.ok(!config.filesystem.deniedPaths.includes(tmp), `${name}: the command's tmp is not denied`);
-      // System folders at the drive root stay readable, never denied.
-      assert.ok(!config.filesystem.deniedPaths.includes("C:\\Windows"));
-      assert.ok(!config.filesystem.deniedPaths.includes("C:\\Program Files"));
-      // Level 2 asks for no enumeration at all; the denies above do not depend on it.
-      if (flags.enumerateAncestors === false) {
-        assert.deepEqual(config.processContainer?.filesystem?.enumeratePaths ?? [], [], "level 2: no enumeratePaths");
-      }
-    }
-  });
-
-  // openlore: scenario=StrictDeniesKeepOnlyOpenableEntries spec=sandbox-runner-bash
-  test("StrictDeniesKeepOnlyOpenableEntries: when the host's security environment refuses a denied path (0x80070005, domain-joined account), strict mode leaves out what the host cannot open and still denies what it can \u2014 an openable folder stays denied", () => {
-    const openable = tmpdir(); // a real folder this host can open
-    const unopenable = "D:\\WRK\\no-such-entry";
-    const toolReader = {
-      isFile: () => false,
-      isDirectory: () => false,
-      readText: () => undefined,
-      list: () => [],
-      isLink: () => false,
-      resolveLink: () => undefined,
-    };
-    const base = {
-      root: "D:\\projects\\app",
-      allowWrite: true,
-      tmp: "C:\\Users\\me\\AppData\\Local\\Temp\\pi-outpost-bash-t",
-      shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-      shellArgs: [],
-      cwd: "D:\\projects\\app",
-      env: {},
-      siblings: [openable, unopenable],
-      searchPath: "C:\\Windows\\System32",
-      home: "C:\\Users\\me",
-      agentDir: "C:\\Users\\me\\.pi\\agent",
-      enumerateAncestors: false,
-      besideEnumerated: () => [],
-      toolReader,
-    };
-    const loose = mxcTerminalConfig({ ...base });
-    assert.ok(loose.filesystem.deniedPaths.includes(unopenable), "by default a denied entry is kept whatever the host can open");
-    const strict = mxcTerminalConfig({ ...base, strictDenies: true });
-    assert.ok(!strict.filesystem.deniedPaths.includes(unopenable), "strict mode leaves out a denied path the host cannot open");
-    assert.ok(strict.filesystem.deniedPaths.includes(openable), "strict mode still denies an openable folder (Temp-class entries stay denied)");
-    assert.ok(!strict.filesystem.deniedPaths.includes("C:\\Users\\me\\.pi\\agent"), "strict mode leaves out the unopenable agent directory too");
-    // The foreign drive's root and the way down on it stay readable in strict mode too (traversal,
-    // #572): the security environment's size budget is spent on the denied list, which strict mode
-    // caps — pruning the readable way down instead left the folders above the temporary directory
-    // denied, and a path resolved through a denied folder fails (issue #553), which broke the
-    // canary's own script (its verdict never printed, 0x80070005 gone).
-    assert.ok(strict.filesystem.readonlyPaths.some((p) => p.toLowerCase().replace(/[\\/]+$/, "") === "c:"), "strict mode keeps the foreign drive's root readable");
-    assert.ok(strict.filesystem.readonlyPaths.includes("C:\\Windows"), "strict mode keeps the foreign way down readable; the deny-list cap carries the budget");
-    assert.ok(loose.filesystem.readonlyPaths.includes("C:\\Windows"), "by default the foreign way down is readable (issue #572)");
-  });
-
-  // openlore: scenario=StrictDeniesKeepOnlyOpenableEntries spec=sandbox-runner-bash
-  test("StrictDeniesKeepOnlyOpenableEntries caps the deny list under the security environment's size budget (measured 556 denied on a domain-joined host), essentials first", async () => {
-    const parent = await mkdtemp(path.join(tmpdir(), "pi-outpost-cap-"));
-    try {
-      const many = await Promise.all(Array.from({ length: 300 }, (_, i) => mkdir(path.join(parent, `d${i}`)).then(() => path.join(parent, `d${i}`))));
-      const tmpParent = path.join(parent, "Temp");
-      await mkdir(tmpParent);
-      const tmp = path.join(tmpParent, "pi-outpost-bash-t");
-      const toolReader = { isFile: () => false, isDirectory: () => false, readText: () => undefined, list: () => [], isLink: () => false, resolveLink: () => undefined };
-      const base = {
-        root: "D:\\projects\\app",
-        allowWrite: true,
-        tmp,
-        shell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-        shellArgs: [],
-        cwd: "D:\\projects\\app",
-        env: {},
-        siblings: [tmpParent, ...many],
-        searchPath: "C:\\Windows\\System32",
-        home: "C:\\Users\\me",
-        agentDir: "C:\\Users\\me\\.pi\\agent",
-        enumerateAncestors: false,
-        besideEnumerated: () => [],
-        toolReader,
-      };
-      const loose = mxcTerminalConfig({ ...base });
-      assert.ok(loose.filesystem.deniedPaths.length > 256, "by default the deny list is not capped");
-      const strict = mxcTerminalConfig({ ...base, strictDenies: true });
-      assert.ok(strict.filesystem.deniedPaths.length <= 256, `strict mode caps the deny list (got ${strict.filesystem.deniedPaths.length})`);
-      assert.ok(strict.filesystem.deniedPaths.includes(tmpParent), "the temporary directory's parent stays denied first (the canary's beside-root bait lives there)");
-    } finally {
-      await rm(parent, { recursive: true, force: true });
-    }
+  test("ancestorsToEnumerate never names the agent directory, the configuration, nor a folder inside them, nor a drive's root", () => {
+    const found = ancestorsToEnumerate(["C:\\secret\\agent\\tools\\bin", "D:\\tools\\x\\bin"], { agentDir: "C:\\secret\\agent" });
+    assert.deepEqual(found, ["C:\\secret", "D:\\tools\\x", "D:\\tools"]);
   });
 
   test("a folder directly in the home is never enumerated but AppData, where Node's global CLIs live", () => {
     const home = "C:\\Users\\me";
-    const found = ancestorsToEnumerate([`${home}\\.cargo\\bin`, `${home}\\AppData\\Roaming\\npm`], {
-      root: `${home}\\work\\app`,
-      siblings: [`${home}\\.cargo`, `${home}\\AppData`],
-      home,
-    });
+    const found = ancestorsToEnumerate([`${home}\\.cargo\\bin`, `${home}\\AppData\\Roaming\\npm`], { home });
     // ~\.cargo holds credentials.toml: its bin is a program's folder, which needs nothing above it.
-    assert.deepEqual(found, [`${home}\\AppData\\Roaming`, `${home}\\AppData`]);
+    assert.deepEqual(found, [home, "C:\\Users", `${home}\\AppData\\Roaming`, `${home}\\AppData`]);
   });
 });
